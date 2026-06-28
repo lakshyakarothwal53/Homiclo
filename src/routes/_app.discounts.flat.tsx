@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PlaceholderPage } from "@/components/common/PlaceholderPage";
+import { PromoDiscountsPage } from "@/components/discounts/PromoDiscountsPage";
+import { sampleFlatRows } from "@/components/discounts/sample-data";
 
 export const Route = createFileRoute("/_app/discounts/flat")({
   head: () => ({
@@ -13,10 +14,13 @@ export const Route = createFileRoute("/_app/discounts/flat")({
 
 function Page() {
   return (
-    <PlaceholderPage
-      eyebrow="Discounts"
+    <PromoDiscountsPage
+      eyebrow="Discounts › Flat"
       title="Flat Discounts"
-      description="Fixed-amount offers."
+      description="Flat overview and controls."
+      addLabel="Add Flat Discount"
+      lockType="flat"
+      initialRows={sampleFlatRows("Flat")}
     />
   );
 }

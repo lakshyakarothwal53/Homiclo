@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bun run dev)",
+      "Bash(bun run build)",
+      "Bash(bun run lint)",
+      "Bash(bun run format)",
+      "Bash(bun add *)",
+      "Bash(bun install)",
+      "Bash(bun x *)",
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add src/*)",
+      "Bash(git commit*)",
+      "Bash(npx prettier *)",
+      "Bash(npx vite *)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(grep -oE 'export [a-zA-Z{} ,]*' dist/esm/index.d.ts)",
+      "Bash(node -e \"const c=require\\('crypto'\\);for\\(const p of ['admin123','mgr123','inv123','cash123']\\){console.log\\(p, c.createHash\\('sha256'\\).update\\(p\\).digest\\('hex'\\)\\)}\")",
+      "Read(//c/Users/HP/.bun/**)",
+      "Bash(node node_modules/eslint/bin/eslint.js src/lib/auth.ts src/lib/roles.ts src/components/auth/AuthProvider.tsx src/routes/login.tsx src/routes/_app.tsx src/routes/__root.tsx src/components/layout/Sidebar.tsx src/components/layout/Topbar.tsx)",
+      "Bash(node node_modules/prettier/bin/prettier.cjs --write src/lib/auth.ts src/lib/roles.ts src/components/auth/AuthProvider.tsx src/routes/login.tsx src/routes/_app.tsx src/routes/__root.tsx src/components/layout/Sidebar.tsx src/components/layout/Topbar.tsx)",
+      "Bash(node node_modules/eslint/bin/eslint.js src/)",
+      "Bash(curl -s -o /dev/null -w \"status=%{http_code} location=%{redirect_url}\\\\n\" \"http://localhost:5179/\")",
+      "Bash(curl -s -o /dev/null -w \"status=%{http_code}\\\\n\" \"http://localhost:5179/login\")",
+      "Bash(node -e 'console.log\\(\"homiqlo_session=\"+encodeURIComponent\\(JSON.stringify\\({id:\"u4\",email:\"cashier@homiqlo.co\",name:\"Karan Mehta\",initials:\"KM\",role:\"cashier\",branch:\"Worli\"}\\)\\)\\)')",
+      "Bash(node -e 'console.log\\(\"homiqlo_session=\"+encodeURIComponent\\(JSON.stringify\\({id:\"u1\",email:\"admin@homiqlo.co\",name:\"Aarav Mehta\",initials:\"AM\",role:\"super_admin\",branch:\"Mumbai HQ\"}\\)\\)\\)')",
+      "Bash(curl -s -o /dev/null -w 'status=%{http_code} location=%{redirect_url}\\\\n' -H 'Cookie: __TRACKED_VAR__' http://localhost:5179/employees)",
+      "Bash(curl -s -o /dev/null -w 'status=%{http_code} location=%{redirect_url}\\\\n' -H 'Cookie: __TRACKED_VAR__' http://localhost:5179/inventory/products)",
+      "Bash(curl -s -o /dev/null -w 'status=%{http_code}\\\\n' -H 'Cookie: __TRACKED_VAR__' http://localhost:5179/pos)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:5179/login\" --max-time 3)",
+      "Bash(powershell.exe -NoProfile -Command 'Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '\\\\''*5179*'\\\\'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }')"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git rebase*)",
+      "Bash(git reset --hard*)",
+      "Bash(rm -rf*)"
+    ]
+  }
+}

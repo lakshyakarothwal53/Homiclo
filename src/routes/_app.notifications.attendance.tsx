@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PlaceholderPage } from "@/components/common/PlaceholderPage";
+import { PageHeader } from "@/components/common/PageHeader";
+import { AlertList, ATTENDANCE_ALERTS } from "@/components/notifications/alerts";
 
 export const Route = createFileRoute("/_app/notifications/attendance")({
   head: () => ({
@@ -13,10 +14,13 @@ export const Route = createFileRoute("/_app/notifications/attendance")({
 
 function Page() {
   return (
-    <PlaceholderPage
-      eyebrow="Notifications"
-      title="Attendance Alerts"
-      description="Late, absent and overtime notifications."
-    />
+    <>
+      <PageHeader
+        eyebrow="Notifications › Attendance"
+        title="Attendance Alerts"
+        description="Attendance overview and controls."
+      />
+      <AlertList items={ATTENDANCE_ALERTS} />
+    </>
   );
 }

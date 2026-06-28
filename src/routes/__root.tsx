@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { AuthProvider } from "@/components/auth/AuthProvider";
 
 function NotFoundComponent() {
   return (
@@ -78,7 +79,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "HOMIQLO — Super Admin" },
-      { name: "description", content: "HOMIQLO Super Admin Portal — operations, attendance, inventory, billing and analytics." },
+      {
+        name: "description",
+        content:
+          "HOMIQLO Super Admin Portal — operations, attendance, inventory, billing and analytics.",
+      },
       { name: "author", content: "HOMIQLO" },
       { property: "og:title", content: "HOMIQLO — Super Admin" },
       { property: "og:description", content: "Premium enterprise admin dashboard for HOMIQLO." },
@@ -118,8 +123,10 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
+      <AuthProvider>
+        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+        <Outlet />
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

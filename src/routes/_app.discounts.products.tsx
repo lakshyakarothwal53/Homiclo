@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PlaceholderPage } from "@/components/common/PlaceholderPage";
+import { PromoDiscountsPage } from "@/components/discounts/PromoDiscountsPage";
+import { samplePromoRows } from "@/components/discounts/sample-data";
 
 export const Route = createFileRoute("/_app/discounts/products")({
   head: () => ({
@@ -13,10 +14,12 @@ export const Route = createFileRoute("/_app/discounts/products")({
 
 function Page() {
   return (
-    <PlaceholderPage
-      eyebrow="Discounts"
+    <PromoDiscountsPage
+      eyebrow="Discounts › Products"
       title="Product Discounts"
-      description="Discounts on specific SKUs."
+      description="Products overview and controls."
+      addLabel="Add Product Discount"
+      initialRows={samplePromoRows("Product")}
     />
   );
 }

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PlaceholderPage } from "@/components/common/PlaceholderPage";
+import { PageHeader } from "@/components/common/PageHeader";
+import { AlertList, SYSTEM_ALERTS } from "@/components/notifications/alerts";
 
 export const Route = createFileRoute("/_app/notifications/system")({
   head: () => ({
@@ -13,10 +14,13 @@ export const Route = createFileRoute("/_app/notifications/system")({
 
 function Page() {
   return (
-    <PlaceholderPage
-      eyebrow="Notifications"
-      title="System Notifications"
-      description="Platform announcements."
-    />
+    <>
+      <PageHeader
+        eyebrow="Notifications › System"
+        title="System Notifications"
+        description="System overview and controls."
+      />
+      <AlertList items={SYSTEM_ALERTS} />
+    </>
   );
 }

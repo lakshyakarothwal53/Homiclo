@@ -2,6 +2,7 @@ import { Outlet } from "@tanstack/react-router";
 import { useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
+import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 
 export function AppShell() {
@@ -42,6 +43,8 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      <Toaster position="top-right" richColors />
     </div>
   );
 }

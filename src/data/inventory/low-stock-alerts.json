@@ -1,0 +1,8 @@
+[
+  { "sku": "SKU-2404", "product": "Leather Wallet", "currentStock": 0, "minLevel": 10, "status": "Critical" },
+  { "sku": "SKU-2403", "product": "Wireless Earbuds", "currentStock": 8, "minLevel": 20, "status": "Low" },
+  { "sku": "SKU-2408", "product": "Yoga Mat", "currentStock": 3, "minLevel": 15, "status": "Critical" },
+  { "sku": "SKU-2410", "product": "Notebook A5", "currentStock": 12, "minLevel": 25, "status": "Low" },
+  { "sku": "SKU-2412", "product": "Running Shoes (9)", "currentStock": 0, "minLevel": 12, "status": "Critical" },
+  { "sku": "SKU-2406", "product": "Hair Dryer", "currentStock": 15, "minLevel": 30, "status": "Low" }
+]

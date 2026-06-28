@@ -1,0 +1,10 @@
+[
+  { "datetime": "12 Nov 14:22", "product": "Cotton T-Shirt (L)", "change": -8, "type": "Sale", "balance": 124, "by": "R. Kapoor" },
+  { "datetime": "12 Nov 10:05", "product": "Cotton T-Shirt (L)", "change": 100, "type": "Inward", "balance": 132, "by": "A. Verma" },
+  { "datetime": "11 Nov 18:30", "product": "Wireless Earbuds", "change": -2, "type": "Sale", "balance": 8, "by": "K. Mehta" },
+  { "datetime": "11 Nov 11:14", "product": "Basmati Rice 5kg", "change": 80, "type": "Inward", "balance": 298, "by": "A. Verma" },
+  { "datetime": "10 Nov 17:10", "product": "Hair Dryer", "change": -1, "type": "Sale", "balance": 15, "by": "R. Kapoor" },
+  { "datetime": "10 Nov 09:42", "product": "Leather Wallet", "change": -4, "type": "Adjustment", "balance": 0, "by": "A. Verma" },
+  { "datetime": "09 Nov 16:20", "product": "Bluetooth Speaker", "change": 40, "type": "Inward", "balance": 27, "by": "S. Iyer" },
+  { "datetime": "08 Nov 13:05", "product": "Yoga Mat", "change": -4, "type": "Sale", "balance": 3, "by": "R. Kapoor" }
+]

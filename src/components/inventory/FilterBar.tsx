@@ -1,0 +1,73 @@
+import { Download, Plus, Search, type LucideIcon } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+export function FilterBar({
+  search,
+  onSearchChange,
+  searchPlaceholder = "Search…",
+  primaryLabel = "Add New",
+  primaryIcon: PrimaryIcon = Plus,
+  onPrimary,
+  onExport,
+}: {
+  search: string;
+  onSearchChange: (value: string) => void;
+  searchPlaceholder?: string;
+  primaryLabel?: string;
+  primaryIcon?: LucideIcon;
+  onPrimary?: () => void;
+  onExport?: () => void;
+}) {
+  return (
+    <Card className="mb-4 border-border">
+      <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center">
+        <div className="relative w-full md:max-w-xs">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="h-9 pl-9 bg-background"
+          />
+        </div>
+
+        <Select defaultValue="all">
+          <SelectTrigger className="h-9 w-full md:w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Branches</SelectItem>
+            <SelectItem value="bandra">Bandra</SelectItem>
+            <SelectItem value="andheri">Andheri</SelectItem>
+            <SelectItem value="powai">Powai</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Input type="date" className="h-9 w-full bg-background md:w-44" />
+
+        <div className="flex items-center gap-2 md:ml-auto">
+          <Button variant="outline" size="sm" className="gap-2" onClick={onExport}>
+            <Download className="h-4 w-4" /> Export
+          </Button>
+          <Button
+            size="sm"
+            className="gap-2 bg-brand text-brand-foreground hover:bg-brand/90"
+            onClick={onPrimary}
+          >
+            <PrimaryIcon className="h-4 w-4" /> {primaryLabel}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

@@ -1,0 +1,14 @@
+[
+  { "sku": "SKU-2401", "name": "Cotton T-Shirt (L)", "category": "Apparel", "price": 599, "stock": 124, "status": "In Stock" },
+  { "sku": "SKU-2402", "name": "Denim Jeans (32)", "category": "Apparel", "price": 1299, "stock": 42, "status": "In Stock" },
+  { "sku": "SKU-2403", "name": "Wireless Earbuds", "category": "Electronics", "price": 2499, "stock": 8, "status": "Low Stock" },
+  { "sku": "SKU-2404", "name": "Leather Wallet", "category": "Accessories", "price": 899, "stock": 0, "status": "Out of Stock" },
+  { "sku": "SKU-2405", "name": "Basmati Rice 5kg", "category": "Groceries", "price": 650, "stock": 218, "status": "In Stock" },
+  { "sku": "SKU-2406", "name": "Hair Dryer", "category": "Electronics", "price": 1899, "stock": 15, "status": "In Stock" },
+  { "sku": "SKU-2407", "name": "Stainless Steel Bottle", "category": "Home & Kitchen", "price": 749, "stock": 86, "status": "In Stock" },
+  { "sku": "SKU-2408", "name": "Yoga Mat", "category": "Accessories", "price": 1099, "stock": 3, "status": "Low Stock" },
+  { "sku": "SKU-2409", "name": "Bluetooth Speaker", "category": "Electronics", "price": 3299, "stock": 27, "status": "In Stock" },
+  { "sku": "SKU-2410", "name": "Notebook A5", "category": "Accessories", "price": 149, "stock": 12, "status": "Low Stock" },
+  { "sku": "SKU-2411", "name": "Ceramic Dinner Set", "category": "Home & Kitchen", "price": 2199, "stock": 54, "status": "In Stock" },
+  { "sku": "SKU-2412", "name": "Running Shoes (9)", "category": "Apparel", "price": 2899, "stock": 0, "status": "Out of Stock" }
+]

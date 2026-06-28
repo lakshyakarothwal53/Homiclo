@@ -1,0 +1,38 @@
+[
+  {
+    "id": "u1",
+    "email": "admin@homiqlo.co",
+    "passwordHash": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
+    "name": "Aarav Mehta",
+    "initials": "AM",
+    "role": "super_admin",
+    "branch": "Mumbai HQ"
+  },
+  {
+    "id": "u2",
+    "email": "manager@homiqlo.co",
+    "passwordHash": "49a0ac18e26df0b0724f5ac5837e436b336527485fc0a388f578913d6ee70e67",
+    "name": "Vikram Joshi",
+    "initials": "VJ",
+    "role": "store_manager",
+    "branch": "Mumbai HQ"
+  },
+  {
+    "id": "u3",
+    "email": "inv@homiqlo.co",
+    "passwordHash": "170b00da0d752f0eef5fa3608ea2e6c0bd751a9bf539dc101ebe9425f5003c53",
+    "name": "Arjun Verma",
+    "initials": "AV",
+    "role": "inventory",
+    "branch": "Warehouse"
+  },
+  {
+    "id": "u4",
+    "email": "cashier@homiqlo.co",
+    "passwordHash": "c246650737293ddc18fc357393db78d1ecc9d1fd1af95469115e4a29f983359a",
+    "name": "Karan Mehta",
+    "initials": "KM",
+    "role": "cashier",
+    "branch": "Worli"
+  }
+]

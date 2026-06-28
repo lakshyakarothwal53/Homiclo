@@ -69,7 +69,9 @@ export const NAV: NavGroup[] = [
     icon: ScanLine,
     children: [
       { label: "POS Dashboard", to: "/pos" },
-      { label: "Scanner", to: "/pos/scanner" },
+      { label: "Barcode Scanner", to: "/pos/barcode" },
+      { label: "QR Scanner", to: "/pos/qr" },
+      { label: "Product Search", to: "/pos/search" },
       { label: "Transactions", to: "/pos/transactions" },
       { label: "Settings", to: "/pos/settings" },
     ],

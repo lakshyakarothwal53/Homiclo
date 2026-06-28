@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppPosRouteImport } from './routes/_app.pos'
@@ -18,6 +19,11 @@ import { Route as AppEmployeesRouteImport } from './routes/_app.employees'
 import { Route as AppDiscountsRouteImport } from './routes/_app.discounts'
 import { Route as AppBillingRouteImport } from './routes/_app.billing'
 import { Route as AppAttendanceRouteImport } from './routes/_app.attendance'
+import { Route as AppPosIndexRouteImport } from './routes/_app.pos.index'
+import { Route as AppNotificationsIndexRouteImport } from './routes/_app.notifications.index'
+import { Route as AppInventoryIndexRouteImport } from './routes/_app.inventory.index'
+import { Route as AppDiscountsIndexRouteImport } from './routes/_app.discounts.index'
+import { Route as AppBillingIndexRouteImport } from './routes/_app.billing.index'
 import { Route as AppSettingsTallyRouteImport } from './routes/_app.settings.tally'
 import { Route as AppSettingsRolesRouteImport } from './routes/_app.settings.roles'
 import { Route as AppSettingsPreferencesRouteImport } from './routes/_app.settings.preferences'
@@ -34,7 +40,9 @@ import { Route as AppReportsDiscountRouteImport } from './routes/_app.reports.di
 import { Route as AppReportsAttendanceRouteImport } from './routes/_app.reports.attendance'
 import { Route as AppPosTransactionsRouteImport } from './routes/_app.pos.transactions'
 import { Route as AppPosSettingsRouteImport } from './routes/_app.pos.settings'
-import { Route as AppPosScannerRouteImport } from './routes/_app.pos.scanner'
+import { Route as AppPosSearchRouteImport } from './routes/_app.pos.search'
+import { Route as AppPosQrRouteImport } from './routes/_app.pos.qr'
+import { Route as AppPosBarcodeRouteImport } from './routes/_app.pos.barcode'
 import { Route as AppNotificationsSystemRouteImport } from './routes/_app.notifications.system'
 import { Route as AppNotificationsPaymentRouteImport } from './routes/_app.notifications.payment'
 import { Route as AppNotificationsLowStockRouteImport } from './routes/_app.notifications.low-stock'
@@ -76,6 +84,11 @@ import { Route as AppAttendanceLateRouteImport } from './routes/_app.attendance.
 import { Route as AppAttendanceHistoryRouteImport } from './routes/_app.attendance.history'
 import { Route as AppAttendanceAbsentRouteImport } from './routes/_app.attendance.absent'
 
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
@@ -119,6 +132,31 @@ const AppAttendanceRoute = AppAttendanceRouteImport.update({
   id: '/attendance',
   path: '/attendance',
   getParentRoute: () => AppRoute,
+} as any)
+const AppPosIndexRoute = AppPosIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppPosRoute,
+} as any)
+const AppNotificationsIndexRoute = AppNotificationsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppNotificationsRoute,
+} as any)
+const AppInventoryIndexRoute = AppInventoryIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppInventoryRoute,
+} as any)
+const AppDiscountsIndexRoute = AppDiscountsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppDiscountsRoute,
+} as any)
+const AppBillingIndexRoute = AppBillingIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppBillingRoute,
 } as any)
 const AppSettingsTallyRoute = AppSettingsTallyRouteImport.update({
   id: '/settings/tally',
@@ -202,9 +240,19 @@ const AppPosSettingsRoute = AppPosSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppPosRoute,
 } as any)
-const AppPosScannerRoute = AppPosScannerRouteImport.update({
-  id: '/scanner',
-  path: '/scanner',
+const AppPosSearchRoute = AppPosSearchRouteImport.update({
+  id: '/search',
+  path: '/search',
+  getParentRoute: () => AppPosRoute,
+} as any)
+const AppPosQrRoute = AppPosQrRouteImport.update({
+  id: '/qr',
+  path: '/qr',
+  getParentRoute: () => AppPosRoute,
+} as any)
+const AppPosBarcodeRoute = AppPosBarcodeRouteImport.update({
+  id: '/barcode',
+  path: '/barcode',
   getParentRoute: () => AppPosRoute,
 } as any)
 const AppNotificationsSystemRoute = AppNotificationsSystemRouteImport.update({
@@ -416,6 +464,7 @@ const AppAttendanceAbsentRoute = AppAttendanceAbsentRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/login': typeof LoginRoute
   '/attendance': typeof AppAttendanceRouteWithChildren
   '/billing': typeof AppBillingRouteWithChildren
   '/discounts': typeof AppDiscountsRouteWithChildren
@@ -463,7 +512,9 @@ export interface FileRoutesByFullPath {
   '/notifications/low-stock': typeof AppNotificationsLowStockRoute
   '/notifications/payment': typeof AppNotificationsPaymentRoute
   '/notifications/system': typeof AppNotificationsSystemRoute
-  '/pos/scanner': typeof AppPosScannerRoute
+  '/pos/barcode': typeof AppPosBarcodeRoute
+  '/pos/qr': typeof AppPosQrRoute
+  '/pos/search': typeof AppPosSearchRoute
   '/pos/settings': typeof AppPosSettingsRoute
   '/pos/transactions': typeof AppPosTransactionsRoute
   '/reports/attendance': typeof AppReportsAttendanceRoute
@@ -480,15 +531,16 @@ export interface FileRoutesByFullPath {
   '/settings/preferences': typeof AppSettingsPreferencesRoute
   '/settings/roles': typeof AppSettingsRolesRoute
   '/settings/tally': typeof AppSettingsTallyRoute
+  '/billing/': typeof AppBillingIndexRoute
+  '/discounts/': typeof AppDiscountsIndexRoute
+  '/inventory/': typeof AppInventoryIndexRoute
+  '/notifications/': typeof AppNotificationsIndexRoute
+  '/pos/': typeof AppPosIndexRoute
 }
 export interface FileRoutesByTo {
+  '/login': typeof LoginRoute
   '/attendance': typeof AppAttendanceRouteWithChildren
-  '/billing': typeof AppBillingRouteWithChildren
-  '/discounts': typeof AppDiscountsRouteWithChildren
   '/employees': typeof AppEmployeesRouteWithChildren
-  '/inventory': typeof AppInventoryRouteWithChildren
-  '/notifications': typeof AppNotificationsRouteWithChildren
-  '/pos': typeof AppPosRouteWithChildren
   '/': typeof AppIndexRoute
   '/attendance/absent': typeof AppAttendanceAbsentRoute
   '/attendance/history': typeof AppAttendanceHistoryRoute
@@ -530,7 +582,9 @@ export interface FileRoutesByTo {
   '/notifications/low-stock': typeof AppNotificationsLowStockRoute
   '/notifications/payment': typeof AppNotificationsPaymentRoute
   '/notifications/system': typeof AppNotificationsSystemRoute
-  '/pos/scanner': typeof AppPosScannerRoute
+  '/pos/barcode': typeof AppPosBarcodeRoute
+  '/pos/qr': typeof AppPosQrRoute
+  '/pos/search': typeof AppPosSearchRoute
   '/pos/settings': typeof AppPosSettingsRoute
   '/pos/transactions': typeof AppPosTransactionsRoute
   '/reports/attendance': typeof AppReportsAttendanceRoute
@@ -547,10 +601,16 @@ export interface FileRoutesByTo {
   '/settings/preferences': typeof AppSettingsPreferencesRoute
   '/settings/roles': typeof AppSettingsRolesRoute
   '/settings/tally': typeof AppSettingsTallyRoute
+  '/billing': typeof AppBillingIndexRoute
+  '/discounts': typeof AppDiscountsIndexRoute
+  '/inventory': typeof AppInventoryIndexRoute
+  '/notifications': typeof AppNotificationsIndexRoute
+  '/pos': typeof AppPosIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/login': typeof LoginRoute
   '/_app/attendance': typeof AppAttendanceRouteWithChildren
   '/_app/billing': typeof AppBillingRouteWithChildren
   '/_app/discounts': typeof AppDiscountsRouteWithChildren
@@ -599,7 +659,9 @@ export interface FileRoutesById {
   '/_app/notifications/low-stock': typeof AppNotificationsLowStockRoute
   '/_app/notifications/payment': typeof AppNotificationsPaymentRoute
   '/_app/notifications/system': typeof AppNotificationsSystemRoute
-  '/_app/pos/scanner': typeof AppPosScannerRoute
+  '/_app/pos/barcode': typeof AppPosBarcodeRoute
+  '/_app/pos/qr': typeof AppPosQrRoute
+  '/_app/pos/search': typeof AppPosSearchRoute
   '/_app/pos/settings': typeof AppPosSettingsRoute
   '/_app/pos/transactions': typeof AppPosTransactionsRoute
   '/_app/reports/attendance': typeof AppReportsAttendanceRoute
@@ -616,11 +678,17 @@ export interface FileRoutesById {
   '/_app/settings/preferences': typeof AppSettingsPreferencesRoute
   '/_app/settings/roles': typeof AppSettingsRolesRoute
   '/_app/settings/tally': typeof AppSettingsTallyRoute
+  '/_app/billing/': typeof AppBillingIndexRoute
+  '/_app/discounts/': typeof AppDiscountsIndexRoute
+  '/_app/inventory/': typeof AppInventoryIndexRoute
+  '/_app/notifications/': typeof AppNotificationsIndexRoute
+  '/_app/pos/': typeof AppPosIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/login'
     | '/attendance'
     | '/billing'
     | '/discounts'
@@ -668,7 +736,9 @@ export interface FileRouteTypes {
     | '/notifications/low-stock'
     | '/notifications/payment'
     | '/notifications/system'
-    | '/pos/scanner'
+    | '/pos/barcode'
+    | '/pos/qr'
+    | '/pos/search'
     | '/pos/settings'
     | '/pos/transactions'
     | '/reports/attendance'
@@ -685,15 +755,16 @@ export interface FileRouteTypes {
     | '/settings/preferences'
     | '/settings/roles'
     | '/settings/tally'
+    | '/billing/'
+    | '/discounts/'
+    | '/inventory/'
+    | '/notifications/'
+    | '/pos/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/login'
     | '/attendance'
-    | '/billing'
-    | '/discounts'
     | '/employees'
-    | '/inventory'
-    | '/notifications'
-    | '/pos'
     | '/'
     | '/attendance/absent'
     | '/attendance/history'
@@ -735,7 +806,9 @@ export interface FileRouteTypes {
     | '/notifications/low-stock'
     | '/notifications/payment'
     | '/notifications/system'
-    | '/pos/scanner'
+    | '/pos/barcode'
+    | '/pos/qr'
+    | '/pos/search'
     | '/pos/settings'
     | '/pos/transactions'
     | '/reports/attendance'
@@ -752,9 +825,15 @@ export interface FileRouteTypes {
     | '/settings/preferences'
     | '/settings/roles'
     | '/settings/tally'
+    | '/billing'
+    | '/discounts'
+    | '/inventory'
+    | '/notifications'
+    | '/pos'
   id:
     | '__root__'
     | '/_app'
+    | '/login'
     | '/_app/attendance'
     | '/_app/billing'
     | '/_app/discounts'
@@ -803,7 +882,9 @@ export interface FileRouteTypes {
     | '/_app/notifications/low-stock'
     | '/_app/notifications/payment'
     | '/_app/notifications/system'
-    | '/_app/pos/scanner'
+    | '/_app/pos/barcode'
+    | '/_app/pos/qr'
+    | '/_app/pos/search'
     | '/_app/pos/settings'
     | '/_app/pos/transactions'
     | '/_app/reports/attendance'
@@ -820,14 +901,27 @@ export interface FileRouteTypes {
     | '/_app/settings/preferences'
     | '/_app/settings/roles'
     | '/_app/settings/tally'
+    | '/_app/billing/'
+    | '/_app/discounts/'
+    | '/_app/inventory/'
+    | '/_app/notifications/'
+    | '/_app/pos/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  LoginRoute: typeof LoginRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app': {
       id: '/_app'
       path: ''
@@ -890,6 +984,41 @@ declare module '@tanstack/react-router' {
       fullPath: '/attendance'
       preLoaderRoute: typeof AppAttendanceRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/_app/pos/': {
+      id: '/_app/pos/'
+      path: '/'
+      fullPath: '/pos/'
+      preLoaderRoute: typeof AppPosIndexRouteImport
+      parentRoute: typeof AppPosRoute
+    }
+    '/_app/notifications/': {
+      id: '/_app/notifications/'
+      path: '/'
+      fullPath: '/notifications/'
+      preLoaderRoute: typeof AppNotificationsIndexRouteImport
+      parentRoute: typeof AppNotificationsRoute
+    }
+    '/_app/inventory/': {
+      id: '/_app/inventory/'
+      path: '/'
+      fullPath: '/inventory/'
+      preLoaderRoute: typeof AppInventoryIndexRouteImport
+      parentRoute: typeof AppInventoryRoute
+    }
+    '/_app/discounts/': {
+      id: '/_app/discounts/'
+      path: '/'
+      fullPath: '/discounts/'
+      preLoaderRoute: typeof AppDiscountsIndexRouteImport
+      parentRoute: typeof AppDiscountsRoute
+    }
+    '/_app/billing/': {
+      id: '/_app/billing/'
+      path: '/'
+      fullPath: '/billing/'
+      preLoaderRoute: typeof AppBillingIndexRouteImport
+      parentRoute: typeof AppBillingRoute
     }
     '/_app/settings/tally': {
       id: '/_app/settings/tally'
@@ -1003,11 +1132,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPosSettingsRouteImport
       parentRoute: typeof AppPosRoute
     }
-    '/_app/pos/scanner': {
-      id: '/_app/pos/scanner'
-      path: '/scanner'
-      fullPath: '/pos/scanner'
-      preLoaderRoute: typeof AppPosScannerRouteImport
+    '/_app/pos/search': {
+      id: '/_app/pos/search'
+      path: '/search'
+      fullPath: '/pos/search'
+      preLoaderRoute: typeof AppPosSearchRouteImport
+      parentRoute: typeof AppPosRoute
+    }
+    '/_app/pos/qr': {
+      id: '/_app/pos/qr'
+      path: '/qr'
+      fullPath: '/pos/qr'
+      preLoaderRoute: typeof AppPosQrRouteImport
+      parentRoute: typeof AppPosRoute
+    }
+    '/_app/pos/barcode': {
+      id: '/_app/pos/barcode'
+      path: '/barcode'
+      fullPath: '/pos/barcode'
+      preLoaderRoute: typeof AppPosBarcodeRouteImport
       parentRoute: typeof AppPosRoute
     }
     '/_app/notifications/system': {
@@ -1326,6 +1469,7 @@ interface AppBillingRouteChildren {
   AppBillingSalesBillsRoute: typeof AppBillingSalesBillsRoute
   AppBillingTallySyncRoute: typeof AppBillingTallySyncRoute
   AppBillingTaxInvoicesRoute: typeof AppBillingTaxInvoicesRoute
+  AppBillingIndexRoute: typeof AppBillingIndexRoute
 }
 
 const AppBillingRouteChildren: AppBillingRouteChildren = {
@@ -1337,6 +1481,7 @@ const AppBillingRouteChildren: AppBillingRouteChildren = {
   AppBillingSalesBillsRoute: AppBillingSalesBillsRoute,
   AppBillingTallySyncRoute: AppBillingTallySyncRoute,
   AppBillingTaxInvoicesRoute: AppBillingTaxInvoicesRoute,
+  AppBillingIndexRoute: AppBillingIndexRoute,
 }
 
 const AppBillingRouteWithChildren = AppBillingRoute._addFileChildren(
@@ -1351,6 +1496,7 @@ interface AppDiscountsRouteChildren {
   AppDiscountsProductsRoute: typeof AppDiscountsProductsRoute
   AppDiscountsSeasonalRoute: typeof AppDiscountsSeasonalRoute
   AppDiscountsUsageReportsRoute: typeof AppDiscountsUsageReportsRoute
+  AppDiscountsIndexRoute: typeof AppDiscountsIndexRoute
 }
 
 const AppDiscountsRouteChildren: AppDiscountsRouteChildren = {
@@ -1361,6 +1507,7 @@ const AppDiscountsRouteChildren: AppDiscountsRouteChildren = {
   AppDiscountsProductsRoute: AppDiscountsProductsRoute,
   AppDiscountsSeasonalRoute: AppDiscountsSeasonalRoute,
   AppDiscountsUsageReportsRoute: AppDiscountsUsageReportsRoute,
+  AppDiscountsIndexRoute: AppDiscountsIndexRoute,
 }
 
 const AppDiscountsRouteWithChildren = AppDiscountsRoute._addFileChildren(
@@ -1398,6 +1545,7 @@ interface AppInventoryRouteChildren {
   AppInventoryStockAdjustmentRoute: typeof AppInventoryStockAdjustmentRoute
   AppInventoryStockInwardRoute: typeof AppInventoryStockInwardRoute
   AppInventoryStockOutwardRoute: typeof AppInventoryStockOutwardRoute
+  AppInventoryIndexRoute: typeof AppInventoryIndexRoute
 }
 
 const AppInventoryRouteChildren: AppInventoryRouteChildren = {
@@ -1409,6 +1557,7 @@ const AppInventoryRouteChildren: AppInventoryRouteChildren = {
   AppInventoryStockAdjustmentRoute: AppInventoryStockAdjustmentRoute,
   AppInventoryStockInwardRoute: AppInventoryStockInwardRoute,
   AppInventoryStockOutwardRoute: AppInventoryStockOutwardRoute,
+  AppInventoryIndexRoute: AppInventoryIndexRoute,
 }
 
 const AppInventoryRouteWithChildren = AppInventoryRoute._addFileChildren(
@@ -1420,6 +1569,7 @@ interface AppNotificationsRouteChildren {
   AppNotificationsLowStockRoute: typeof AppNotificationsLowStockRoute
   AppNotificationsPaymentRoute: typeof AppNotificationsPaymentRoute
   AppNotificationsSystemRoute: typeof AppNotificationsSystemRoute
+  AppNotificationsIndexRoute: typeof AppNotificationsIndexRoute
 }
 
 const AppNotificationsRouteChildren: AppNotificationsRouteChildren = {
@@ -1427,21 +1577,28 @@ const AppNotificationsRouteChildren: AppNotificationsRouteChildren = {
   AppNotificationsLowStockRoute: AppNotificationsLowStockRoute,
   AppNotificationsPaymentRoute: AppNotificationsPaymentRoute,
   AppNotificationsSystemRoute: AppNotificationsSystemRoute,
+  AppNotificationsIndexRoute: AppNotificationsIndexRoute,
 }
 
 const AppNotificationsRouteWithChildren =
   AppNotificationsRoute._addFileChildren(AppNotificationsRouteChildren)
 
 interface AppPosRouteChildren {
-  AppPosScannerRoute: typeof AppPosScannerRoute
+  AppPosBarcodeRoute: typeof AppPosBarcodeRoute
+  AppPosQrRoute: typeof AppPosQrRoute
+  AppPosSearchRoute: typeof AppPosSearchRoute
   AppPosSettingsRoute: typeof AppPosSettingsRoute
   AppPosTransactionsRoute: typeof AppPosTransactionsRoute
+  AppPosIndexRoute: typeof AppPosIndexRoute
 }
 
 const AppPosRouteChildren: AppPosRouteChildren = {
-  AppPosScannerRoute: AppPosScannerRoute,
+  AppPosBarcodeRoute: AppPosBarcodeRoute,
+  AppPosQrRoute: AppPosQrRoute,
+  AppPosSearchRoute: AppPosSearchRoute,
   AppPosSettingsRoute: AppPosSettingsRoute,
   AppPosTransactionsRoute: AppPosTransactionsRoute,
+  AppPosIndexRoute: AppPosIndexRoute,
 }
 
 const AppPosRouteWithChildren =
@@ -1501,7 +1658,18 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}

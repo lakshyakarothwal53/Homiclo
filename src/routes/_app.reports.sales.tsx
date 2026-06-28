@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PlaceholderPage } from "@/components/common/PlaceholderPage";
+import { ReportListPage } from "@/components/reports/ReportListPage";
+import { SALES_REPORTS } from "@/components/reports/data";
 
 export const Route = createFileRoute("/_app/reports/sales")({
   head: () => ({
@@ -13,10 +14,11 @@ export const Route = createFileRoute("/_app/reports/sales")({
 
 function Page() {
   return (
-    <PlaceholderPage
-      eyebrow="Reports"
+    <ReportListPage
+      eyebrow="Reports › Sales"
       title="Sales Reports"
-      description="Revenue breakdown across channels."
+      description="Sales overview and controls."
+      rows={SALES_REPORTS}
     />
   );
 }

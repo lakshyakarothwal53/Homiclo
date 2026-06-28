@@ -3,13 +3,17 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { NAV } from "@/lib/nav";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { ROLE_LABEL, canSeeSection } from "@/lib/roles";
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { role } = useAuth();
+  const nav = role ? NAV.filter((g) => canSeeSection(role, g.label)) : NAV;
 
   const initiallyOpen = () => {
     const out: Record<string, boolean> = {};
-    for (const g of NAV) {
+    for (const g of nav) {
       if (g.children?.some((c) => pathname === c.to || pathname.startsWith(c.to + "/"))) {
         out[g.label] = true;
       }
@@ -29,13 +33,13 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <div className="flex flex-col leading-tight">
           <span className="text-sm font-bold tracking-tight">HOMIQLO</span>
           <span className="text-[10px] uppercase tracking-[0.18em] text-sidebar-foreground/50">
-            Super Admin
+            {role ? ROLE_LABEL[role] : "Super Admin"}
           </span>
         </div>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4 text-sm">
-        {NAV.map((group) => {
+        {nav.map((group) => {
           const Icon = group.icon;
           if (!group.children) {
             const active = isActive(group.to!);
