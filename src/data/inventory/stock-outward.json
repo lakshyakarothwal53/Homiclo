@@ -1,0 +1,10 @@
+[
+  { "date": "12 Nov", "ref": "OUT-1201", "product": "Cotton T-Shirt (L)", "type": "Sale", "qty": 8, "reference": "INV-10248", "by": "R. Kapoor" },
+  { "date": "12 Nov", "ref": "OUT-1202", "product": "Basmati Rice 5kg", "type": "Sale", "qty": 12, "reference": "INV-10247", "by": "K. Mehta" },
+  { "date": "11 Nov", "ref": "OUT-1203", "product": "Hair Dryer", "type": "Sale", "qty": 3, "reference": "INV-10240", "by": "R. Kapoor" },
+  { "date": "11 Nov", "ref": "OUT-1204", "product": "Cotton T-Shirt (M)", "type": "Damage", "qty": 2, "reference": "DMG-44", "by": "A. Verma" },
+  { "date": "10 Nov", "ref": "OUT-1205", "product": "Wireless Earbuds", "type": "Sale", "qty": 6, "reference": "INV-10231", "by": "K. Mehta" },
+  { "date": "09 Nov", "ref": "OUT-1206", "product": "Bluetooth Speaker", "type": "Transfer", "qty": 10, "reference": "TRF-08", "by": "S. Iyer" },
+  { "date": "08 Nov", "ref": "OUT-1207", "product": "Yoga Mat", "type": "Sale", "qty": 4, "reference": "INV-10220", "by": "R. Kapoor" },
+  { "date": "07 Nov", "ref": "OUT-1208", "product": "Ceramic Dinner Set", "type": "Damage", "qty": 1, "reference": "DMG-43", "by": "A. Verma" }
+]

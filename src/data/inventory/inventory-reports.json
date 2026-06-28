@@ -1,0 +1,8 @@
+[
+  { "report": "Stock Valuation Report", "period": "Nov 2024", "generated": "12 Nov 2024", "format": "PDF" },
+  { "report": "Fast Moving Items", "period": "Q3 2024", "generated": "01 Oct 2024", "format": "Excel" },
+  { "report": "Slow Moving Items", "period": "Q3 2024", "generated": "01 Oct 2024", "format": "Excel" },
+  { "report": "Stock Ageing", "period": "Nov 2024", "generated": "12 Nov 2024", "format": "PDF" },
+  { "report": "Low Stock Summary", "period": "Nov 2024", "generated": "12 Nov 2024", "format": "PDF" },
+  { "report": "Category Performance", "period": "Q3 2024", "generated": "01 Oct 2024", "format": "Excel" }
+]

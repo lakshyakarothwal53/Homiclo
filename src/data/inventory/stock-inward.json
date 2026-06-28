@@ -1,0 +1,10 @@
+[
+  { "date": "12 Nov", "grn": "GRN-2401", "product": "Cotton T-Shirt (L)", "supplier": "Maxwell Textiles", "qty": 100, "cost": "₹35,000", "receivedBy": "A. Verma" },
+  { "date": "12 Nov", "grn": "GRN-2402", "product": "Basmati Rice 5kg", "supplier": "Royal Grains", "qty": 80, "cost": "₹38,400", "receivedBy": "A. Verma" },
+  { "date": "11 Nov", "grn": "GRN-2403", "product": "Wireless Earbuds", "supplier": "TechWave Pvt Ltd", "qty": 50, "cost": "₹62,500", "receivedBy": "A. Verma" },
+  { "date": "10 Nov", "grn": "GRN-2404", "product": "Leather Wallet", "supplier": "Craft Co.", "qty": 30, "cost": "₹13,500", "receivedBy": "S. Iyer" },
+  { "date": "09 Nov", "grn": "GRN-2405", "product": "Bluetooth Speaker", "supplier": "TechWave Pvt Ltd", "qty": 40, "cost": "₹98,000", "receivedBy": "S. Iyer" },
+  { "date": "08 Nov", "grn": "GRN-2406", "product": "Ceramic Dinner Set", "supplier": "HomeStyle Traders", "qty": 60, "cost": "₹78,000", "receivedBy": "A. Verma" },
+  { "date": "07 Nov", "grn": "GRN-2407", "product": "Stainless Steel Bottle", "supplier": "HomeStyle Traders", "qty": 120, "cost": "₹54,000", "receivedBy": "R. Kapoor" },
+  { "date": "06 Nov", "grn": "GRN-2408", "product": "Yoga Mat", "supplier": "FitGear Supplies", "qty": 45, "cost": "₹31,500", "receivedBy": "S. Iyer" }
+]

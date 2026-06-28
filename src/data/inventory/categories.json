@@ -1,0 +1,10 @@
+[
+  { "name": "Apparel", "productCount": 342, "stockValue": "₹4.8L", "lastUpdated": "2 hours ago" },
+  { "name": "Electronics", "productCount": 218, "stockValue": "₹6.2L", "lastUpdated": "1 day ago" },
+  { "name": "Groceries", "productCount": 456, "stockValue": "₹3.4L", "lastUpdated": "30 min ago" },
+  { "name": "Accessories", "productCount": 168, "stockValue": "₹2.1L", "lastUpdated": "4 hours ago" },
+  { "name": "Home & Kitchen", "productCount": 100, "stockValue": "₹1.9L", "lastUpdated": "Yesterday" },
+  { "name": "Beauty & Care", "productCount": 84, "stockValue": "₹1.2L", "lastUpdated": "3 hours ago" },
+  { "name": "Sports & Fitness", "productCount": 62, "stockValue": "₹0.9L", "lastUpdated": "2 days ago" },
+  { "name": "Stationery", "productCount": 48, "stockValue": "₹0.4L", "lastUpdated": "6 hours ago" }
+]

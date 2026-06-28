@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/HP/.claude/plans/**)",
+      "Read(//c/Users/HP/.claude/projects/c--Users-HP-Downloads-homiqlo-admin-hub-main-homiqlo-admin-hub-main/memory/**)",
+      "Bash(bun run *)",
+      "Bash(./node_modules/.bin/eslint \"src/routes/_app.inventory*.tsx\" \"src/components/inventory/**/*.tsx\" \"src/hooks/use-inventory.ts\" \"src/types/inventory.ts\")",
+      "Bash(./node_modules/.bin/eslint --fix \"src/routes/_app.inventory*.tsx\" \"src/components/inventory/**/*.tsx\" \"src/hooks/use-inventory.ts\" \"src/types/inventory.ts\" \"src/components/layout/AppShell.tsx\")",
+      "Bash(./node_modules/.bin/eslint \"src/routes/_app.inventory*.tsx\" \"src/components/inventory/**/*.tsx\" \"src/hooks/use-inventory.ts\" \"src/types/inventory.ts\" \"src/components/layout/AppShell.tsx\")",
+      "Bash(bunx tsc *)",
+      "Bash(command -v bun node npx)",
+      "Bash(node_modules/.bin/prettier --write src/components/billing src/routes/_app.billing.tsx src/routes/_app.billing.create-invoice.tsx src/routes/_app.billing.sales-bills.tsx src/routes/_app.billing.payments.tsx src/routes/_app.billing.gateway.tsx src/routes/_app.billing.refunds.tsx src/routes/_app.billing.tax-invoices.tsx src/routes/_app.billing.tally-sync.tsx src/routes/_app.billing.reports.tsx)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\HP\\.claude\\projects\\c--Users-HP-Downloads-homiqlo-admin-hub-main-homiqlo-admin-hub-main\\memory"
+    ]
+  }
+}
