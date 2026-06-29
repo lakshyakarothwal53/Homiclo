@@ -27,6 +27,8 @@ export type BillingSalesBill = {
   amount: string;
   payment: string;
   status: string;
+  bill_date?: string;
+  amount_num?: number;
 };
 
 export type BillingPayment = {

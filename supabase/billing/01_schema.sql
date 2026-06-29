@@ -12,7 +12,7 @@
 --   billing_tally_log       — Tally ERP sync log.
 --   billing_gateway_txns    — online payment gateway transactions.
 --   billing_reports         — downloadable billing report list.
---
+-- 
 -- NOTE: amount/taxable/cgst/sgst/total are display strings ("₹4,616") — TEXT for
 -- parity with the mock. Normalise to numeric later if the UI computes formatting.
 

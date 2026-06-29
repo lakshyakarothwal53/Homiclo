@@ -17,13 +17,55 @@ function like(value: string) {
   return `%${value}%`;
 }
 
+interface DashboardRaw {
+  todayRevenue: number;
+  todayInvoiceCount: number;
+  pendingPayments: number;
+  pendingCount: number;
+  thisMonthRevenue: number;
+  lastMonthRevenue: number;
+  refundsAmount: number;
+  refundsThisWeek: number;
+}
+
+function formatINR(n: number): string {
+  if (n >= 10000000) return "₹" + (n / 10000000).toFixed(1) + "Cr";
+  if (n >= 100000)   return "₹" + (n / 100000).toFixed(1) + "L";
+  return "₹" + n.toLocaleString("en-IN");
+}
+
+function monthDelta(current: number, previous: number): string {
+  if (previous === 0) return "";
+  const pct = Math.round(((current - previous) / previous) * 100);
+  return pct >= 0
+    ? `Up ${pct}% vs last month`
+    : `Down ${Math.abs(pct)}% vs last month`;
+}
+
 export function useBillingDashboard() {
   return useQuery({
     queryKey: ["billing", "dashboard"],
     queryFn: async (): Promise<BillingDashboard> => {
-      const { data, error } = await supabase.from("billing_dashboard").select("data").single();
+      const { data, error } = await supabase.rpc("billing_dashboard_stats");
       if (error) throw error;
-      return data.data as BillingDashboard;
+      const r = data as DashboardRaw;
+      return {
+        todayRevenue:        formatINR(r.todayRevenue),
+        todayRevenueHint:    `${r.todayInvoiceCount} invoice${r.todayInvoiceCount !== 1 ? "s" : ""}`,
+        pendingPayments:     formatINR(r.pendingPayments),
+        pendingPaymentsHint: `${r.pendingCount} invoice${r.pendingCount !== 1 ? "s" : ""}`,
+        thisMonth:           formatINR(r.thisMonthRevenue),
+        thisMonthDelta:      monthDelta(r.thisMonthRevenue, r.lastMonthRevenue),
+        refunds:             formatINR(r.refundsAmount),
+        refundsHint:         `${r.refundsThisWeek} this week`,
+        // tally stats unchanged — still sourced from billing_dashboard seed row
+        tallySyncedToday:  "",
+        tallySyncedHint:   "",
+        tallyPendingSync:  "",
+        tallyPendingHint:  "",
+        tallyFailed:       "",
+        tallyFailedHint:   "",
+      };
     },
   });
 }
@@ -33,9 +75,9 @@ export function useBillingRevenueTrend() {
     queryKey: ["billing", "revenue-trend"],
     queryFn: async (): Promise<BillingRevenueTrend[]> => {
       const { data, error } = await supabase
-        .from("billing_revenue_trend")
+        .from("billing_revenue_trend_live")
         .select("d, revenue")
-        .order("sort_order");
+        .order("sort_key");
       if (error) throw error;
       return data as BillingRevenueTrend[];
     },
@@ -148,13 +190,20 @@ export function useCreateBillingInvoice() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: BillingSalesBill): Promise<BillingSalesBill> => {
+      const amountNum =
+        input.amount_num ??
+        (parseFloat(input.amount.replace(/[₹,\s]/g, "")) || 0);
+      const billDate =
+        input.bill_date ??  Date().toString().slice(0, 10);
       const { error } = await supabase.from("billing_sales_bills").insert({
-        invoice: input.invoice,
-        date: input.date,
-        customer: input.customer,
-        amount: input.amount,
-        payment: input.payment,
-        status: input.status,
+        invoice:    input.invoice,
+        date:       input.date,
+        customer:   input.customer,
+        amount:     input.amount,
+        payment:    input.payment,
+        status:     input.status,
+        bill_date:  billDate,
+        amount_num: amountNum,
       });
       if (error) throw error;
       return input;
