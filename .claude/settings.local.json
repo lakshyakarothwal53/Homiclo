@@ -9,7 +9,20 @@
       "Bash(./node_modules/.bin/eslint \"src/routes/_app.inventory*.tsx\" \"src/components/inventory/**/*.tsx\" \"src/hooks/use-inventory.ts\" \"src/types/inventory.ts\" \"src/components/layout/AppShell.tsx\")",
       "Bash(bunx tsc *)",
       "Bash(command -v bun node npx)",
-      "Bash(node_modules/.bin/prettier --write src/components/billing src/routes/_app.billing.tsx src/routes/_app.billing.create-invoice.tsx src/routes/_app.billing.sales-bills.tsx src/routes/_app.billing.payments.tsx src/routes/_app.billing.gateway.tsx src/routes/_app.billing.refunds.tsx src/routes/_app.billing.tax-invoices.tsx src/routes/_app.billing.tally-sync.tsx src/routes/_app.billing.reports.tsx)"
+      "Bash(node_modules/.bin/prettier --write src/components/billing src/routes/_app.billing.tsx src/routes/_app.billing.create-invoice.tsx src/routes/_app.billing.sales-bills.tsx src/routes/_app.billing.payments.tsx src/routes/_app.billing.gateway.tsx src/routes/_app.billing.refunds.tsx src/routes/_app.billing.tax-invoices.tsx src/routes/_app.billing.tally-sync.tsx src/routes/_app.billing.reports.tsx)",
+      "Bash(bun add *)",
+      "Read(//Users/lakshyakarothwal/.bun/**)",
+      "Bash(npm --version)",
+      "Bash(npm install *)",
+      "Bash(bunx eslint *)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(bunx prettier *)",
+      "Bash(bun --env-file=.env scripts/test-supabase.ts)",
+      "Bash(echo \"psql_exit=$?\")",
+      "Bash(echo \"supabase_exit=$?\")",
+      "Bash(psql --version)",
+      "Bash(cd \"/Users/lakshyakarothwal/Desktop/MyPC/A/nova vision/Homiclo\" && echo \"=== project .claude/skills ===\" && ls -R .claude/skills 2>/dev/null; echo \"=== user skills ===\" && ls ~/.claude/skills 2>/dev/null; echo \"=== recent .md files \\(project, non-node_modules\\) ===\" && find . -name \"*.md\" -not -path \"*/node_modules/*\" -newermt \"2026-06-28\" 2>/dev/null; echo \"=== git status \\(new/untracked\\) ===\" && git status --short | head -40)",
+      "Read(//Users/lakshyakarothwal/.claude/**)"
     ],
     "additionalDirectories": [
       "c:\\Users\\HP\\.claude\\projects\\c--Users-HP-Downloads-homiqlo-admin-hub-main-homiqlo-admin-hub-main\\memory"

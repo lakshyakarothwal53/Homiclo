@@ -50,9 +50,28 @@ src/
   lib/             # utils, nav config, error helpers
     nav.ts         # NAV array — sidebar navigation definition
     utils.ts       # cn() helper
-  routes/          # TanStack Router file-based routes
+  routes/          # TanStack Router file-based routes (directory-based)
     __root.tsx     # root layout (QueryClientProvider lives here)
-    _app.*.tsx     # all admin pages inside the AppShell layout
+    login.tsx      # login page
+    _app.tsx       # AppShell layout (auth guard, sidebar + topbar)
+    _app/
+      index.tsx              # dashboard
+      attendance.tsx         # layout
+      attendance/            # absent, history, late, live, logs, reports, settings
+      billing.tsx            # layout
+      billing/               # index, create-invoice, gateway, payments, refunds, reports, sales-bills, tally-sync, tax-invoices
+      discounts.tsx          # layout
+      discounts/             # index, campaigns, categories, flat, percentage, products, seasonal, usage-reports
+      employees.tsx          # layout
+      employees/             # activity, add, location, login-monitoring, profile, reports
+      inventory.tsx          # layout
+      inventory/             # index, alerts, categories, history, products, reports, stock-adjustment, stock-inward, stock-outward
+      notifications.tsx      # layout
+      notifications/         # index, attendance, low-stock, payment, system
+      pos.tsx                # layout
+      pos/                   # index, barcode, qr, scanner, search, settings, transactions
+      reports/               # attendance, discount, employee, export, financial, inventory, sales (no layout)
+      settings/              # attendance, company, notifications, payment-gateway, preferences, roles, tally (no layout)
   types/
     inventory.ts   # TypeScript domain types for inventory module
   router.tsx       # createRouter + QueryClient setup
@@ -62,8 +81,10 @@ src/
 ## Routing Conventions
 
 - Routes are auto-generated — **never edit `routeTree.gen.ts` manually**.
-- All app pages use the `_app.` prefix and render inside `AppShell` (sidebar + topbar).
-- Nested routes use dots: `_app.pos.barcode.tsx` → `/pos/barcode`.
+- All app pages live inside `src/routes/_app/` and render inside `AppShell` (sidebar + topbar).
+- Directory structure mirrors URL: `_app/pos/barcode.tsx` → `/pos/barcode`.
+- Module layout file (`billing.tsx`) coexists with its child folder (`billing/`) at the same level.
+- `reports/` and `settings/` have no layout file — their children report directly to the app shell.
 - Navigation links live in `src/lib/nav.ts` — add new sections there.
 
 ## Component Patterns
