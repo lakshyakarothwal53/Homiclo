@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { ScanLine, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -6,7 +6,9 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { PRODUCTS, formatINR, type Product } from "@/components/pos/products";
+import { formatINR } from "@/components/pos/products";
+import { usePosProducts } from "@/hooks/use-pos";
+import type { PosProduct } from "@/types/pos";
 
 export const Route = createFileRoute("/_app/pos/")({
   head: () => ({
@@ -21,31 +23,19 @@ export const Route = createFileRoute("/_app/pos/")({
 const GST_RATE = 0.18;
 const DISCOUNT_RATE = 0.1;
 
-type CartLine = { product: Product; qty: number };
+type CartLine = { product: PosProduct; qty: number };
 
 function Page() {
   const [query, setQuery] = useState("");
-  const [cart, setCart] = useState<CartLine[]>([
-    { product: PRODUCTS[0], qty: 2 },
-    { product: PRODUCTS[2], qty: 1 },
-    { product: PRODUCTS[4], qty: 1 },
-  ]);
+  const [cart, setCart] = useState<CartLine[]>([]);
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return PRODUCTS;
-    return PRODUCTS.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q),
-    );
-  }, [query]);
+  const { data: visible = [] } = usePosProducts(query.trim() || undefined);
 
-  const addToCart = (product: Product) =>
+  const addToCart = (product: PosProduct) =>
     setCart((prev) => {
       const existing = prev.find((l) => l.product.sku === product.sku);
       if (existing) {
-        return prev.map((l) =>
-          l.product.sku === product.sku ? { ...l, qty: l.qty + 1 } : l,
-        );
+        return prev.map((l) => (l.product.sku === product.sku ? { ...l, qty: l.qty + 1 } : l));
       }
       return [...prev, { product, qty: 1 }];
     });
@@ -158,7 +148,9 @@ function Page() {
                 </div>
                 <div className="flex justify-between text-muted-foreground">
                   <dt>Discount (10%)</dt>
-                  <dd className="font-medium text-[color:var(--success)]">-{formatINR(discount)}</dd>
+                  <dd className="font-medium text-[color:var(--success)]">
+                    -{formatINR(discount)}
+                  </dd>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
                   <dt>GST 18%</dt>

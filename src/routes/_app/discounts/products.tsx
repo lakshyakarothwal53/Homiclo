@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PromoDiscountsPage } from "@/components/discounts/PromoDiscountsPage";
-import { samplePromoRows } from "@/components/discounts/sample-data";
+import { useDiscountPromos } from "@/hooks/use-discounts";
 
 export const Route = createFileRoute("/_app/discounts/products")({
   head: () => ({
@@ -13,13 +13,14 @@ export const Route = createFileRoute("/_app/discounts/products")({
 });
 
 function Page() {
+  const { data: initialRows = [] } = useDiscountPromos("product");
   return (
     <PromoDiscountsPage
       eyebrow="Discounts › Products"
       title="Product Discounts"
       description="Products overview and controls."
       addLabel="Add Product Discount"
-      initialRows={samplePromoRows("Product")}
+      initialRows={initialRows}
     />
   );
 }

@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
-import { PRODUCTS, formatINR, type Product } from "@/components/pos/products";
+import { formatINR } from "@/components/pos/products";
+import { usePosProducts } from "@/hooks/use-pos";
+import type { PosProduct } from "@/types/pos";
 
 export const Route = createFileRoute("/_app/pos/search")({
   head: () => ({
@@ -18,7 +20,7 @@ export const Route = createFileRoute("/_app/pos/search")({
   component: Page,
 });
 
-const columns: Column<Product>[] = [
+const columns: Column<PosProduct>[] = [
   {
     key: "sku",
     header: "SKU",
@@ -56,7 +58,7 @@ const columns: Column<Product>[] = [
 ];
 
 function Page() {
-  const rows = PRODUCTS.slice(0, 8);
+  const { data: rows = [] } = usePosProducts();
 
   return (
     <>
@@ -72,7 +74,7 @@ function Page() {
       />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={rows} rowKey={(r) => r.sku} />
-        <EntriesFooter shown={rows.length} total={PRODUCTS.length} />
+        <EntriesFooter shown={rows.length} total={rows.length} />
       </Card>
     </>
   );

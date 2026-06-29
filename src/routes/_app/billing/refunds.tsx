@@ -5,6 +5,8 @@ import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { StatusBadge } from "@/components/billing/StatusBadge";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { useBillingRefunds } from "@/hooks/use-billing";
+import type { BillingRefund } from "@/types/billing";
 
 export const Route = createFileRoute("/_app/billing/refunds")({
   head: () => ({
@@ -16,43 +18,7 @@ export const Route = createFileRoute("/_app/billing/refunds")({
   component: Page,
 });
 
-type Refund = {
-  refund: string;
-  invoice: string;
-  customer: string;
-  amount: string;
-  reason: string;
-  status: string;
-};
-
-const refunds: Refund[] = [
-  {
-    refund: "REF-201",
-    invoice: "INV-10244",
-    customer: "Rahul Nair",
-    amount: "₹680",
-    reason: "Damaged item",
-    status: "Completed",
-  },
-  {
-    refund: "REF-200",
-    invoice: "INV-10230",
-    customer: "Maya P.",
-    amount: "₹1,299",
-    reason: "Size mismatch",
-    status: "Completed",
-  },
-  {
-    refund: "REF-199",
-    invoice: "INV-10221",
-    customer: "Suresh K.",
-    amount: "₹450",
-    reason: "Wrong product",
-    status: "Processing",
-  },
-];
-
-const columns: Column<Refund>[] = [
+const columns: Column<BillingRefund>[] = [
   {
     key: "refund",
     header: "Refund ID",
@@ -78,6 +44,8 @@ const columns: Column<Refund>[] = [
 ];
 
 function Page() {
+  const { data: refunds = [] } = useBillingRefunds();
+
   return (
     <>
       <PageHeader
@@ -88,7 +56,7 @@ function Page() {
       <FilterBar searchPlaceholder="Search refunds..." addLabel="Add New" />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={refunds} rowKey={(r) => r.refund} />
-        <EntriesFooter shown={3} total={3} />
+        <EntriesFooter shown={refunds.length} total={refunds.length} />
       </Card>
     </>
   );

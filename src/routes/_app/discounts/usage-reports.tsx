@@ -6,6 +6,7 @@ import { StatCard } from "@/components/common/StatCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { DiscountToolbar } from "@/components/discounts/DiscountToolbar";
 import { downloadCsv, formatCurrency } from "@/components/discounts/types";
+import { useDiscountUsage } from "@/hooks/use-discounts";
 
 export const Route = createFileRoute("/_app/discounts/usage-reports")({
   head: () => ({
@@ -17,54 +18,12 @@ export const Route = createFileRoute("/_app/discounts/usage-reports")({
   component: Page,
 });
 
-type UsageRow = {
-  discount: string;
-  code: string;
-  timesUsed: number;
-  discountGiven: number;
-  avgOrder: number;
-  conversion: number;
-};
-
-const usage: UsageRow[] = [
-  {
-    discount: "Diwali Bonanza",
-    code: "DIWALI20",
-    timesUsed: 128,
-    discountGiven: 24580,
-    avgOrder: 1920,
-    conversion: 68,
-  },
-  {
-    discount: "Festive Flat",
-    code: "FLAT100",
-    timesUsed: 62,
-    discountGiven: 6200,
-    avgOrder: 820,
-    conversion: 52,
-  },
-  {
-    discount: "Apparel Sale",
-    code: "APPAREL15",
-    timesUsed: 38,
-    discountGiven: 8420,
-    avgOrder: 2210,
-    conversion: 44,
-  },
-  {
-    discount: "New Customer",
-    code: "NEW50",
-    timesUsed: 20,
-    discountGiven: 1000,
-    avgOrder: 620,
-    conversion: 28,
-  },
-];
-
 function Page() {
   const [query, setQuery] = useState("");
   const [branch, setBranch] = useState("All Branches");
   const [date, setDate] = useState("");
+
+  const { data: usage = [] } = useDiscountUsage();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -72,14 +31,14 @@ function Page() {
     return usage.filter(
       (r) => r.discount.toLowerCase().includes(q) || r.code.toLowerCase().includes(q),
     );
-  }, [query]);
+  }, [query, usage]);
 
   const totals = useMemo(() => {
     const used = usage.reduce((s, r) => s + r.timesUsed, 0);
     const given = usage.reduce((s, r) => s + r.discountGiven, 0);
-    const conv = usage.reduce((s, r) => s + r.conversion, 0) / usage.length;
+    const conv = usage.length ? usage.reduce((s, r) => s + r.conversion, 0) / usage.length : 0;
     return { used, given, conv: Math.round(conv) };
-  }, []);
+  }, [usage]);
 
   function handleExport() {
     downloadCsv(

@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader } from "@/components/common/PageHeader";
-import { AlertList, STOCK_ALERTS } from "@/components/notifications/alerts";
+import { AlertList } from "@/components/notifications/alerts";
+import { useNotifications } from "@/hooks/use-notifications";
 
 export const Route = createFileRoute("/_app/notifications/low-stock")({
   head: () => ({
@@ -13,6 +14,7 @@ export const Route = createFileRoute("/_app/notifications/low-stock")({
 });
 
 function Page() {
+  const { data: items = [] } = useNotifications("stock");
   return (
     <>
       <PageHeader
@@ -20,7 +22,7 @@ function Page() {
         title="Low Stock Alerts"
         description="Stock overview and controls."
       />
-      <AlertList items={STOCK_ALERTS} />
+      <AlertList items={items} />
     </>
   );
 }

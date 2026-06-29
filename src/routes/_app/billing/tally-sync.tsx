@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { StatusBadge } from "@/components/billing/StatusBadge";
 import { cn } from "@/lib/utils";
+import { useBillingDashboard, useBillingTallyLog } from "@/hooks/use-billing";
+import type { BillingTallyRow } from "@/types/billing";
 
 export const Route = createFileRoute("/_app/billing/tally-sync")({
   head: () => ({
@@ -19,29 +21,7 @@ export const Route = createFileRoute("/_app/billing/tally-sync")({
   component: Page,
 });
 
-type SyncRow = {
-  time: string;
-  voucher: string;
-  reference: string;
-  amount: string;
-  status: string;
-};
-
-const log: SyncRow[] = [
-  { time: "14:30", voucher: "Sales", reference: "INV-10248", amount: "₹4,616", status: "Synced" },
-  { time: "14:10", voucher: "Receipt", reference: "REC-4521", amount: "₹4,616", status: "Synced" },
-  { time: "13:55", voucher: "Sales", reference: "INV-10247", amount: "₹1,820", status: "Synced" },
-  { time: "13:30", voucher: "Sales", reference: "INV-10246", amount: "₹12,400", status: "Pending" },
-  {
-    time: "12:00",
-    voucher: "Purchase",
-    reference: "GRN-2403",
-    amount: "₹62,500",
-    status: "Failed",
-  },
-];
-
-const columns: Column<SyncRow>[] = [
+const columns: Column<BillingTallyRow>[] = [
   {
     key: "time",
     header: "Time",
@@ -102,6 +82,8 @@ function SyncStat({
 
 function Page() {
   const [syncing, setSyncing] = useState(false);
+  const { data: dashboard } = useBillingDashboard();
+  const { data: log = [] } = useBillingTallyLog();
 
   const syncNow = () => {
     setSyncing(true);
@@ -123,22 +105,22 @@ function Page() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <SyncStat
           label="Synced Today"
-          value="48"
-          hint="Last sync 5 min ago"
+          value={dashboard?.tallySyncedToday ?? "—"}
+          hint={dashboard?.tallySyncedHint ?? ""}
           icon={RefreshCw}
           tone="success"
         />
         <SyncStat
           label="Pending Sync"
-          value="3"
-          hint="Vouchers waiting"
+          value={dashboard?.tallyPendingSync ?? "—"}
+          hint={dashboard?.tallyPendingHint ?? ""}
           icon={Clock}
           tone="warning"
         />
         <SyncStat
           label="Failed"
-          value="1"
-          hint="Requires attention"
+          value={dashboard?.tallyFailed ?? "—"}
+          hint={dashboard?.tallyFailedHint ?? ""}
           icon={AlertCircle}
           tone="danger"
         />

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PromoDiscountsPage } from "@/components/discounts/PromoDiscountsPage";
-import { samplePromoRows } from "@/components/discounts/sample-data";
+import { useDiscountPromos } from "@/hooks/use-discounts";
 
 export const Route = createFileRoute("/_app/discounts/percentage")({
   head: () => ({
@@ -13,6 +13,7 @@ export const Route = createFileRoute("/_app/discounts/percentage")({
 });
 
 function Page() {
+  const { data: initialRows = [] } = useDiscountPromos("percentage");
   return (
     <PromoDiscountsPage
       eyebrow="Discounts › Percentage"
@@ -20,7 +21,7 @@ function Page() {
       description="Percentage overview and controls."
       addLabel="Add Percentage Discount"
       lockType="percentage"
-      initialRows={samplePromoRows("Percentage")}
+      initialRows={initialRows}
     />
   );
 }

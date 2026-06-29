@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader } from "@/components/common/PageHeader";
-import { AlertList, SYSTEM_ALERTS } from "@/components/notifications/alerts";
+import { AlertList } from "@/components/notifications/alerts";
+import { useNotifications } from "@/hooks/use-notifications";
 
 export const Route = createFileRoute("/_app/notifications/system")({
   head: () => ({
@@ -13,6 +14,7 @@ export const Route = createFileRoute("/_app/notifications/system")({
 });
 
 function Page() {
+  const { data: items = [] } = useNotifications("system");
   return (
     <>
       <PageHeader
@@ -20,7 +22,7 @@ function Page() {
         title="System Notifications"
         description="System overview and controls."
       />
-      <AlertList items={SYSTEM_ALERTS} />
+      <AlertList items={items} />
     </>
   );
 }

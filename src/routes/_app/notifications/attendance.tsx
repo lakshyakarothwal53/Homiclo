@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader } from "@/components/common/PageHeader";
-import { AlertList, ATTENDANCE_ALERTS } from "@/components/notifications/alerts";
+import { AlertList } from "@/components/notifications/alerts";
+import { useNotifications } from "@/hooks/use-notifications";
 
 export const Route = createFileRoute("/_app/notifications/attendance")({
   head: () => ({
@@ -13,6 +14,7 @@ export const Route = createFileRoute("/_app/notifications/attendance")({
 });
 
 function Page() {
+  const { data: items = [] } = useNotifications("attendance");
   return (
     <>
       <PageHeader
@@ -20,7 +22,7 @@ function Page() {
         title="Attendance Alerts"
         description="Attendance overview and controls."
       />
-      <AlertList items={ATTENDANCE_ALERTS} />
+      <AlertList items={items} />
     </>
   );
 }

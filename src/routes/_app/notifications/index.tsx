@@ -1,17 +1,9 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader } from "@/components/common/PageHeader";
 import { cn } from "@/lib/utils";
-import {
-  AlertList,
-  ALL_ALERTS,
-  STOCK_ALERTS,
-  ATTENDANCE_ALERTS,
-  PAYMENT_ALERTS,
-  SYSTEM_ALERTS,
-  type AlertCategory,
-  type AlertItem,
-} from "@/components/notifications/alerts";
+import { AlertList, type AlertCategory } from "@/components/notifications/alerts";
+import { useNotifications } from "@/hooks/use-notifications";
 
 export const Route = createFileRoute("/_app/notifications/")({
   head: () => ({
@@ -33,18 +25,9 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "system", label: "System" },
 ];
 
-const TAB_DATA: Record<TabKey, AlertItem[]> = {
-  all: ALL_ALERTS,
-  stock: STOCK_ALERTS,
-  attendance: ATTENDANCE_ALERTS,
-  payment: PAYMENT_ALERTS,
-  system: SYSTEM_ALERTS,
-};
-
 function Page() {
   const [tab, setTab] = useState<TabKey>("all");
-
-  const items = useMemo(() => TAB_DATA[tab], [tab]);
+  const { data: items = [] } = useNotifications(tab);
 
   return (
     <>
@@ -61,7 +44,7 @@ function Page() {
               key={t.key}
               onClick={() => setTab(t.key)}
               className={cn(
-                "border-b-2 px-0.5 pb-3 text-sm font-medium transition-colors cursor-pointer",
+                "cursor-pointer border-b-2 px-0.5 pb-3 text-sm font-medium transition-colors",
                 tab === t.key
                   ? "border-brand text-brand"
                   : "border-transparent text-muted-foreground hover:text-foreground",

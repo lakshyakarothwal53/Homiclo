@@ -5,6 +5,8 @@ import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { StatusBadge } from "@/components/billing/StatusBadge";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { useBillingGatewayTxns } from "@/hooks/use-billing";
+import type { BillingGatewayTxn } from "@/types/billing";
 
 export const Route = createFileRoute("/_app/billing/gateway")({
   head: () => ({
@@ -16,51 +18,7 @@ export const Route = createFileRoute("/_app/billing/gateway")({
   component: Page,
 });
 
-type Txn = {
-  txn: string;
-  date: string;
-  customer: string;
-  amount: string;
-  gateway: string;
-  status: string;
-};
-
-const txns: Txn[] = [
-  {
-    txn: "pay_NK4521",
-    date: "12 Nov",
-    customer: "Anita Desai",
-    amount: "₹4,616",
-    gateway: "Razorpay",
-    status: "Success",
-  },
-  {
-    txn: "pay_NK4520",
-    date: "12 Nov",
-    customer: "Vikram Joshi",
-    amount: "₹12,400",
-    gateway: "Razorpay",
-    status: "Pending",
-  },
-  {
-    txn: "pay_NK4519",
-    date: "11 Nov",
-    customer: "Sneha Iyer",
-    amount: "₹2,950",
-    gateway: "Razorpay",
-    status: "Success",
-  },
-  {
-    txn: "pay_NK4515",
-    date: "10 Nov",
-    customer: "Karan M.",
-    amount: "₹680",
-    gateway: "PhonePe",
-    status: "Refunded",
-  },
-];
-
-const columns: Column<Txn>[] = [
+const columns: Column<BillingGatewayTxn>[] = [
   {
     key: "txn",
     header: "Txn ID",
@@ -86,6 +44,8 @@ const columns: Column<Txn>[] = [
 ];
 
 function Page() {
+  const { data: txns = [] } = useBillingGatewayTxns();
+
   return (
     <>
       <PageHeader
@@ -96,7 +56,7 @@ function Page() {
       <FilterBar searchPlaceholder="Search transactions..." />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={txns} rowKey={(r) => r.txn} />
-        <EntriesFooter shown={4} total={4} />
+        <EntriesFooter shown={txns.length} total={txns.length} />
       </Card>
     </>
   );

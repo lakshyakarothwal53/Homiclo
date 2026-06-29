@@ -87,6 +87,10 @@ in order, just like inventory.
 | Module | SQL folder | Table(s) | Hook | Type |
 |---|---|---|---|---|
 | Reports | `supabase/reports/` | `reports` (keyed by `category`) | `useReports(category)` (`src/hooks/use-reports.ts`) | `ReportRow` (`src/types/reports.ts`) |
+| POS | `supabase/pos/` | `pos_products`, `pos_transactions` | `usePosProducts`, `usePosTransactions`, `useCreatePosTransaction` (`src/hooks/use-pos.ts`) | `PosProduct`, `PosTransaction` (`src/types/pos.ts`) |
+| Billing | `supabase/billing/` | `billing_dashboard`, `billing_revenue_trend`, `billing_sales_bills`, `billing_payments`, `billing_refunds`, `billing_tax_invoices`, `billing_tally_log`, `billing_gateway_txns`, `billing_reports` | `useBillingDashboard`, `useBillingRevenueTrend`, `useBillingSalesBills`, `useBillingPayments`, `useBillingRefunds`, `useBillingTaxInvoices`, `useBillingTallyLog`, `useBillingGatewayTxns`, `useBillingReports`, `useCreateBillingInvoice` (`src/hooks/use-billing.ts`) | `BillingDashboard`, `BillingRevenueTrend`, `BillingSalesBill`, `BillingPayment`, `BillingRefund`, `BillingTaxInvoice`, `BillingTallyRow`, `BillingGatewayTxn`, `BillingReport` (`src/types/billing.ts`) |
+| Discounts | `supabase/discounts/` | `discounts_dashboard`, `discounts_active`, `discount_promos` (keyed by `discount_type`), `discount_campaigns`, `discount_seasonal`, `discount_usage` | `useDiscountsDashboard`, `useDiscountsActive`, `useDiscountPromos(type)`, `useDiscountCampaigns`, `useDiscountSeasonal`, `useDiscountUsage`, `useCreateDiscountPromo` (`src/hooks/use-discounts.ts`) | `DiscountsDashboard`, `DiscountsActiveRow`, `DiscountCampaign`, `DiscountSeasonRow`, `DiscountUsageRow` (`src/types/discounts.ts`); `PromoRow` stays in `src/components/discounts/types.ts` |
+| Notifications | `supabase/notifications/` | `notifications` (14 rows keyed by `category`: `all` \| `stock` \| `attendance` \| `payment` \| `system`; `icon_name` resolved to LucideIcon in hook) | `useNotifications(category)` (`src/hooks/use-notifications.ts`) | `AlertItem`, `AlertCategory`, `Tone` — re-exported from `src/components/notifications/alerts.tsx` via `src/types/notifications.ts` |
 
 ## Notes & next steps
 
@@ -101,3 +105,5 @@ in order, just like inventory.
 - **RLS policies are demo-grade** — tighten them to authenticated admins before
   production.
 - The old `src/data/inventory/*.json` fixtures are now unused and can be deleted.
+- `src/components/discounts/sample-data.ts` is now unused (all four promo route pages fetch from Supabase). It can be deleted once you're satisfied with the migration.
+- The five static alert arrays in `src/components/notifications/alerts.tsx` (`ALL_ALERTS`, `STOCK_ALERTS`, `ATTENDANCE_ALERTS`, `PAYMENT_ALERTS`, `SYSTEM_ALERTS`) are now unused. The `AlertList` component and type exports in that file are still needed; only the data arrays can be removed once you're satisfied with the migration.

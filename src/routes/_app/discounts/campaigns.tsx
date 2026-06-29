@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/discounts/StatusBadge";
-import type { DiscountStatus } from "@/components/discounts/types";
+import { useDiscountCampaigns } from "@/hooks/use-discounts";
 
 export const Route = createFileRoute("/_app/discounts/campaigns")({
   head: () => ({
@@ -16,60 +16,9 @@ export const Route = createFileRoute("/_app/discounts/campaigns")({
   component: Page,
 });
 
-type Campaign = {
-  name: string;
-  blurb: string;
-  validTill: string;
-  used: string;
-  status: DiscountStatus;
-};
-
-const campaigns: Campaign[] = [
-  {
-    name: "Diwali Bonanza",
-    blurb: "Flat 20% off across all categories.",
-    validTill: "15 Nov",
-    used: "128",
-    status: "Active",
-  },
-  {
-    name: "Festive Combo",
-    blurb: "Buy 2 get 1 free on selected apparel.",
-    validTill: "20 Nov",
-    used: "42",
-    status: "Active",
-  },
-  {
-    name: "Weekend Flash",
-    blurb: "Flat ₹100 on weekend purchases.",
-    validTill: "Recurring",
-    used: "256",
-    status: "Active",
-  },
-  {
-    name: "Black Friday",
-    blurb: "Up to 50% off store-wide.",
-    validTill: "29 Nov",
-    used: "—",
-    status: "Upcoming",
-  },
-  {
-    name: "New Year Special",
-    blurb: "Mega discount on electronics.",
-    validTill: "01 Jan",
-    used: "—",
-    status: "Upcoming",
-  },
-  {
-    name: "Summer Clearance",
-    blurb: "End of season sale.",
-    validTill: "—",
-    used: "612",
-    status: "Ended",
-  },
-];
-
 function Page() {
+  const { data: campaigns = [] } = useDiscountCampaigns();
+
   return (
     <>
       <PageHeader

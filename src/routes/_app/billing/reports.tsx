@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/card";
 import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { useBillingReports } from "@/hooks/use-billing";
+import type { BillingReport } from "@/types/billing";
 
 export const Route = createFileRoute("/_app/billing/reports")({
   head: () => ({
@@ -17,27 +19,9 @@ export const Route = createFileRoute("/_app/billing/reports")({
   component: Page,
 });
 
-type Report = {
-  report: string;
-  period: string;
-  generated: string;
-  format: string;
-};
-
-const reports: Report[] = [
-  { report: "Daily Sales Summary", period: "12 Nov 2024", generated: "12 Nov 2024", format: "PDF" },
-  { report: "Tax Summary (GST)", period: "Nov 2024", generated: "12 Nov 2024", format: "Excel" },
-  {
-    report: "Outstanding Payments",
-    period: "12 Nov 2024",
-    generated: "12 Nov 2024",
-    format: "PDF",
-  },
-  { report: "Refund Summary", period: "Nov 2024", generated: "12 Nov 2024", format: "Excel" },
-];
-
 function Page() {
-  const columns: Column<Report>[] = [
+  const { data: reports = [] } = useBillingReports();
+  const columns: Column<BillingReport>[] = [
     {
       key: "report",
       header: "Report",
@@ -83,7 +67,7 @@ function Page() {
       <FilterBar searchPlaceholder="Search reports..." addLabel="Add New" />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={reports} rowKey={(r) => r.report} />
-        <EntriesFooter shown={4} total={4} />
+        <EntriesFooter shown={reports.length} total={reports.length} />
       </Card>
     </>
   );

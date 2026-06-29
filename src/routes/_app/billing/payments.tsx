@@ -5,6 +5,8 @@ import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { StatusBadge } from "@/components/billing/StatusBadge";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { useBillingPayments } from "@/hooks/use-billing";
+import type { BillingPayment } from "@/types/billing";
 
 export const Route = createFileRoute("/_app/billing/payments")({
   head: () => ({
@@ -16,56 +18,7 @@ export const Route = createFileRoute("/_app/billing/payments")({
   component: Page,
 });
 
-type Payment = {
-  date: string;
-  receipt: string;
-  customer: string;
-  invoice: string;
-  amount: string;
-  mode: string;
-  status: string;
-};
-
-const payments: Payment[] = [
-  {
-    date: "12 Nov",
-    receipt: "REC-4521",
-    customer: "Anita Desai",
-    invoice: "INV-10248",
-    amount: "₹4,616",
-    mode: "UPI",
-    status: "Received",
-  },
-  {
-    date: "12 Nov",
-    receipt: "REC-4520",
-    customer: "Walk-in",
-    invoice: "INV-10247",
-    amount: "₹1,820",
-    mode: "Cash",
-    status: "Received",
-  },
-  {
-    date: "11 Nov",
-    receipt: "REC-4519",
-    customer: "Sneha Iyer",
-    invoice: "INV-10245",
-    amount: "₹2,950",
-    mode: "UPI",
-    status: "Received",
-  },
-  {
-    date: "10 Nov",
-    receipt: "REC-4518",
-    customer: "Vikram Joshi",
-    invoice: "INV-10240",
-    amount: "₹8,200",
-    mode: "NEFT",
-    status: "Received",
-  },
-];
-
-const columns: Column<Payment>[] = [
+const columns: Column<BillingPayment>[] = [
   {
     key: "date",
     header: "Date",
@@ -96,6 +49,8 @@ const columns: Column<Payment>[] = [
 ];
 
 function Page() {
+  const { data: payments = [] } = useBillingPayments();
+
   return (
     <>
       <PageHeader
@@ -106,7 +61,7 @@ function Page() {
       <FilterBar searchPlaceholder="Search receipts..." />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={payments} rowKey={(r) => r.receipt} />
-        <EntriesFooter shown={4} total={4} />
+        <EntriesFooter shown={payments.length} total={payments.length} />
       </Card>
     </>
   );

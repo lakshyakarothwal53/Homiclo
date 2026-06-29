@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { StatCard } from "@/components/common/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useBillingDashboard, useBillingRevenueTrend } from "@/hooks/use-billing";
 
 export const Route = createFileRoute("/_app/billing/")({
   head: () => ({
@@ -16,22 +17,10 @@ export const Route = createFileRoute("/_app/billing/")({
   component: Page,
 });
 
-const revenueTrend = [
-  { d: "1 Nov", revenue: 64000 },
-  { d: "2 Nov", revenue: 72000 },
-  { d: "3 Nov", revenue: 81000 },
-  { d: "4 Nov", revenue: 94000 },
-  { d: "5 Nov", revenue: 108000 },
-  { d: "6 Nov", revenue: 121000 },
-  { d: "7 Nov", revenue: 134000 },
-  { d: "8 Nov", revenue: 58000 },
-  { d: "9 Nov", revenue: 69000 },
-  { d: "10 Nov", revenue: 88000 },
-  { d: "11 Nov", revenue: 112000 },
-  { d: "12 Nov", revenue: 124580 },
-];
-
 function Page() {
+  const { data: dashboard } = useBillingDashboard();
+  const { data: trend = [] } = useBillingRevenueTrend();
+
   return (
     <>
       <PageHeader
@@ -52,10 +41,30 @@ function Page() {
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Today's Revenue" value="₹1,24,580" hint="48 invoices" icon={IndianRupee} />
-        <StatCard label="Pending Payments" value="₹38,200" hint="12 invoices" icon={Clock} />
-        <StatCard label="This Month" value="₹24.8L" delta="Up 18% vs last month" icon={BarChart3} />
-        <StatCard label="Refunds" value="₹4,820" hint="6 this week" icon={RotateCcw} />
+        <StatCard
+          label="Today's Revenue"
+          value={dashboard?.todayRevenue ?? "—"}
+          hint={dashboard?.todayRevenueHint}
+          icon={IndianRupee}
+        />
+        <StatCard
+          label="Pending Payments"
+          value={dashboard?.pendingPayments ?? "—"}
+          hint={dashboard?.pendingPaymentsHint}
+          icon={Clock}
+        />
+        <StatCard
+          label="This Month"
+          value={dashboard?.thisMonth ?? "—"}
+          delta={dashboard?.thisMonthDelta}
+          icon={BarChart3}
+        />
+        <StatCard
+          label="Refunds"
+          value={dashboard?.refunds ?? "—"}
+          hint={dashboard?.refundsHint}
+          icon={RotateCcw}
+        />
       </div>
 
       <Card className="mt-6 border-border">
@@ -69,7 +78,7 @@ function Page() {
         </CardHeader>
         <CardContent className="h-80">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={revenueTrend} margin={{ top: 10, right: 8, left: -10, bottom: 0 }}>
+            <BarChart data={trend} margin={{ top: 10, right: 8, left: -10, bottom: 0 }}>
               <defs>
                 <linearGradient id="g-bill-rev" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#FE0000" stopOpacity={0.9} />

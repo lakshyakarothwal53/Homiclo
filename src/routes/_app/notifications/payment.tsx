@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader } from "@/components/common/PageHeader";
-import { AlertList, PAYMENT_ALERTS } from "@/components/notifications/alerts";
+import { AlertList } from "@/components/notifications/alerts";
+import { useNotifications } from "@/hooks/use-notifications";
 
 export const Route = createFileRoute("/_app/notifications/payment")({
   head: () => ({
@@ -13,6 +14,7 @@ export const Route = createFileRoute("/_app/notifications/payment")({
 });
 
 function Page() {
+  const { data: items = [] } = useNotifications("payment");
   return (
     <>
       <PageHeader
@@ -20,7 +22,7 @@ function Page() {
         title="Payment Alerts"
         description="Payment overview and controls."
       />
-      <AlertList items={PAYMENT_ALERTS} />
+      <AlertList items={items} />
     </>
   );
 }

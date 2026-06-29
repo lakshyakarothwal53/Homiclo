@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { DiscountToolbar } from "@/components/discounts/DiscountToolbar";
 import { StatusBadge } from "@/components/discounts/StatusBadge";
-import { downloadCsv, type DiscountStatus } from "@/components/discounts/types";
+import { downloadCsv } from "@/components/discounts/types";
+import { useDiscountSeasonal } from "@/hooks/use-discounts";
 
 export const Route = createFileRoute("/_app/discounts/seasonal")({
   head: () => ({
@@ -19,54 +20,12 @@ export const Route = createFileRoute("/_app/discounts/seasonal")({
   component: Page,
 });
 
-type SeasonRow = {
-  season: string;
-  offer: string;
-  discount: string;
-  validFrom: string;
-  validTo: string;
-  status: DiscountStatus;
-};
-
-const seasons: SeasonRow[] = [
-  {
-    season: "Diwali",
-    offer: "Festive Bonanza",
-    discount: "Up to 30%",
-    validFrom: "01 Nov",
-    validTo: "15 Nov",
-    status: "Active",
-  },
-  {
-    season: "Black Friday",
-    offer: "Mega Sale",
-    discount: "Up to 50%",
-    validFrom: "29 Nov",
-    validTo: "30 Nov",
-    status: "Upcoming",
-  },
-  {
-    season: "Christmas",
-    offer: "Holiday Deals",
-    discount: "20%",
-    validFrom: "20 Dec",
-    validTo: "26 Dec",
-    status: "Upcoming",
-  },
-  {
-    season: "New Year",
-    offer: "Year-End Clearance",
-    discount: "Up to 40%",
-    validFrom: "27 Dec",
-    validTo: "02 Jan",
-    status: "Upcoming",
-  },
-];
-
 function Page() {
   const [query, setQuery] = useState("");
   const [branch, setBranch] = useState("All Branches");
   const [date, setDate] = useState("");
+
+  const { data: seasons = [] } = useDiscountSeasonal();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -74,7 +33,7 @@ function Page() {
     return seasons.filter(
       (r) => r.season.toLowerCase().includes(q) || r.offer.toLowerCase().includes(q),
     );
-  }, [query]);
+  }, [query, seasons]);
 
   function handleExport() {
     downloadCsv(
