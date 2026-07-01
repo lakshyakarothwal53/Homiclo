@@ -7,7 +7,9 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatINR } from "@/components/pos/products";
-import { usePosProducts } from "@/hooks/use-pos";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { useBarcodeScanner } from "@/hooks/use-barcode-scanner";
+import { useCreatePosTransaction, usePosProducts } from "@/hooks/use-pos";
 import type { PosProduct } from "@/types/pos";
 
 export const Route = createFileRoute("/_app/pos/")({
@@ -26,10 +28,14 @@ const DISCOUNT_RATE = 0.1;
 type CartLine = { product: PosProduct; qty: number };
 
 function Page() {
+  const { user } = useAuth();
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
 
   const { data: visible = [] } = usePosProducts(query.trim() || undefined);
+  // Unfiltered catalogue so a scan can match a SKU that isn't in the current search view.
+  const { data: allProducts = [] } = usePosProducts();
+  const createTransaction = useCreatePosTransaction();
 
   const addToCart = (product: PosProduct) =>
     setCart((prev) => {
@@ -40,11 +46,68 @@ function Page() {
       return [...prev, { product, qty: 1 }];
     });
 
+  // Quick Sale: the physical scanner checks out one item immediately (its own
+  // bill per scan), separate from the manual click-to-cart + Generate Bill flow
+  // below, which still supports building a multi-item cart by hand.
+  function quickSale(product: PosProduct) {
+    const discount = Math.round(product.price * DISCOUNT_RATE);
+    const gst = Math.round((product.price - discount) * GST_RATE);
+    const total = product.price - discount + gst;
+    const invoice = `INV-${Math.floor(10000 + Math.random() * 89999)}`;
+    createTransaction.mutate(
+      {
+        invoice,
+        time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+        items: 1,
+        amount: formatINR(total),
+        payment: "Cash",
+        cashier: user?.name ?? "Cashier",
+        status: "Completed",
+      },
+      {
+        onSuccess: () =>
+          toast.success(`Bill ${invoice} generated — ${product.name} — ${formatINR(total)}`),
+        onError: (e) => toast.error(e instanceof Error ? e.message : "Could not generate bill."),
+      },
+    );
+  }
+
+  useBarcodeScanner((code) => {
+    const product = allProducts.find((p) => p.sku.toLowerCase() === code.toLowerCase());
+    if (!product) {
+      toast.error(`No product found for "${code}"`);
+      return;
+    }
+    quickSale(product);
+  });
+
   const itemCount = cart.reduce((n, l) => n + l.qty, 0);
   const subtotal = cart.reduce((s, l) => s + l.product.price * l.qty, 0);
   const discount = Math.round(subtotal * DISCOUNT_RATE);
   const gst = Math.round((subtotal - discount) * GST_RATE);
   const total = subtotal - discount + gst;
+
+  function generateBill() {
+    const invoice = `INV-${Math.floor(10000 + Math.random() * 89999)}`;
+    createTransaction.mutate(
+      {
+        invoice,
+        time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+        items: itemCount,
+        amount: formatINR(total),
+        payment: "Cash",
+        cashier: user?.name ?? "Cashier",
+        status: "Completed",
+      },
+      {
+        onSuccess: () => {
+          toast.success(`Bill ${invoice} generated — ${formatINR(total)}`);
+          setCart([]);
+        },
+        onError: (e) => toast.error(e instanceof Error ? e.message : "Could not generate bill."),
+      },
+    );
+  }
 
   return (
     <>
@@ -67,7 +130,11 @@ function Page() {
                 className="pl-9"
               />
             </div>
-            <Button variant="outline" className="gap-2">
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => toast.info("Scanner ready — pull the trigger on the barcode scanner")}
+            >
               <ScanLine className="h-4 w-4" /> Scan
             </Button>
           </div>
@@ -165,9 +232,10 @@ function Page() {
 
               <Button
                 className="mt-5 w-full bg-brand text-brand-foreground hover:bg-brand/90"
-                onClick={() => toast.success(`Payment of ${formatINR(total)} initiated`)}
+                disabled={createTransaction.isPending}
+                onClick={generateBill}
               >
-                Proceed to Payment
+                {createTransaction.isPending ? "Generating…" : "Generate Bill"}
               </Button>
             </>
           )}
