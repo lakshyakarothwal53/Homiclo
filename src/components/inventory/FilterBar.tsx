@@ -19,6 +19,9 @@ export function FilterBar({
   primaryIcon: PrimaryIcon = Plus,
   onPrimary,
   onExport,
+  branches,
+  branch,
+  onBranchChange,
 }: {
   search: string;
   onSearchChange: (value: string) => void;
@@ -27,6 +30,10 @@ export function FilterBar({
   primaryIcon?: LucideIcon;
   onPrimary?: () => void;
   onExport?: () => void;
+  /** When `onBranchChange` is provided the branch select becomes controlled. */
+  branches?: string[];
+  branch?: string;
+  onBranchChange?: (value: string) => void;
 }) {
   return (
     <Card className="mb-4 border-border">
@@ -41,17 +48,33 @@ export function FilterBar({
           />
         </div>
 
-        <Select defaultValue="all">
-          <SelectTrigger className="h-9 w-full md:w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Branches</SelectItem>
-            <SelectItem value="bandra">Bandra</SelectItem>
-            <SelectItem value="andheri">Andheri</SelectItem>
-            <SelectItem value="powai">Powai</SelectItem>
-          </SelectContent>
-        </Select>
+        {onBranchChange ? (
+          <Select value={branch ?? "all"} onValueChange={onBranchChange}>
+            <SelectTrigger className="h-9 w-full md:w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Branches</SelectItem>
+              {(branches ?? []).map((b) => (
+                <SelectItem key={b} value={b}>
+                  {b}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Select defaultValue="all">
+            <SelectTrigger className="h-9 w-full md:w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Branches</SelectItem>
+              <SelectItem value="bandra">Bandra</SelectItem>
+              <SelectItem value="andheri">Andheri</SelectItem>
+              <SelectItem value="powai">Powai</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
 
         <Input type="date" className="h-9 w-full bg-background md:w-44" />
 

@@ -17,12 +17,19 @@ export function FilterBar({
   onAdd,
   showBranch = true,
   showDate = true,
+  branches,
+  branch,
+  onBranchChange,
 }: {
   searchPlaceholder?: string;
   addLabel?: string;
   onAdd?: () => void;
   showBranch?: boolean;
   showDate?: boolean;
+  /** When `onBranchChange` is provided the branch select becomes controlled and data-driven. */
+  branches?: string[];
+  branch?: string;
+  onBranchChange?: (value: string) => void;
 }) {
   return (
     <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -31,20 +38,35 @@ export function FilterBar({
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder={searchPlaceholder} className="pl-9" />
         </div>
-        {showBranch && (
-          <Select defaultValue="All Branches">
-            <SelectTrigger className="w-[150px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {BRANCHES.map((b) => (
-                <SelectItem key={b} value={b}>
-                  {b}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+        {showBranch &&
+          (onBranchChange ? (
+            <Select value={branch ?? "all"} onValueChange={onBranchChange}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Branches</SelectItem>
+                {(branches ?? []).map((b) => (
+                  <SelectItem key={b} value={b}>
+                    {b}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Select defaultValue="All Branches">
+              <SelectTrigger className="w-[150px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {BRANCHES.map((b) => (
+                  <SelectItem key={b} value={b}>
+                    {b}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ))}
         {showDate && <Input type="date" className="w-[160px]" />}
       </div>
       <div className="flex items-center gap-2">

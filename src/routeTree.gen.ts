@@ -11,78 +11,79 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
-import { Route as AppIndexRouteImport } from './routes/_app.index'
-import { Route as AppPosRouteImport } from './routes/_app.pos'
-import { Route as AppNotificationsRouteImport } from './routes/_app.notifications'
-import { Route as AppInventoryRouteImport } from './routes/_app.inventory'
-import { Route as AppEmployeesRouteImport } from './routes/_app.employees'
-import { Route as AppDiscountsRouteImport } from './routes/_app.discounts'
-import { Route as AppBillingRouteImport } from './routes/_app.billing'
-import { Route as AppAttendanceRouteImport } from './routes/_app.attendance'
-import { Route as AppPosIndexRouteImport } from './routes/_app.pos.index'
-import { Route as AppNotificationsIndexRouteImport } from './routes/_app.notifications.index'
-import { Route as AppInventoryIndexRouteImport } from './routes/_app.inventory.index'
-import { Route as AppDiscountsIndexRouteImport } from './routes/_app.discounts.index'
-import { Route as AppBillingIndexRouteImport } from './routes/_app.billing.index'
-import { Route as AppSettingsTallyRouteImport } from './routes/_app.settings.tally'
-import { Route as AppSettingsRolesRouteImport } from './routes/_app.settings.roles'
-import { Route as AppSettingsPreferencesRouteImport } from './routes/_app.settings.preferences'
-import { Route as AppSettingsPaymentGatewayRouteImport } from './routes/_app.settings.payment-gateway'
-import { Route as AppSettingsNotificationsRouteImport } from './routes/_app.settings.notifications'
-import { Route as AppSettingsCompanyRouteImport } from './routes/_app.settings.company'
-import { Route as AppSettingsAttendanceRouteImport } from './routes/_app.settings.attendance'
-import { Route as AppReportsSalesRouteImport } from './routes/_app.reports.sales'
-import { Route as AppReportsInventoryRouteImport } from './routes/_app.reports.inventory'
-import { Route as AppReportsFinancialRouteImport } from './routes/_app.reports.financial'
-import { Route as AppReportsExportRouteImport } from './routes/_app.reports.export'
-import { Route as AppReportsEmployeeRouteImport } from './routes/_app.reports.employee'
-import { Route as AppReportsDiscountRouteImport } from './routes/_app.reports.discount'
-import { Route as AppReportsAttendanceRouteImport } from './routes/_app.reports.attendance'
-import { Route as AppPosTransactionsRouteImport } from './routes/_app.pos.transactions'
-import { Route as AppPosSettingsRouteImport } from './routes/_app.pos.settings'
-import { Route as AppPosSearchRouteImport } from './routes/_app.pos.search'
-import { Route as AppPosQrRouteImport } from './routes/_app.pos.qr'
-import { Route as AppPosBarcodeRouteImport } from './routes/_app.pos.barcode'
-import { Route as AppNotificationsSystemRouteImport } from './routes/_app.notifications.system'
-import { Route as AppNotificationsPaymentRouteImport } from './routes/_app.notifications.payment'
-import { Route as AppNotificationsLowStockRouteImport } from './routes/_app.notifications.low-stock'
-import { Route as AppNotificationsAttendanceRouteImport } from './routes/_app.notifications.attendance'
-import { Route as AppInventoryStockOutwardRouteImport } from './routes/_app.inventory.stock-outward'
-import { Route as AppInventoryStockInwardRouteImport } from './routes/_app.inventory.stock-inward'
-import { Route as AppInventoryStockAdjustmentRouteImport } from './routes/_app.inventory.stock-adjustment'
-import { Route as AppInventoryReportsRouteImport } from './routes/_app.inventory.reports'
-import { Route as AppInventoryProductsRouteImport } from './routes/_app.inventory.products'
-import { Route as AppInventoryHistoryRouteImport } from './routes/_app.inventory.history'
-import { Route as AppInventoryCategoriesRouteImport } from './routes/_app.inventory.categories'
-import { Route as AppInventoryAlertsRouteImport } from './routes/_app.inventory.alerts'
-import { Route as AppEmployeesReportsRouteImport } from './routes/_app.employees.reports'
-import { Route as AppEmployeesProfileRouteImport } from './routes/_app.employees.profile'
-import { Route as AppEmployeesLoginMonitoringRouteImport } from './routes/_app.employees.login-monitoring'
-import { Route as AppEmployeesLocationRouteImport } from './routes/_app.employees.location'
-import { Route as AppEmployeesAddRouteImport } from './routes/_app.employees.add'
-import { Route as AppEmployeesActivityRouteImport } from './routes/_app.employees.activity'
-import { Route as AppDiscountsUsageReportsRouteImport } from './routes/_app.discounts.usage-reports'
-import { Route as AppDiscountsSeasonalRouteImport } from './routes/_app.discounts.seasonal'
-import { Route as AppDiscountsProductsRouteImport } from './routes/_app.discounts.products'
-import { Route as AppDiscountsPercentageRouteImport } from './routes/_app.discounts.percentage'
-import { Route as AppDiscountsFlatRouteImport } from './routes/_app.discounts.flat'
-import { Route as AppDiscountsCategoriesRouteImport } from './routes/_app.discounts.categories'
-import { Route as AppDiscountsCampaignsRouteImport } from './routes/_app.discounts.campaigns'
-import { Route as AppBillingTaxInvoicesRouteImport } from './routes/_app.billing.tax-invoices'
-import { Route as AppBillingTallySyncRouteImport } from './routes/_app.billing.tally-sync'
-import { Route as AppBillingSalesBillsRouteImport } from './routes/_app.billing.sales-bills'
-import { Route as AppBillingReportsRouteImport } from './routes/_app.billing.reports'
-import { Route as AppBillingRefundsRouteImport } from './routes/_app.billing.refunds'
-import { Route as AppBillingPaymentsRouteImport } from './routes/_app.billing.payments'
-import { Route as AppBillingGatewayRouteImport } from './routes/_app.billing.gateway'
-import { Route as AppBillingCreateInvoiceRouteImport } from './routes/_app.billing.create-invoice'
-import { Route as AppAttendanceSettingsRouteImport } from './routes/_app.attendance.settings'
-import { Route as AppAttendanceReportsRouteImport } from './routes/_app.attendance.reports'
-import { Route as AppAttendanceLogsRouteImport } from './routes/_app.attendance.logs'
-import { Route as AppAttendanceLiveRouteImport } from './routes/_app.attendance.live'
-import { Route as AppAttendanceLateRouteImport } from './routes/_app.attendance.late'
-import { Route as AppAttendanceHistoryRouteImport } from './routes/_app.attendance.history'
-import { Route as AppAttendanceAbsentRouteImport } from './routes/_app.attendance.absent'
+import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppPosRouteImport } from './routes/_app/pos'
+import { Route as AppNotificationsRouteImport } from './routes/_app/notifications'
+import { Route as AppInventoryRouteImport } from './routes/_app/inventory'
+import { Route as AppEmployeesRouteImport } from './routes/_app/employees'
+import { Route as AppDiscountsRouteImport } from './routes/_app/discounts'
+import { Route as AppBillingRouteImport } from './routes/_app/billing'
+import { Route as AppAttendanceRouteImport } from './routes/_app/attendance'
+import { Route as AppPosIndexRouteImport } from './routes/_app/pos/index'
+import { Route as AppNotificationsIndexRouteImport } from './routes/_app/notifications/index'
+import { Route as AppInventoryIndexRouteImport } from './routes/_app/inventory/index'
+import { Route as AppDiscountsIndexRouteImport } from './routes/_app/discounts/index'
+import { Route as AppBillingIndexRouteImport } from './routes/_app/billing/index'
+import { Route as AppSettingsTallyRouteImport } from './routes/_app/settings/tally'
+import { Route as AppSettingsRolesRouteImport } from './routes/_app/settings/roles'
+import { Route as AppSettingsPreferencesRouteImport } from './routes/_app/settings/preferences'
+import { Route as AppSettingsPaymentGatewayRouteImport } from './routes/_app/settings/payment-gateway'
+import { Route as AppSettingsNotificationsRouteImport } from './routes/_app/settings/notifications'
+import { Route as AppSettingsCompanyRouteImport } from './routes/_app/settings/company'
+import { Route as AppSettingsAttendanceRouteImport } from './routes/_app/settings/attendance'
+import { Route as AppReportsSalesRouteImport } from './routes/_app/reports/sales'
+import { Route as AppReportsInventoryRouteImport } from './routes/_app/reports/inventory'
+import { Route as AppReportsFinancialRouteImport } from './routes/_app/reports/financial'
+import { Route as AppReportsExportRouteImport } from './routes/_app/reports/export'
+import { Route as AppReportsEmployeeRouteImport } from './routes/_app/reports/employee'
+import { Route as AppReportsDiscountRouteImport } from './routes/_app/reports/discount'
+import { Route as AppReportsAttendanceRouteImport } from './routes/_app/reports/attendance'
+import { Route as AppPosTransactionsRouteImport } from './routes/_app/pos/transactions'
+import { Route as AppPosSettingsRouteImport } from './routes/_app/pos/settings'
+import { Route as AppPosSearchRouteImport } from './routes/_app/pos/search'
+import { Route as AppPosScannerRouteImport } from './routes/_app/pos/scanner'
+import { Route as AppPosQrRouteImport } from './routes/_app/pos/qr'
+import { Route as AppPosBarcodeRouteImport } from './routes/_app/pos/barcode'
+import { Route as AppNotificationsSystemRouteImport } from './routes/_app/notifications/system'
+import { Route as AppNotificationsPaymentRouteImport } from './routes/_app/notifications/payment'
+import { Route as AppNotificationsLowStockRouteImport } from './routes/_app/notifications/low-stock'
+import { Route as AppNotificationsAttendanceRouteImport } from './routes/_app/notifications/attendance'
+import { Route as AppInventoryStockOutwardRouteImport } from './routes/_app/inventory/stock-outward'
+import { Route as AppInventoryStockInwardRouteImport } from './routes/_app/inventory/stock-inward'
+import { Route as AppInventoryStockAdjustmentRouteImport } from './routes/_app/inventory/stock-adjustment'
+import { Route as AppInventoryReportsRouteImport } from './routes/_app/inventory/reports'
+import { Route as AppInventoryProductsRouteImport } from './routes/_app/inventory/products'
+import { Route as AppInventoryHistoryRouteImport } from './routes/_app/inventory/history'
+import { Route as AppInventoryCategoriesRouteImport } from './routes/_app/inventory/categories'
+import { Route as AppInventoryAlertsRouteImport } from './routes/_app/inventory/alerts'
+import { Route as AppEmployeesReportsRouteImport } from './routes/_app/employees/reports'
+import { Route as AppEmployeesProfileRouteImport } from './routes/_app/employees/profile'
+import { Route as AppEmployeesLoginMonitoringRouteImport } from './routes/_app/employees/login-monitoring'
+import { Route as AppEmployeesLocationRouteImport } from './routes/_app/employees/location'
+import { Route as AppEmployeesAddRouteImport } from './routes/_app/employees/add'
+import { Route as AppEmployeesActivityRouteImport } from './routes/_app/employees/activity'
+import { Route as AppDiscountsUsageReportsRouteImport } from './routes/_app/discounts/usage-reports'
+import { Route as AppDiscountsSeasonalRouteImport } from './routes/_app/discounts/seasonal'
+import { Route as AppDiscountsProductsRouteImport } from './routes/_app/discounts/products'
+import { Route as AppDiscountsPercentageRouteImport } from './routes/_app/discounts/percentage'
+import { Route as AppDiscountsFlatRouteImport } from './routes/_app/discounts/flat'
+import { Route as AppDiscountsCategoriesRouteImport } from './routes/_app/discounts/categories'
+import { Route as AppDiscountsCampaignsRouteImport } from './routes/_app/discounts/campaigns'
+import { Route as AppBillingTaxInvoicesRouteImport } from './routes/_app/billing/tax-invoices'
+import { Route as AppBillingTallySyncRouteImport } from './routes/_app/billing/tally-sync'
+import { Route as AppBillingSalesBillsRouteImport } from './routes/_app/billing/sales-bills'
+import { Route as AppBillingReportsRouteImport } from './routes/_app/billing/reports'
+import { Route as AppBillingRefundsRouteImport } from './routes/_app/billing/refunds'
+import { Route as AppBillingPaymentsRouteImport } from './routes/_app/billing/payments'
+import { Route as AppBillingGatewayRouteImport } from './routes/_app/billing/gateway'
+import { Route as AppBillingCreateInvoiceRouteImport } from './routes/_app/billing/create-invoice'
+import { Route as AppAttendanceSettingsRouteImport } from './routes/_app/attendance/settings'
+import { Route as AppAttendanceReportsRouteImport } from './routes/_app/attendance/reports'
+import { Route as AppAttendanceLogsRouteImport } from './routes/_app/attendance/logs'
+import { Route as AppAttendanceLiveRouteImport } from './routes/_app/attendance/live'
+import { Route as AppAttendanceLateRouteImport } from './routes/_app/attendance/late'
+import { Route as AppAttendanceHistoryRouteImport } from './routes/_app/attendance/history'
+import { Route as AppAttendanceAbsentRouteImport } from './routes/_app/attendance/absent'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -243,6 +244,11 @@ const AppPosSettingsRoute = AppPosSettingsRouteImport.update({
 const AppPosSearchRoute = AppPosSearchRouteImport.update({
   id: '/search',
   path: '/search',
+  getParentRoute: () => AppPosRoute,
+} as any)
+const AppPosScannerRoute = AppPosScannerRouteImport.update({
+  id: '/scanner',
+  path: '/scanner',
   getParentRoute: () => AppPosRoute,
 } as any)
 const AppPosQrRoute = AppPosQrRouteImport.update({
@@ -514,6 +520,7 @@ export interface FileRoutesByFullPath {
   '/notifications/system': typeof AppNotificationsSystemRoute
   '/pos/barcode': typeof AppPosBarcodeRoute
   '/pos/qr': typeof AppPosQrRoute
+  '/pos/scanner': typeof AppPosScannerRoute
   '/pos/search': typeof AppPosSearchRoute
   '/pos/settings': typeof AppPosSettingsRoute
   '/pos/transactions': typeof AppPosTransactionsRoute
@@ -584,6 +591,7 @@ export interface FileRoutesByTo {
   '/notifications/system': typeof AppNotificationsSystemRoute
   '/pos/barcode': typeof AppPosBarcodeRoute
   '/pos/qr': typeof AppPosQrRoute
+  '/pos/scanner': typeof AppPosScannerRoute
   '/pos/search': typeof AppPosSearchRoute
   '/pos/settings': typeof AppPosSettingsRoute
   '/pos/transactions': typeof AppPosTransactionsRoute
@@ -661,6 +669,7 @@ export interface FileRoutesById {
   '/_app/notifications/system': typeof AppNotificationsSystemRoute
   '/_app/pos/barcode': typeof AppPosBarcodeRoute
   '/_app/pos/qr': typeof AppPosQrRoute
+  '/_app/pos/scanner': typeof AppPosScannerRoute
   '/_app/pos/search': typeof AppPosSearchRoute
   '/_app/pos/settings': typeof AppPosSettingsRoute
   '/_app/pos/transactions': typeof AppPosTransactionsRoute
@@ -738,6 +747,7 @@ export interface FileRouteTypes {
     | '/notifications/system'
     | '/pos/barcode'
     | '/pos/qr'
+    | '/pos/scanner'
     | '/pos/search'
     | '/pos/settings'
     | '/pos/transactions'
@@ -808,6 +818,7 @@ export interface FileRouteTypes {
     | '/notifications/system'
     | '/pos/barcode'
     | '/pos/qr'
+    | '/pos/scanner'
     | '/pos/search'
     | '/pos/settings'
     | '/pos/transactions'
@@ -884,6 +895,7 @@ export interface FileRouteTypes {
     | '/_app/notifications/system'
     | '/_app/pos/barcode'
     | '/_app/pos/qr'
+    | '/_app/pos/scanner'
     | '/_app/pos/search'
     | '/_app/pos/settings'
     | '/_app/pos/transactions'
@@ -1137,6 +1149,13 @@ declare module '@tanstack/react-router' {
       path: '/search'
       fullPath: '/pos/search'
       preLoaderRoute: typeof AppPosSearchRouteImport
+      parentRoute: typeof AppPosRoute
+    }
+    '/_app/pos/scanner': {
+      id: '/_app/pos/scanner'
+      path: '/scanner'
+      fullPath: '/pos/scanner'
+      preLoaderRoute: typeof AppPosScannerRouteImport
       parentRoute: typeof AppPosRoute
     }
     '/_app/pos/qr': {
@@ -1586,6 +1605,7 @@ const AppNotificationsRouteWithChildren =
 interface AppPosRouteChildren {
   AppPosBarcodeRoute: typeof AppPosBarcodeRoute
   AppPosQrRoute: typeof AppPosQrRoute
+  AppPosScannerRoute: typeof AppPosScannerRoute
   AppPosSearchRoute: typeof AppPosSearchRoute
   AppPosSettingsRoute: typeof AppPosSettingsRoute
   AppPosTransactionsRoute: typeof AppPosTransactionsRoute
@@ -1595,6 +1615,7 @@ interface AppPosRouteChildren {
 const AppPosRouteChildren: AppPosRouteChildren = {
   AppPosBarcodeRoute: AppPosBarcodeRoute,
   AppPosQrRoute: AppPosQrRoute,
+  AppPosScannerRoute: AppPosScannerRoute,
   AppPosSearchRoute: AppPosSearchRoute,
   AppPosSettingsRoute: AppPosSettingsRoute,
   AppPosTransactionsRoute: AppPosTransactionsRoute,

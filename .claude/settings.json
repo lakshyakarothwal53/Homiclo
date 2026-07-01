@@ -30,7 +30,15 @@
       "Bash(curl -s -o /dev/null -w 'status=%{http_code} location=%{redirect_url}\\\\n' -H 'Cookie: __TRACKED_VAR__' http://localhost:5179/inventory/products)",
       "Bash(curl -s -o /dev/null -w 'status=%{http_code}\\\\n' -H 'Cookie: __TRACKED_VAR__' http://localhost:5179/pos)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:5179/login\" --max-time 3)",
-      "Bash(powershell.exe -NoProfile -Command 'Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '\\\\''*5179*'\\\\'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }')"
+      "Bash(powershell.exe -NoProfile -Command 'Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '\\\\''*5179*'\\\\'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }')",
+      "Bash(dir .output\\\\public)",
+      "Bash(dir dist *)",
+      "Bash(powershell -Command \"Compress-Archive -Path .\\\\.output\\\\public\\\\* -DestinationPath hosting.zip -Force; Write-Host 'hosting.zip created successfully'; ls -lh hosting.zip\")",
+      "Bash(powershell -Command \"\\(Get-Item hosting.zip\\).Length / 1MB; Write-Host 'File size in MB'; Get-ChildItem hosting.zip\")",
+      "Bash(netstat -ano)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8080/billing/sales-bills)",
+      "Bash(curl -s http://localhost:8080/discounts/products)",
+      "Bash(curl -s -i http://localhost:8080/discounts/products)"
     ],
     "deny": [
       "Bash(git push --force*)",

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { DiscountToolbar } from "./DiscountToolbar";
@@ -12,6 +12,7 @@ import {
   type DiscountValueType,
   type PromoRow,
 } from "./types";
+import { useDiscountBranches, useDiscountPromos } from "@/hooks/use-discounts";
 
 export function PromoDiscountsPage({
   eyebrow,
@@ -19,7 +20,7 @@ export function PromoDiscountsPage({
   description,
   addLabel,
   lockType,
-  initialRows,
+  discountType,
 }: {
   eyebrow: string;
   title: string;
@@ -27,12 +28,20 @@ export function PromoDiscountsPage({
   addLabel: string;
   /** Flat / Percentage pages fix the value type for new rows. */
   lockType?: DiscountValueType;
-  initialRows: PromoRow[];
+  /** 'flat' | 'percentage' | 'category' | 'product' — matches discount_promos.discount_type. */
+  discountType: string;
 }) {
-  const [rows, setRows] = useState<PromoRow[]>(initialRows);
   const [query, setQuery] = useState("");
   const [branch, setBranch] = useState("All Branches");
   const [date, setDate] = useState("");
+
+  const { data: fetchedRows } = useDiscountPromos(discountType, branch);
+  const { data: branches = [] } = useDiscountBranches();
+  const [rows, setRows] = useState<PromoRow[]>([]);
+
+  useEffect(() => {
+    setRows(fetchedRows ?? []);
+  }, [fetchedRows]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -76,6 +85,7 @@ export function PromoDiscountsPage({
         onQuery={setQuery}
         branch={branch}
         onBranch={setBranch}
+        branches={branches}
         date={date}
         onDate={setDate}
         onExport={handleExport}

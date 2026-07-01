@@ -21,7 +21,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { BRANCHES, type ReportRow } from "./data";
+import { useReportBranches, useReports } from "@/hooks/use-reports";
+import type { ReportCategory } from "@/types/reports";
 
 const PAGE_SIZE = 8;
 
@@ -29,25 +30,25 @@ export function ReportListPage({
   eyebrow,
   title,
   description,
-  rows,
+  category,
 }: {
   eyebrow: string;
   title: string;
   description: string;
-  rows: ReportRow[];
+  category: ReportCategory;
 }) {
   const [query, setQuery] = useState("");
-  const [branch, setBranch] = useState<string>(BRANCHES[0]);
+  const [branch, setBranch] = useState<string>("All Branches");
   const [date, setDate] = useState("");
   const [page, setPage] = useState(1);
+
+  const { data: rows = [] } = useReports(category, branch);
+  const { data: branches = [] } = useReportBranches();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) || r.type.toLowerCase().includes(q),
-    );
+    return rows.filter((r) => r.name.toLowerCase().includes(q) || r.type.toLowerCase().includes(q));
   }, [query, rows]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -101,7 +102,8 @@ export function ReportListPage({
             <SelectValue placeholder="All Branches" />
           </SelectTrigger>
           <SelectContent>
-            {BRANCHES.map((b) => (
+            <SelectItem value="All Branches">All Branches</SelectItem>
+            {branches.map((b) => (
               <SelectItem key={b} value={b}>
                 {b}
               </SelectItem>
@@ -121,14 +123,10 @@ export function ReportListPage({
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="text-[11px] uppercase tracking-[0.12em]">
-                Report Name
-              </TableHead>
+              <TableHead className="text-[11px] uppercase tracking-[0.12em]">Report Name</TableHead>
               <TableHead className="text-[11px] uppercase tracking-[0.12em]">Type</TableHead>
               <TableHead className="text-[11px] uppercase tracking-[0.12em]">Period</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-[0.12em]">
-                Generated
-              </TableHead>
+              <TableHead className="text-[11px] uppercase tracking-[0.12em]">Generated</TableHead>
               <TableHead className="text-[11px] uppercase tracking-[0.12em]">Size</TableHead>
               <TableHead className="w-0 text-right" />
             </TableRow>
