@@ -22,5 +22,9 @@ export const PRODUCTS: Product[] = [
   { sku: "SKU-2412", name: "Sunglasses", category: "Accessories", price: 1199, stock: 23 },
 ];
 
-export const formatINR = (value: number) =>
-  `₹${value.toLocaleString("en-IN")}`;
+export const formatINR = (value: number) => `₹${value.toLocaleString("en-IN")}`;
+
+// Auto-generated SKU used as the barcode value for new POS products —
+// Code128 (used to render the printable barcode) encodes this alphanumeric
+// string natively, so no separate numeric barcode field is needed.
+export const generatePosSku = () => `SKU-${Math.floor(100000 + Math.random() * 900000)}`;

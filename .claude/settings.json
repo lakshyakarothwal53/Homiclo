@@ -38,7 +38,9 @@
       "Bash(netstat -ano)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8080/billing/sales-bills)",
       "Bash(curl -s http://localhost:8080/discounts/products)",
-      "Bash(curl -s -i http://localhost:8080/discounts/products)"
+      "Bash(curl -s -i http://localhost:8080/discounts/products)",
+      "Bash(npm install *)",
+      "Bash(npm view *)"
     ],
     "deny": [
       "Bash(git push --force*)",

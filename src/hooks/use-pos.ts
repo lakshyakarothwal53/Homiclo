@@ -53,6 +53,26 @@ export function usePosBranches() {
   });
 }
 
+export function useCreatePosProduct() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: PosProduct): Promise<PosProduct> => {
+      const { error } = await supabase.from("pos_products").insert({
+        sku: input.sku,
+        name: input.name,
+        category: input.category,
+        price: input.price,
+        stock: input.stock,
+      });
+      if (error) throw error;
+      return input;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["pos"] });
+    },
+  });
+}
+
 export function useCreatePosTransaction() {
   const queryClient = useQueryClient();
   return useMutation({
