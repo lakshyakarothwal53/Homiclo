@@ -9,13 +9,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { BRANCHES } from "./types";
 
 export function DiscountToolbar({
   query,
   onQuery,
   branch,
   onBranch,
+  branches,
   date,
   onDate,
   onExport,
@@ -26,6 +26,8 @@ export function DiscountToolbar({
   onQuery: (v: string) => void;
   branch: string;
   onBranch: (v: string) => void;
+  /** Branch names from the `branches` table (data-driven, "All Branches" is prepended). */
+  branches: string[];
   date: string;
   onDate: (v: string) => void;
   onExport: () => void;
@@ -50,7 +52,8 @@ export function DiscountToolbar({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {BRANCHES.map((b) => (
+          <SelectItem value="All Branches">All Branches</SelectItem>
+          {branches.map((b) => (
             <SelectItem key={b} value={b}>
               {b}
             </SelectItem>

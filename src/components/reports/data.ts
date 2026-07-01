@@ -1,16 +1,10 @@
-// Report rows now come from Supabase via `useReports(category)` in
-// src/hooks/use-reports.ts. The filter/config constants below stay here — they
-// are UI options, not database data.
+// Report rows now come from Supabase via `useReports(category, branch)` in
+// src/hooks/use-reports.ts. Branch options come from `useReportBranches()` (see
+// supabase/reports/04_branches.sql) — Reports has its own city-outlet vocabulary,
+// distinct from the shared `branches` table used by inventory/billing/discounts.
+// The filter/config constants below stay here — they are UI options, not database data.
 
 export type { ReportRow } from "@/types/reports";
-
-export const BRANCHES = [
-  "All Branches",
-  "Mumbai – Andheri",
-  "Delhi – Connaught Place",
-  "Bengaluru – Koramangala",
-  "Pune – Baner",
-] as const;
 
 export const DEPARTMENTS = ["All", "Sales", "Operations", "Finance", "HR", "Warehouse"] as const;
 

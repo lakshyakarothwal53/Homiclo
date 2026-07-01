@@ -14,12 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  BRANCHES,
-  DEPARTMENTS,
-  EXPORT_FORMATS,
-  REPORT_TYPES,
-} from "@/components/reports/data";
+import { DEPARTMENTS, EXPORT_FORMATS, REPORT_TYPES } from "@/components/reports/data";
+import { useReportBranches } from "@/hooks/use-reports";
 
 export const Route = createFileRoute("/_app/reports/export")({
   head: () => ({
@@ -39,7 +35,8 @@ function Page() {
   const [branch, setBranch] = useState<string>("All");
   const [department, setDepartment] = useState<string>(DEPARTMENTS[0]);
 
-  const branchOptions = ["All", ...BRANCHES.filter((b) => b !== "All Branches")];
+  const { data: branchNames = [] } = useReportBranches();
+  const branchOptions = ["All", ...branchNames];
 
   return (
     <>
@@ -131,9 +128,7 @@ function Page() {
             </Button>
             <Button
               className="gap-2 bg-brand text-brand-foreground hover:bg-brand/90"
-              onClick={() =>
-                toast.success(`Generating ${reportType} report as ${format}…`)
-              }
+              onClick={() => toast.success(`Generating ${reportType} report as ${format}…`)}
             >
               <Download className="h-4 w-4" /> Generate &amp; Download
             </Button>

@@ -15,8 +15,6 @@ export type PromoRow = {
   status: DiscountStatus;
 };
 
-export const BRANCHES = ["All Branches", "Bandra", "Andheri", "Powai", "Worli"] as const;
-
 const inr = new Intl.NumberFormat("en-IN", {
   style: "currency",
   currency: "INR",

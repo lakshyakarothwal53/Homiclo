@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card } from "@/components/ui/card";
@@ -5,7 +6,7 @@ import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { StatusBadge } from "@/components/billing/StatusBadge";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
-import { useBillingGatewayTxns } from "@/hooks/use-billing";
+import { useBillingBranches, useBillingGatewayTxns } from "@/hooks/use-billing";
 import type { BillingGatewayTxn } from "@/types/billing";
 
 export const Route = createFileRoute("/_app/billing/gateway")({
@@ -44,7 +45,9 @@ const columns: Column<BillingGatewayTxn>[] = [
 ];
 
 function Page() {
-  const { data: txns = [] } = useBillingGatewayTxns();
+  const [branch, setBranch] = useState("all");
+  const { data: txns = [] } = useBillingGatewayTxns(undefined, branch);
+  const { data: branches = [] } = useBillingBranches();
 
   return (
     <>
@@ -53,7 +56,12 @@ function Page() {
         title="Payment Gateway"
         description="Gateway overview and controls."
       />
-      <FilterBar searchPlaceholder="Search transactions..." />
+      <FilterBar
+        searchPlaceholder="Search transactions..."
+        branches={branches}
+        branch={branch}
+        onBranchChange={setBranch}
+      />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={txns} rowKey={(r) => r.txn} />
         <EntriesFooter shown={txns.length} total={txns.length} />

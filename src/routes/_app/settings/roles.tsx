@@ -1,11 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTableCard, type Column } from "@/components/inventory/DataTableCard";
 import { FilterBar } from "@/components/inventory/FilterBar";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { useRoles, useSettingsBranches } from "@/hooks/use-settings";
 
 export const Route = createFileRoute("/_app/settings/roles")({
   head: () => ({
@@ -17,21 +18,6 @@ export const Route = createFileRoute("/_app/settings/roles")({
   component: Page,
 });
 
-type Role = {
-  role: string;
-  users: number;
-  description: string;
-  permissions: string;
-};
-
-const ROLES: Role[] = [
-  { role: "Super Admin", users: 1, description: "Full system access", permissions: "All" },
-  { role: "Manager", users: 4, description: "Branch & operations", permissions: "32 permissions" },
-  { role: "Cashier", users: 12, description: "POS access only", permissions: "8 permissions" },
-  { role: "Inventory Staff", users: 6, description: "Stock management", permissions: "14 permissions" },
-  { role: "Sales Executive", users: 18, description: "Sales & customers", permissions: "12 permissions" },
-];
-
 const COLUMNS: Column[] = [
   { key: "role", label: "Role" },
   { key: "users", label: "Users" },
@@ -42,14 +28,9 @@ const COLUMNS: Column[] = [
 
 function Page() {
   const [search, setSearch] = useState("");
-
-  const rows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return ROLES;
-    return ROLES.filter(
-      (r) => r.role.toLowerCase().includes(q) || r.description.toLowerCase().includes(q),
-    );
-  }, [search]);
+  const [branch, setBranch] = useState("all");
+  const { data: rows = [] } = useRoles(search, branch);
+  const { data: branches = [] } = useSettingsBranches();
 
   return (
     <>
@@ -66,6 +47,9 @@ function Page() {
         primaryLabel="Add New"
         onPrimary={() => toast.info("Add role — coming soon")}
         onExport={() => toast.success("Exporting roles…")}
+        branches={branches}
+        branch={branch}
+        onBranchChange={setBranch}
       />
 
       <DataTableCard columns={COLUMNS} count={rows.length}>

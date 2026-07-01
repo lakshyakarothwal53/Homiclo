@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card } from "@/components/ui/card";
@@ -5,7 +6,7 @@ import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { StatusBadge } from "@/components/billing/StatusBadge";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
-import { useBillingPayments } from "@/hooks/use-billing";
+import { useBillingBranches, useBillingPayments } from "@/hooks/use-billing";
 import type { BillingPayment } from "@/types/billing";
 
 export const Route = createFileRoute("/_app/billing/payments")({
@@ -49,7 +50,9 @@ const columns: Column<BillingPayment>[] = [
 ];
 
 function Page() {
-  const { data: payments = [] } = useBillingPayments();
+  const [branch, setBranch] = useState("all");
+  const { data: payments = [] } = useBillingPayments(undefined, branch);
+  const { data: branches = [] } = useBillingBranches();
 
   return (
     <>
@@ -58,7 +61,12 @@ function Page() {
         title="Payment Collection"
         description="Payments overview and controls."
       />
-      <FilterBar searchPlaceholder="Search receipts..." />
+      <FilterBar
+        searchPlaceholder="Search receipts..."
+        branches={branches}
+        branch={branch}
+        onBranchChange={setBranch}
+      />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={payments} rowKey={(r) => r.receipt} />
         <EntriesFooter shown={payments.length} total={payments.length} />

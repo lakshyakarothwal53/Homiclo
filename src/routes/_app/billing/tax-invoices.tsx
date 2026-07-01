@@ -1,10 +1,11 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card } from "@/components/ui/card";
 import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
-import { useBillingTaxInvoices } from "@/hooks/use-billing";
+import { useBillingBranches, useBillingTaxInvoices } from "@/hooks/use-billing";
 import type { BillingTaxInvoice } from "@/types/billing";
 
 export const Route = createFileRoute("/_app/billing/tax-invoices")({
@@ -48,7 +49,9 @@ const columns: Column<BillingTaxInvoice>[] = [
 ];
 
 function Page() {
-  const { data: invoices = [] } = useBillingTaxInvoices();
+  const [branch, setBranch] = useState("all");
+  const { data: invoices = [] } = useBillingTaxInvoices(undefined, branch);
+  const { data: branches = [] } = useBillingBranches();
 
   return (
     <>
@@ -57,7 +60,12 @@ function Page() {
         title="Tax Invoices"
         description="Tax Invoices overview and controls."
       />
-      <FilterBar searchPlaceholder="Search by GSTIN..." />
+      <FilterBar
+        searchPlaceholder="Search by GSTIN..."
+        branches={branches}
+        branch={branch}
+        onBranchChange={setBranch}
+      />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={invoices} rowKey={(r) => r.invoice} />
         <EntriesFooter shown={invoices.length} total={invoices.length} />

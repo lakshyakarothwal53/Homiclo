@@ -6,7 +6,7 @@ import { StatCard } from "@/components/common/StatCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { DiscountToolbar } from "@/components/discounts/DiscountToolbar";
 import { downloadCsv, formatCurrency } from "@/components/discounts/types";
-import { useDiscountUsage } from "@/hooks/use-discounts";
+import { useDiscountBranches, useDiscountUsage } from "@/hooks/use-discounts";
 
 export const Route = createFileRoute("/_app/discounts/usage-reports")({
   head: () => ({
@@ -23,7 +23,8 @@ function Page() {
   const [branch, setBranch] = useState("All Branches");
   const [date, setDate] = useState("");
 
-  const { data: usage = [] } = useDiscountUsage();
+  const { data: usage = [] } = useDiscountUsage(branch);
+  const { data: branches = [] } = useDiscountBranches();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -89,6 +90,7 @@ function Page() {
         onQuery={setQuery}
         branch={branch}
         onBranch={setBranch}
+        branches={branches}
         date={date}
         onDate={setDate}
         onExport={handleExport}

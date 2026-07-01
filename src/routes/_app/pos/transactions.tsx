@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -6,7 +7,7 @@ import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { StatusBadge } from "@/components/billing/StatusBadge";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
-import { usePosTransactions } from "@/hooks/use-pos";
+import { usePosBranches, usePosTransactions } from "@/hooks/use-pos";
 import type { PosTransaction } from "@/types/pos";
 
 export const Route = createFileRoute("/_app/pos/transactions")({
@@ -46,7 +47,9 @@ const columns: Column<PosTransaction>[] = [
 ];
 
 function Page() {
-  const { data: txns = [] } = usePosTransactions();
+  const [branch, setBranch] = useState("all");
+  const { data: txns = [] } = usePosTransactions(undefined, branch);
+  const { data: branches = [] } = usePosBranches();
 
   return (
     <>
@@ -59,6 +62,9 @@ function Page() {
         searchPlaceholder="Search..."
         addLabel="Add New"
         onAdd={() => toast.info("Start a new sale from the POS Dashboard")}
+        branches={branches}
+        branch={branch}
+        onBranchChange={setBranch}
       />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={txns} rowKey={(r) => r.invoice} />

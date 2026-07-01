@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card } from "@/components/ui/card";
@@ -5,7 +6,7 @@ import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { StatusBadge } from "@/components/billing/StatusBadge";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
-import { useBillingRefunds } from "@/hooks/use-billing";
+import { useBillingBranches, useBillingRefunds } from "@/hooks/use-billing";
 import type { BillingRefund } from "@/types/billing";
 
 export const Route = createFileRoute("/_app/billing/refunds")({
@@ -44,7 +45,9 @@ const columns: Column<BillingRefund>[] = [
 ];
 
 function Page() {
-  const { data: refunds = [] } = useBillingRefunds();
+  const [branch, setBranch] = useState("all");
+  const { data: refunds = [] } = useBillingRefunds(undefined, branch);
+  const { data: branches = [] } = useBillingBranches();
 
   return (
     <>
@@ -53,7 +56,13 @@ function Page() {
         title="Refund Management"
         description="Refunds overview and controls."
       />
-      <FilterBar searchPlaceholder="Search refunds..." addLabel="Add New" />
+      <FilterBar
+        searchPlaceholder="Search refunds..."
+        addLabel="Add New"
+        branches={branches}
+        branch={branch}
+        onBranchChange={setBranch}
+      />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={refunds} rowKey={(r) => r.refund} />
         <EntriesFooter shown={refunds.length} total={refunds.length} />

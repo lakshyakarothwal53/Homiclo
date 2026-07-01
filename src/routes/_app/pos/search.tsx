@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -7,7 +8,7 @@ import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
 import { formatINR } from "@/components/pos/products";
-import { usePosProducts } from "@/hooks/use-pos";
+import { usePosBranches, usePosProducts } from "@/hooks/use-pos";
 import type { PosProduct } from "@/types/pos";
 
 export const Route = createFileRoute("/_app/pos/search")({
@@ -58,7 +59,9 @@ const columns: Column<PosProduct>[] = [
 ];
 
 function Page() {
-  const { data: rows = [] } = usePosProducts();
+  const [branch, setBranch] = useState("all");
+  const { data: rows = [] } = usePosProducts(undefined, branch);
+  const { data: branches = [] } = usePosBranches();
 
   return (
     <>
@@ -71,6 +74,9 @@ function Page() {
         searchPlaceholder="Search..."
         addLabel="Add New"
         onAdd={() => toast.info("Open new product form")}
+        branches={branches}
+        branch={branch}
+        onBranchChange={setBranch}
       />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={rows} rowKey={(r) => r.sku} />

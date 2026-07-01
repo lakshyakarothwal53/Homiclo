@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DiscountToolbar } from "@/components/discounts/DiscountToolbar";
 import { StatusBadge } from "@/components/discounts/StatusBadge";
 import { downloadCsv } from "@/components/discounts/types";
-import { useDiscountSeasonal } from "@/hooks/use-discounts";
+import { useDiscountBranches, useDiscountSeasonal } from "@/hooks/use-discounts";
 
 export const Route = createFileRoute("/_app/discounts/seasonal")({
   head: () => ({
@@ -25,7 +25,8 @@ function Page() {
   const [branch, setBranch] = useState("All Branches");
   const [date, setDate] = useState("");
 
-  const { data: seasons = [] } = useDiscountSeasonal();
+  const { data: seasons = [] } = useDiscountSeasonal(branch);
+  const { data: branches = [] } = useDiscountBranches();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -56,6 +57,7 @@ function Page() {
         onQuery={setQuery}
         branch={branch}
         onBranch={setBranch}
+        branches={branches}
         date={date}
         onDate={setDate}
         onExport={handleExport}

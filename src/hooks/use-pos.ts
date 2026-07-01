@@ -7,11 +7,15 @@ function like(value: string) {
   return `%${value}%`;
 }
 
-export function usePosProducts(search?: string) {
+export function usePosProducts(search?: string, branch?: string) {
+  const allBranches = !branch || branch === "all";
   return useQuery({
-    queryKey: ["pos", "products", search ?? ""],
+    queryKey: ["pos", "products", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<PosProduct[]> => {
-      let query = supabase.from("pos_products").select("sku, name, category, price, stock");
+      let query = (
+        allBranches ? supabase.from("pos_products") : supabase.from("pos_products_branches")
+      ).select("sku, name, category, price, stock");
+      if (!allBranches) query = query.eq("branch", branch);
       if (search) query = query.or(`name.ilike.${like(search)},sku.ilike.${like(search)}`);
       const { data, error } = await query;
       if (error) throw error;
@@ -20,18 +24,31 @@ export function usePosProducts(search?: string) {
   });
 }
 
-export function usePosTransactions(search?: string) {
+export function usePosTransactions(search?: string, branch?: string) {
+  const allBranches = !branch || branch === "all";
   return useQuery({
-    queryKey: ["pos", "transactions", search ?? ""],
+    queryKey: ["pos", "transactions", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<PosTransaction[]> => {
-      let query = supabase
-        .from("pos_transactions")
-        .select("time, invoice, items, amount, payment, cashier, status")
-        .order("created_at", { ascending: false });
+      let query = (
+        allBranches ? supabase.from("pos_transactions") : supabase.from("pos_transactions_branches")
+      ).select("time, invoice, items, amount, payment, cashier, status");
+      if (allBranches) query = query.order("created_at", { ascending: false });
+      if (!allBranches) query = query.eq("branch", branch);
       if (search) query = query.or(`invoice.ilike.${like(search)},cashier.ilike.${like(search)}`);
       const { data, error } = await query;
       if (error) throw error;
       return data as PosTransaction[];
+    },
+  });
+}
+
+export function usePosBranches() {
+  return useQuery({
+    queryKey: ["pos", "branches"],
+    queryFn: async (): Promise<string[]> => {
+      const { data, error } = await supabase.from("branches").select("name").order("name");
+      if (error) throw error;
+      return (data ?? []).map((b) => b.name as string);
     },
   });
 }

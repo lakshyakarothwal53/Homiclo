@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ReportListPage } from "@/components/reports/ReportListPage";
-import { useReports } from "@/hooks/use-reports";
 
 export const Route = createFileRoute("/_app/reports/attendance")({
   head: () => ({
@@ -13,13 +12,12 @@ export const Route = createFileRoute("/_app/reports/attendance")({
 });
 
 function Page() {
-  const { data = [] } = useReports("attendance");
   return (
     <ReportListPage
       eyebrow="Reports › Attendance"
       title="Attendance Reports"
       description="Attendance overview and controls."
-      rows={data}
+      category="attendance"
     />
   );
 }

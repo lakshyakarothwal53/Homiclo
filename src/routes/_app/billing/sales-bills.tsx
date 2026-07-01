@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card } from "@/components/ui/card";
@@ -5,7 +6,7 @@ import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { StatusBadge } from "@/components/billing/StatusBadge";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
-import { useBillingSalesBills } from "@/hooks/use-billing";
+import { useBillingBranches, useBillingSalesBills } from "@/hooks/use-billing";
 import type { BillingSalesBill } from "@/types/billing";
 
 export const Route = createFileRoute("/_app/billing/sales-bills")({
@@ -50,7 +51,9 @@ const columns: Column<BillingSalesBill>[] = [
 ];
 
 function Page() {
-  const { data: bills = [] } = useBillingSalesBills();
+  const [branch, setBranch] = useState("all");
+  const { data: bills = [] } = useBillingSalesBills(undefined, branch);
+  const { data: branches = [] } = useBillingBranches();
 
   return (
     <>
@@ -59,7 +62,12 @@ function Page() {
         title="Sales Bills"
         description="Sales Bills overview and controls."
       />
-      <FilterBar searchPlaceholder="Search invoices..." />
+      <FilterBar
+        searchPlaceholder="Search invoices..."
+        branches={branches}
+        branch={branch}
+        onBranchChange={setBranch}
+      />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={bills} rowKey={(r) => r.invoice} />
         <EntriesFooter shown={bills.length} total={bills.length} />

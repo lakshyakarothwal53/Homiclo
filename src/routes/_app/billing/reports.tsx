@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Download } from "lucide-react";
@@ -6,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
-import { useBillingReports } from "@/hooks/use-billing";
+import { useBillingBranches, useBillingReports } from "@/hooks/use-billing";
 import type { BillingReport } from "@/types/billing";
 
 export const Route = createFileRoute("/_app/billing/reports")({
@@ -20,7 +21,9 @@ export const Route = createFileRoute("/_app/billing/reports")({
 });
 
 function Page() {
-  const { data: reports = [] } = useBillingReports();
+  const [branch, setBranch] = useState("all");
+  const { data: reports = [] } = useBillingReports(undefined, branch);
+  const { data: branches = [] } = useBillingBranches();
   const columns: Column<BillingReport>[] = [
     {
       key: "report",
@@ -64,7 +67,13 @@ function Page() {
         title="Billing Reports"
         description="Reports overview and controls."
       />
-      <FilterBar searchPlaceholder="Search reports..." addLabel="Add New" />
+      <FilterBar
+        searchPlaceholder="Search reports..."
+        addLabel="Add New"
+        branches={branches}
+        branch={branch}
+        onBranchChange={setBranch}
+      />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={reports} rowKey={(r) => r.report} />
         <EntriesFooter shown={reports.length} total={reports.length} />
