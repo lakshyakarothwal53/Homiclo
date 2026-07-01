@@ -9,7 +9,7 @@ import { FilterBar } from "@/components/inventory/FilterBar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { useInventoryReports } from "@/hooks/use-inventory";
+import { useBranches, useInventoryReports } from "@/hooks/use-inventory";
 
 export const Route = createFileRoute("/_app/inventory/reports")({
   head: () => ({
@@ -31,7 +31,9 @@ const COLUMNS: Column[] = [
 
 function Page() {
   const [search, setSearch] = useState("");
-  const { data = [], isLoading } = useInventoryReports(search);
+  const [branch, setBranch] = useState("all");
+  const { data = [], isLoading } = useInventoryReports(search, branch);
+  const { data: branches = [] } = useBranches();
 
   return (
     <>
@@ -45,6 +47,9 @@ function Page() {
         onSearchChange={setSearch}
         searchPlaceholder="Search reports…"
         primaryLabel="Generate"
+        branches={branches}
+        branch={branch}
+        onBranchChange={setBranch}
       />
       <DataTableCard columns={COLUMNS} isLoading={isLoading} count={data.length}>
         {data.map((r) => (

@@ -22,7 +22,12 @@
       "Bash(echo \"supabase_exit=$?\")",
       "Bash(psql --version)",
       "Bash(cd \"/Users/lakshyakarothwal/Desktop/MyPC/A/nova vision/Homiclo\" && echo \"=== project .claude/skills ===\" && ls -R .claude/skills 2>/dev/null; echo \"=== user skills ===\" && ls ~/.claude/skills 2>/dev/null; echo \"=== recent .md files \\(project, non-node_modules\\) ===\" && find . -name \"*.md\" -not -path \"*/node_modules/*\" -newermt \"2026-06-28\" 2>/dev/null; echo \"=== git status \\(new/untracked\\) ===\" && git status --short | head -40)",
-      "Read(//Users/lakshyakarothwal/.claude/**)"
+      "Read(//Users/lakshyakarothwal/.claude/**)",
+      "Bash(echo \"=== eslint exit $? ===\")",
+      "Bash(find . -path ./node_modules -prune -o -name \"SKILL.md\" -print)",
+      "Bash(ls -la .claude)",
+      "Bash(ls -la .claude/skills)",
+      "Bash(echo \"ESLINT_EXIT=$?\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\HP\\.claude\\projects\\c--Users-HP-Downloads-homiqlo-admin-hub-main-homiqlo-admin-hub-main\\memory"

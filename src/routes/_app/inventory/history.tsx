@@ -6,7 +6,7 @@ import { DataTableCard, type Column } from "@/components/inventory/DataTableCard
 import { FilterBar } from "@/components/inventory/FilterBar";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { useStockHistory } from "@/hooks/use-inventory";
+import { useBranches, useStockHistory } from "@/hooks/use-inventory";
 
 export const Route = createFileRoute("/_app/inventory/history")({
   head: () => ({
@@ -29,7 +29,9 @@ const COLUMNS: Column[] = [
 
 function Page() {
   const [search, setSearch] = useState("");
-  const { data = [], isLoading } = useStockHistory(search);
+  const [branch, setBranch] = useState("all");
+  const { data = [], isLoading } = useStockHistory(search, branch);
+  const { data: branches = [] } = useBranches();
 
   return (
     <>
@@ -38,7 +40,14 @@ function Page() {
         title="Stock History"
         description="History overview and controls."
       />
-      <FilterBar search={search} onSearchChange={setSearch} searchPlaceholder="Search product…" />
+      <FilterBar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search product…"
+        branches={branches}
+        branch={branch}
+        onBranchChange={setBranch}
+      />
       <DataTableCard columns={COLUMNS} isLoading={isLoading} count={data.length}>
         {data.map((r, i) => (
           <TableRow key={`${r.datetime}-${i}`} className="border-t border-border">
