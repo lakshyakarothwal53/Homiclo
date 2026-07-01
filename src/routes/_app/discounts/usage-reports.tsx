@@ -1,12 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { CheckCircle2, IndianRupee, TrendingUp } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { StatCard } from "@/components/common/StatCard";
 import { Card, CardContent } from "@/components/ui/card";
+import { EntriesFooter } from "@/components/billing/EntriesFooter";
 import { DiscountToolbar } from "@/components/discounts/DiscountToolbar";
-import { downloadCsv, formatCurrency } from "@/components/discounts/types";
+import { formatCurrency } from "@/components/discounts/types";
+import { exportToExcel } from "@/lib/export";
 import { useDiscountUsage } from "@/hooks/use-discounts";
+
+const PAGE_SIZE = 8;
 
 export const Route = createFileRoute("/_app/discounts/usage-reports")({
   head: () => ({
@@ -40,9 +44,15 @@ function Page() {
     return { used, given, conv: Math.round(conv) };
   }, [usage]);
 
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  useEffect(() => setPage((p) => Math.min(Math.max(1, p), pageCount)), [pageCount]);
+  const start = (page - 1) * PAGE_SIZE;
+  const pageRows = filtered.slice(start, start + PAGE_SIZE);
+
   function handleExport() {
-    downloadCsv(
-      "discount-usage-reports.csv",
+    exportToExcel(
+      "discount-usage-reports",
       ["Discount", "Code", "Times Used", "Discount Given", "Avg. Order", "Conversion"],
       filtered.map((r) => [
         r.discount,
@@ -110,7 +120,7 @@ function Page() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((r) => (
+                {pageRows.map((r) => (
                   <tr key={r.code} className="border-t border-border hover:bg-secondary/30">
                     <td className="px-5 py-3.5 font-medium text-foreground">{r.discount}</td>
                     <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground">
@@ -145,9 +155,14 @@ function Page() {
               </tbody>
             </table>
           </div>
-          <div className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
-            Showing {filtered.length === 0 ? 0 : 1}–{filtered.length} of {filtered.length} entries
-          </div>
+          <EntriesFooter
+            firstShown={filtered.length === 0 ? 0 : start + 1}
+            lastShown={Math.min(start + PAGE_SIZE, filtered.length)}
+            total={filtered.length}
+            page={page}
+            pageCount={pageCount}
+            onPageChange={setPage}
+          />
         </CardContent>
       </Card>
     </>

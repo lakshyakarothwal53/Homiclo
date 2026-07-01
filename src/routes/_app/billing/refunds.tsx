@@ -4,7 +4,8 @@ import { Card } from "@/components/ui/card";
 import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { StatusBadge } from "@/components/billing/StatusBadge";
-import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { useTableQuery } from "@/components/billing/use-table-query";
+import { exportToExcel } from "@/lib/export";
 import { useBillingRefunds } from "@/hooks/use-billing";
 import type { BillingRefund } from "@/types/billing";
 
@@ -45,6 +46,16 @@ const columns: Column<BillingRefund>[] = [
 
 function Page() {
   const { data: refunds = [] } = useBillingRefunds();
+  const { search, setSearch, amountSort, setAmountSort, amountRange, setAmountRange, rows } =
+    useTableQuery(refunds, ["refund", "invoice", "customer", "reason"], "amount");
+
+  function handleExport() {
+    exportToExcel(
+      "refunds",
+      ["Refund ID", "Original Invoice", "Customer", "Amount", "Reason", "Status"],
+      rows.map((r) => [r.refund, r.invoice, r.customer, r.amount, r.reason, r.status]),
+    );
+  }
 
   return (
     <>
@@ -53,10 +64,19 @@ function Page() {
         title="Refund Management"
         description="Refunds overview and controls."
       />
-      <FilterBar searchPlaceholder="Search refunds..." addLabel="Add New" />
+      <FilterBar
+        searchPlaceholder="Search refunds..."
+        addLabel="Add New"
+        search={search}
+        onSearchChange={setSearch}
+        onExport={handleExport}
+        amountSort={amountSort}
+        onAmountSortChange={setAmountSort}
+        amountRange={amountRange}
+        onAmountRangeChange={setAmountRange}
+      />
       <Card className="overflow-hidden border-border">
-        <DataTable columns={columns} rows={refunds} rowKey={(r) => r.refund} />
-        <EntriesFooter shown={refunds.length} total={refunds.length} />
+        <DataTable columns={columns} rows={rows} rowKey={(r) => r.refund} />
       </Card>
     </>
   );

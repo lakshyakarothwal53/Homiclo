@@ -1,14 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { EntriesFooter } from "@/components/billing/EntriesFooter";
 import { DiscountToolbar } from "@/components/discounts/DiscountToolbar";
 import { StatusBadge } from "@/components/discounts/StatusBadge";
-import { downloadCsv } from "@/components/discounts/types";
+import { exportToExcel } from "@/lib/export";
 import { useDiscountSeasonal } from "@/hooks/use-discounts";
+
+const PAGE_SIZE = 8;
 
 export const Route = createFileRoute("/_app/discounts/seasonal")({
   head: () => ({
@@ -35,9 +38,15 @@ function Page() {
     );
   }, [query, seasons]);
 
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  useEffect(() => setPage((p) => Math.min(Math.max(1, p), pageCount)), [pageCount]);
+  const start = (page - 1) * PAGE_SIZE;
+  const pageRows = filtered.slice(start, start + PAGE_SIZE);
+
   function handleExport() {
-    downloadCsv(
-      "seasonal-offers.csv",
+    exportToExcel(
+      "seasonal-offers",
       ["Season", "Offer", "Discount", "Valid From", "Valid To", "Status"],
       filtered.map((r) => [r.season, r.offer, r.discount, r.validFrom, r.validTo, r.status]),
     );
@@ -85,7 +94,7 @@ function Page() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((r) => (
+                {pageRows.map((r) => (
                   <tr key={r.season} className="border-t border-border hover:bg-secondary/30">
                     <td className="px-5 py-3.5 font-medium text-foreground">{r.season}</td>
                     <td className="px-5 py-3.5">{r.offer}</td>
@@ -110,9 +119,14 @@ function Page() {
               </tbody>
             </table>
           </div>
-          <div className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
-            Showing {filtered.length === 0 ? 0 : 1}–{filtered.length} of {filtered.length} entries
-          </div>
+          <EntriesFooter
+            firstShown={filtered.length === 0 ? 0 : start + 1}
+            lastShown={Math.min(start + PAGE_SIZE, filtered.length)}
+            total={filtered.length}
+            page={page}
+            pageCount={pageCount}
+            onPageChange={setPage}
+          />
         </CardContent>
       </Card>
     </>

@@ -16,11 +16,7 @@ export const Route = createFileRoute("/_app/pos/qr")({
 function Page() {
   return (
     <>
-      <PageHeader
-        eyebrow="POS › QR"
-        title="QR Scanner"
-        description="QR overview and controls."
-      />
+      <PageHeader eyebrow="POS › QR" title="QR Scanner" description="QR overview and controls." />
       <ScannerView
         icon={QrCode}
         label="QR Code"

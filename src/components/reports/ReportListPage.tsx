@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { exportToExcel } from "@/lib/export";
 import { BRANCHES, type ReportRow } from "./data";
 
 const PAGE_SIZE = 8;
@@ -44,16 +45,21 @@ export function ReportListPage({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) || r.type.toLowerCase().includes(q),
-    );
+    return rows.filter((r) => r.name.toLowerCase().includes(q) || r.type.toLowerCase().includes(q));
   }, [query, rows]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const current = Math.min(page, pageCount);
   const start = (current - 1) * PAGE_SIZE;
   const visible = filtered.slice(start, start + PAGE_SIZE);
+
+  function handleExport() {
+    exportToExcel(
+      title.toLowerCase().replace(/\s+/g, "-"),
+      ["Report Name", "Type", "Period", "Generated", "Size"],
+      filtered.map((r) => [r.name, r.type, r.period, r.generated, r.size]),
+    );
+  }
 
   return (
     <>
@@ -63,12 +69,7 @@ export function ReportListPage({
         description={description}
         actions={
           <>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={() => toast.success("Exporting all reports…")}
-            >
+            <Button variant="outline" size="sm" className="gap-2" onClick={handleExport}>
               <Download className="h-4 w-4" /> Export
             </Button>
             <Button
@@ -121,14 +122,10 @@ export function ReportListPage({
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="text-[11px] uppercase tracking-[0.12em]">
-                Report Name
-              </TableHead>
+              <TableHead className="text-[11px] uppercase tracking-[0.12em]">Report Name</TableHead>
               <TableHead className="text-[11px] uppercase tracking-[0.12em]">Type</TableHead>
               <TableHead className="text-[11px] uppercase tracking-[0.12em]">Period</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-[0.12em]">
-                Generated
-              </TableHead>
+              <TableHead className="text-[11px] uppercase tracking-[0.12em]">Generated</TableHead>
               <TableHead className="text-[11px] uppercase tracking-[0.12em]">Size</TableHead>
               <TableHead className="w-0 text-right" />
             </TableRow>

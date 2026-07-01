@@ -4,7 +4,8 @@ import { Card } from "@/components/ui/card";
 import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { StatusBadge } from "@/components/billing/StatusBadge";
-import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { useTableQuery } from "@/components/billing/use-table-query";
+import { exportToExcel } from "@/lib/export";
 import { useBillingGatewayTxns } from "@/hooks/use-billing";
 import type { BillingGatewayTxn } from "@/types/billing";
 
@@ -45,6 +46,16 @@ const columns: Column<BillingGatewayTxn>[] = [
 
 function Page() {
   const { data: txns = [] } = useBillingGatewayTxns();
+  const { search, setSearch, amountSort, setAmountSort, amountRange, setAmountRange, rows } =
+    useTableQuery(txns, ["txn", "customer", "gateway"], "amount");
+
+  function handleExport() {
+    exportToExcel(
+      "gateway-transactions",
+      ["Txn ID", "Date", "Customer", "Amount", "Gateway", "Status"],
+      rows.map((r) => [r.txn, r.date, r.customer, r.amount, r.gateway, r.status]),
+    );
+  }
 
   return (
     <>
@@ -53,10 +64,18 @@ function Page() {
         title="Payment Gateway"
         description="Gateway overview and controls."
       />
-      <FilterBar searchPlaceholder="Search transactions..." />
+      <FilterBar
+        searchPlaceholder="Search transactions..."
+        search={search}
+        onSearchChange={setSearch}
+        onExport={handleExport}
+        amountSort={amountSort}
+        onAmountSortChange={setAmountSort}
+        amountRange={amountRange}
+        onAmountRangeChange={setAmountRange}
+      />
       <Card className="overflow-hidden border-border">
-        <DataTable columns={columns} rows={txns} rowKey={(r) => r.txn} />
-        <EntriesFooter shown={txns.length} total={txns.length} />
+        <DataTable columns={columns} rows={rows} rowKey={(r) => r.txn} />
       </Card>
     </>
   );

@@ -1,17 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
+import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { exportToExcel } from "@/lib/export";
 import { DiscountToolbar } from "./DiscountToolbar";
 import { AddDiscountDialog } from "./AddDiscountDialog";
 import { StatusBadge } from "./StatusBadge";
 import {
-  downloadCsv,
   formatCurrency,
   formatDate,
   formatValue,
   type DiscountValueType,
   type PromoRow,
 } from "./types";
+
+const PAGE_SIZE = 8;
 
 export function PromoDiscountsPage({
   eyebrow,
@@ -50,9 +53,15 @@ export function PromoDiscountsPage({
     });
   }, [rows, query, date]);
 
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  useEffect(() => setPage((p) => Math.min(Math.max(1, p), pageCount)), [pageCount]);
+  const start = (page - 1) * PAGE_SIZE;
+  const pageRows = filtered.slice(start, start + PAGE_SIZE);
+
   function handleExport() {
-    downloadCsv(
-      `${title.toLowerCase().replace(/\s+/g, "-")}.csv`,
+    exportToExcel(
+      title.toLowerCase().replace(/\s+/g, "-"),
       ["Name", "Code", "Value", "Min Order", "Valid From", "Valid To", "Used", "Status"],
       filtered.map((r) => [
         r.name,
@@ -106,7 +115,7 @@ export function PromoDiscountsPage({
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((r) => (
+                {pageRows.map((r) => (
                   <tr key={r.id} className="border-t border-border hover:bg-secondary/30">
                     <td className="px-5 py-3.5 font-medium text-foreground">{r.name}</td>
                     <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground">
@@ -138,9 +147,14 @@ export function PromoDiscountsPage({
               </tbody>
             </table>
           </div>
-          <div className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
-            Showing {filtered.length === 0 ? 0 : 1}–{filtered.length} of {filtered.length} entries
-          </div>
+          <EntriesFooter
+            firstShown={filtered.length === 0 ? 0 : start + 1}
+            lastShown={Math.min(start + PAGE_SIZE, filtered.length)}
+            total={filtered.length}
+            page={page}
+            pageCount={pageCount}
+            onPageChange={setPage}
+          />
         </CardContent>
       </Card>
     </>

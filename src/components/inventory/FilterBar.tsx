@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PRICE_RANGES, type PriceRange, type PriceSort } from "./price-filter";
 
 export function FilterBar({
   search,
@@ -22,6 +23,10 @@ export function FilterBar({
   branches,
   branch,
   onBranchChange,
+  priceSort,
+  onPriceSortChange,
+  priceRange,
+  onPriceRangeChange,
 }: {
   search: string;
   onSearchChange: (value: string) => void;
@@ -34,6 +39,11 @@ export function FilterBar({
   branches?: string[];
   branch?: string;
   onBranchChange?: (value: string) => void;
+  /** When `onPriceSortChange` is provided the price controls replace the date input. */
+  priceSort?: PriceSort;
+  onPriceSortChange?: (value: PriceSort) => void;
+  priceRange?: PriceRange;
+  onPriceRangeChange?: (value: PriceRange) => void;
 }) {
   return (
     <Card className="mb-4 border-border">
@@ -76,7 +86,40 @@ export function FilterBar({
           </Select>
         )}
 
-        <Input type="date" className="h-9 w-full bg-background md:w-44" />
+        {onPriceSortChange ? (
+          <>
+            <Select
+              value={priceSort ?? "none"}
+              onValueChange={(v) => onPriceSortChange(v as PriceSort)}
+            >
+              <SelectTrigger className="h-9 w-full md:w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sort: Default</SelectItem>
+                <SelectItem value="low">Price: Low → High</SelectItem>
+                <SelectItem value="high">Price: High → Low</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={priceRange ?? "all"}
+              onValueChange={(v) => onPriceRangeChange?.(v as PriceRange)}
+            >
+              <SelectTrigger className="h-9 w-full md:w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PRICE_RANGES.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>
+                    {r.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        ) : (
+          <Input type="date" className="h-9 w-full bg-background md:w-44" />
+        )}
 
         <div className="flex items-center gap-2 md:ml-auto">
           <Button variant="outline" size="sm" className="gap-2" onClick={onExport}>

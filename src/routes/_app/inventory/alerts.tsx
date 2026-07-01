@@ -21,6 +21,7 @@ import {
   useLowStockAlerts,
   useUpdateLowStockAlert,
 } from "@/hooks/use-inventory";
+import { exportToExcel } from "@/lib/export";
 import type { LowStockAlert } from "@/types/inventory";
 
 export const Route = createFileRoute("/_app/inventory/alerts")({
@@ -103,6 +104,14 @@ function Page() {
     });
   }
 
+  function handleExport() {
+    exportToExcel(
+      "low-stock-alerts",
+      ["SKU", "Product", "Current Stock", "Min Level", "Status"],
+      data.map((r) => [r.sku, r.product, r.currentStock, r.minLevel, r.status]),
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -116,6 +125,7 @@ function Page() {
         searchPlaceholder="Search alerts…"
         primaryLabel="Add New"
         onPrimary={() => setAddOpen(true)}
+        onExport={handleExport}
         branches={branches}
         branch={branch}
         onBranchChange={setBranch}

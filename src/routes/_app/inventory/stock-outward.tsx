@@ -19,6 +19,7 @@ import {
   useStockOutward,
   useUpdateStockOutward,
 } from "@/hooks/use-inventory";
+import { exportToExcel } from "@/lib/export";
 import type { StockOutwardEntry } from "@/types/inventory";
 
 export const Route = createFileRoute("/_app/inventory/stock-outward")({
@@ -107,6 +108,14 @@ function Page() {
     });
   }
 
+  function handleExport() {
+    exportToExcel(
+      "stock-outward",
+      ["Date", "Out #", "Product", "Type", "Qty", "Reference", "By"],
+      data.map((r) => [r.date, r.ref, r.product, r.type, r.qty, r.reference, r.by]),
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -120,6 +129,7 @@ function Page() {
         searchPlaceholder="Search ref or product…"
         primaryLabel="Add New"
         onPrimary={() => setAddOpen(true)}
+        onExport={handleExport}
         branches={branches}
         branch={branch}
         onBranchChange={setBranch}

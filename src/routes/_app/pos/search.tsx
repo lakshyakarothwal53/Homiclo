@@ -5,7 +5,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
-import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { useTableQuery } from "@/components/billing/use-table-query";
+import { exportToExcel } from "@/lib/export";
 import { formatINR } from "@/components/pos/products";
 import { usePosProducts } from "@/hooks/use-pos";
 import type { PosProduct } from "@/types/pos";
@@ -58,7 +59,17 @@ const columns: Column<PosProduct>[] = [
 ];
 
 function Page() {
-  const { data: rows = [] } = usePosProducts();
+  const { data: products = [] } = usePosProducts();
+  const { search, setSearch, amountSort, setAmountSort, amountRange, setAmountRange, rows } =
+    useTableQuery(products, ["sku", "name", "category"], "price");
+
+  function handleExport() {
+    exportToExcel(
+      "pos-product-search",
+      ["SKU", "Product", "Category", "Price", "Stock"],
+      rows.map((r) => [r.sku, r.name, r.category, r.price, r.stock]),
+    );
+  }
 
   return (
     <>
@@ -71,10 +82,16 @@ function Page() {
         searchPlaceholder="Search..."
         addLabel="Add New"
         onAdd={() => toast.info("Open new product form")}
+        search={search}
+        onSearchChange={setSearch}
+        onExport={handleExport}
+        amountSort={amountSort}
+        onAmountSortChange={setAmountSort}
+        amountRange={amountRange}
+        onAmountRangeChange={setAmountRange}
       />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={rows} rowKey={(r) => r.sku} />
-        <EntriesFooter shown={rows.length} total={rows.length} />
       </Card>
     </>
   );

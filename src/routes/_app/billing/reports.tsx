@@ -5,7 +5,8 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { Card } from "@/components/ui/card";
 import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
-import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { useTableQuery } from "@/components/billing/use-table-query";
+import { exportToExcel } from "@/lib/export";
 import { useBillingReports } from "@/hooks/use-billing";
 import type { BillingReport } from "@/types/billing";
 
@@ -21,6 +22,16 @@ export const Route = createFileRoute("/_app/billing/reports")({
 
 function Page() {
   const { data: reports = [] } = useBillingReports();
+  const { search, setSearch, rows } = useTableQuery(reports, ["report", "period", "format"]);
+
+  function handleExport() {
+    exportToExcel(
+      "billing-reports",
+      ["Report", "Period", "Generated", "Format"],
+      rows.map((r) => [r.report, r.period, r.generated, r.format]),
+    );
+  }
+
   const columns: Column<BillingReport>[] = [
     {
       key: "report",
@@ -64,10 +75,15 @@ function Page() {
         title="Billing Reports"
         description="Reports overview and controls."
       />
-      <FilterBar searchPlaceholder="Search reports..." addLabel="Add New" />
+      <FilterBar
+        searchPlaceholder="Search reports..."
+        addLabel="Add New"
+        search={search}
+        onSearchChange={setSearch}
+        onExport={handleExport}
+      />
       <Card className="overflow-hidden border-border">
-        <DataTable columns={columns} rows={reports} rowKey={(r) => r.report} />
-        <EntriesFooter shown={reports.length} total={reports.length} />
+        <DataTable columns={columns} rows={rows} rowKey={(r) => r.report} />
       </Card>
     </>
   );

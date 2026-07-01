@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Children, type ReactNode, useEffect, useState } from "react";
 
 import { Card } from "@/components/ui/card";
 import {
@@ -19,12 +19,29 @@ export function DataTableCard({
   isLoading,
   count,
   children,
+  pageSize = 8,
 }: {
   columns: Column[];
   isLoading?: boolean;
   count: number;
   children: ReactNode;
+  pageSize?: number;
 }) {
+  const items = Children.toArray(children);
+  const total = items.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+
+  const [page, setPage] = useState(1);
+  // Snap back into range when the row set changes (e.g. a filter/search narrows it).
+  useEffect(() => {
+    setPage((p) => Math.min(Math.max(1, p), pageCount));
+  }, [pageCount]);
+
+  const start = (page - 1) * pageSize;
+  const pageItems = items.slice(start, start + pageSize);
+  const firstShown = total === 0 ? 0 : start + 1;
+  const lastShown = Math.min(start + pageSize, total);
+
   return (
     <Card className="overflow-hidden border-border p-0">
       <Table>
@@ -65,29 +82,51 @@ export function DataTableCard({
               </TableCell>
             </TableRow>
           ) : (
-            children
+            pageItems
           )}
         </TableBody>
       </Table>
 
       <div className="flex flex-col items-center justify-between gap-3 border-t border-border px-5 py-3 text-sm sm:flex-row">
         <span className="text-muted-foreground">
-          {count === 0 ? "Showing 0 entries" : `Showing 1–${count} of ${count} entries`}
+          {total === 0
+            ? "Showing 0 entries"
+            : `Showing ${firstShown}–${lastShown} of ${total} entries`}
         </span>
         <div className="flex items-center gap-1">
-          <button className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground hover:bg-secondary">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground hover:bg-secondary disabled:pointer-events-none disabled:opacity-40"
+          >
             ‹
           </button>
-          <button className="grid h-8 w-8 place-items-center rounded-md bg-brand text-brand-foreground">
-            1
-          </button>
-          <button className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground hover:bg-secondary">
-            2
-          </button>
-          <button className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground hover:bg-secondary">
-            3
-          </button>
-          <button className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground hover:bg-secondary">
+          {Array.from({ length: pageCount }).map((_, i) => {
+            const n = i + 1;
+            const active = n === page;
+            return (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setPage(n)}
+                className={cn(
+                  "grid h-8 w-8 place-items-center rounded-md",
+                  active
+                    ? "bg-brand text-brand-foreground"
+                    : "border border-border text-muted-foreground hover:bg-secondary",
+                )}
+              >
+                {n}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+            disabled={page >= pageCount}
+            className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground hover:bg-secondary disabled:pointer-events-none disabled:opacity-40"
+          >
             ›
           </button>
         </div>

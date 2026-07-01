@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { DataTableCard, type Column } from "@/components/inventory/DataTableCard";
 import { FilterBar } from "@/components/inventory/FilterBar";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { exportToExcel } from "@/lib/export";
 import { cn } from "@/lib/utils";
 import { useBranches, useStockHistory } from "@/hooks/use-inventory";
 
@@ -33,6 +34,14 @@ function Page() {
   const { data = [], isLoading } = useStockHistory(search, branch);
   const { data: branches = [] } = useBranches();
 
+  function handleExport() {
+    exportToExcel(
+      "stock-history",
+      ["Date", "Product", "Change", "Type", "Balance", "By"],
+      data.map((r) => [r.datetime, r.product, r.change, r.type, r.balance, r.by]),
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -44,6 +53,7 @@ function Page() {
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search product…"
+        onExport={handleExport}
         branches={branches}
         branch={branch}
         onBranchChange={setBranch}

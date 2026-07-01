@@ -18,6 +18,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { exportToExcel } from "@/lib/export";
 import {
   useBranches,
   useCategories,
@@ -80,6 +81,14 @@ function Page() {
     });
   }
 
+  function handleExport() {
+    exportToExcel(
+      "categories",
+      ["Category", "Products", "Stock Value", "Last Updated"],
+      data.map((c) => [c.name, c.productCount, c.stockValue, c.lastUpdated]),
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -93,6 +102,7 @@ function Page() {
         searchPlaceholder="Search categories…"
         primaryLabel="Add New"
         onPrimary={() => setAddOpen(true)}
+        onExport={handleExport}
         branches={branches}
         branch={branch}
         onBranchChange={setBranch}

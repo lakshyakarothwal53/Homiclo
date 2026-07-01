@@ -2,34 +2,44 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function EntriesFooter({
-  shown,
+  firstShown,
+  lastShown,
   total,
-  pages = 3,
-  current = 1,
+  page,
+  pageCount,
+  onPageChange,
 }: {
-  shown: number;
+  firstShown: number;
+  lastShown: number;
   total: number;
-  pages?: number;
-  current?: number;
+  page: number;
+  pageCount: number;
+  onPageChange: (page: number) => void;
 }) {
   return (
     <div className="flex flex-col items-center justify-between gap-3 border-t border-border px-5 py-3 text-sm text-muted-foreground sm:flex-row">
       <span>
-        Showing 1–{shown} of {total} entries
+        {total === 0
+          ? "Showing 0 entries"
+          : `Showing ${firstShown}–${lastShown} of ${total} entries`}
       </span>
       <div className="flex items-center gap-1">
         <button
-          className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground transition hover:bg-secondary disabled:opacity-40"
-          disabled={current === 1}
+          type="button"
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+          disabled={page <= 1}
+          className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground transition hover:bg-secondary disabled:pointer-events-none disabled:opacity-40"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        {Array.from({ length: pages }, (_, i) => i + 1).map((p) => (
+        {Array.from({ length: pageCount }, (_, i) => i + 1).map((p) => (
           <button
             key={p}
+            type="button"
+            onClick={() => onPageChange(p)}
             className={cn(
               "grid h-8 w-8 place-items-center rounded-md text-sm font-medium transition",
-              p === current
+              p === page
                 ? "bg-brand text-brand-foreground"
                 : "border border-border text-foreground hover:bg-secondary",
             )}
@@ -37,7 +47,12 @@ export function EntriesFooter({
             {p}
           </button>
         ))}
-        <button className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground transition hover:bg-secondary">
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.min(pageCount, page + 1))}
+          disabled={page >= pageCount}
+          className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground transition hover:bg-secondary disabled:pointer-events-none disabled:opacity-40"
+        >
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>

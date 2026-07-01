@@ -3,7 +3,8 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { Card } from "@/components/ui/card";
 import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
-import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { useTableQuery } from "@/components/billing/use-table-query";
+import { exportToExcel } from "@/lib/export";
 import { useBillingTaxInvoices } from "@/hooks/use-billing";
 import type { BillingTaxInvoice } from "@/types/billing";
 
@@ -49,6 +50,16 @@ const columns: Column<BillingTaxInvoice>[] = [
 
 function Page() {
   const { data: invoices = [] } = useBillingTaxInvoices();
+  const { search, setSearch, amountSort, setAmountSort, amountRange, setAmountRange, rows } =
+    useTableQuery(invoices, ["invoice", "gstin"], "total");
+
+  function handleExport() {
+    exportToExcel(
+      "tax-invoices",
+      ["Invoice", "Date", "GSTIN", "Taxable Amount", "CGST", "SGST", "Total"],
+      rows.map((r) => [r.invoice, r.date, r.gstin, r.taxable, r.cgst, r.sgst, r.total]),
+    );
+  }
 
   return (
     <>
@@ -57,10 +68,18 @@ function Page() {
         title="Tax Invoices"
         description="Tax Invoices overview and controls."
       />
-      <FilterBar searchPlaceholder="Search by GSTIN..." />
+      <FilterBar
+        searchPlaceholder="Search by GSTIN..."
+        search={search}
+        onSearchChange={setSearch}
+        onExport={handleExport}
+        amountSort={amountSort}
+        onAmountSortChange={setAmountSort}
+        amountRange={amountRange}
+        onAmountRangeChange={setAmountRange}
+      />
       <Card className="overflow-hidden border-border">
-        <DataTable columns={columns} rows={invoices} rowKey={(r) => r.invoice} />
-        <EntriesFooter shown={invoices.length} total={invoices.length} />
+        <DataTable columns={columns} rows={rows} rowKey={(r) => r.invoice} />
       </Card>
     </>
   );

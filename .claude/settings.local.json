@@ -27,7 +27,9 @@
       "Bash(find . -path ./node_modules -prune -o -name \"SKILL.md\" -print)",
       "Bash(ls -la .claude)",
       "Bash(ls -la .claude/skills)",
-      "Bash(echo \"ESLINT_EXIT=$?\")"
+      "Bash(echo \"ESLINT_EXIT=$?\")",
+      "Bash(pkill -f \"vite dev\")",
+      "Bash(echo \"MY_ESLINT_EXIT=$?\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\HP\\.claude\\projects\\c--Users-HP-Downloads-homiqlo-admin-hub-main-homiqlo-admin-hub-main\\memory"

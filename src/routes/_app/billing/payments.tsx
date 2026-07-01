@@ -4,7 +4,8 @@ import { Card } from "@/components/ui/card";
 import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { StatusBadge } from "@/components/billing/StatusBadge";
-import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { useTableQuery } from "@/components/billing/use-table-query";
+import { exportToExcel } from "@/lib/export";
 import { useBillingPayments } from "@/hooks/use-billing";
 import type { BillingPayment } from "@/types/billing";
 
@@ -50,6 +51,16 @@ const columns: Column<BillingPayment>[] = [
 
 function Page() {
   const { data: payments = [] } = useBillingPayments();
+  const { search, setSearch, amountSort, setAmountSort, amountRange, setAmountRange, rows } =
+    useTableQuery(payments, ["receipt", "customer", "invoice"], "amount");
+
+  function handleExport() {
+    exportToExcel(
+      "payments",
+      ["Date", "Receipt", "Customer", "Invoice", "Amount", "Mode", "Status"],
+      rows.map((r) => [r.date, r.receipt, r.customer, r.invoice, r.amount, r.mode, r.status]),
+    );
+  }
 
   return (
     <>
@@ -58,10 +69,18 @@ function Page() {
         title="Payment Collection"
         description="Payments overview and controls."
       />
-      <FilterBar searchPlaceholder="Search receipts..." />
+      <FilterBar
+        searchPlaceholder="Search receipts..."
+        search={search}
+        onSearchChange={setSearch}
+        onExport={handleExport}
+        amountSort={amountSort}
+        onAmountSortChange={setAmountSort}
+        amountRange={amountRange}
+        onAmountRangeChange={setAmountRange}
+      />
       <Card className="overflow-hidden border-border">
-        <DataTable columns={columns} rows={payments} rowKey={(r) => r.receipt} />
-        <EntriesFooter shown={payments.length} total={payments.length} />
+        <DataTable columns={columns} rows={rows} rowKey={(r) => r.receipt} />
       </Card>
     </>
   );

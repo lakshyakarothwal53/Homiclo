@@ -11,8 +11,10 @@ import {
   type EntityValues,
 } from "@/components/inventory/EntityFormDialog";
 import { FilterBar } from "@/components/inventory/FilterBar";
+import { priceInRange, type PriceRange, type PriceSort } from "@/components/inventory/price-filter";
 import { InventoryStatusBadge } from "@/components/inventory/InventoryStatusBadge";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { exportToExcel } from "@/lib/export";
 import {
   useBranches,
   useCreateProduct,
@@ -71,9 +73,27 @@ function toProduct(v: EntityValues): Product {
 function Page() {
   const [search, setSearch] = useState("");
   const [branch, setBranch] = useState("all");
+  const [priceSort, setPriceSort] = useState<PriceSort>("none");
+  const [priceRange, setPriceRange] = useState<PriceRange>("all");
   const [addOpen, setAddOpen] = useState(false);
   const { data = [], isLoading } = useProducts(search, branch);
   const { data: branches = [] } = useBranches();
+
+  const rows = data
+    .filter((p) => priceInRange(p.price, priceRange))
+    .sort((a, b) => {
+      if (priceSort === "low") return a.price - b.price;
+      if (priceSort === "high") return b.price - a.price;
+      return 0;
+    });
+
+  function handleExport() {
+    exportToExcel(
+      "products",
+      ["SKU", "Product", "Category", "Price", "Stock", "Status"],
+      rows.map((p) => [p.sku, p.name, p.category, p.price, p.stock, p.status]),
+    );
+  }
 
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
@@ -118,9 +138,14 @@ function Page() {
         searchPlaceholder="Search products…"
         primaryLabel="Add New"
         onPrimary={() => setAddOpen(true)}
+        onExport={handleExport}
         branches={branches}
         branch={branch}
         onBranchChange={setBranch}
+        priceSort={priceSort}
+        onPriceSortChange={setPriceSort}
+        priceRange={priceRange}
+        onPriceRangeChange={setPriceRange}
       />
 
       <EntityFormDialog
@@ -133,8 +158,8 @@ function Page() {
         onSave={handleCreate}
       />
 
-      <DataTableCard columns={COLUMNS} isLoading={isLoading} count={data.length}>
-        {data.map((p) => (
+      <DataTableCard columns={COLUMNS} isLoading={isLoading} count={rows.length}>
+        {rows.map((p) => (
           <TableRow key={p.sku} className="border-t border-border">
             <TableCell className="px-5 py-3 font-mono text-xs">{p.sku}</TableCell>
             <TableCell className="px-5 py-3 font-medium">{p.name}</TableCell>

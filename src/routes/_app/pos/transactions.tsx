@@ -5,7 +5,8 @@ import { Card } from "@/components/ui/card";
 import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { StatusBadge } from "@/components/billing/StatusBadge";
-import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { useTableQuery } from "@/components/billing/use-table-query";
+import { exportToExcel } from "@/lib/export";
 import { usePosTransactions } from "@/hooks/use-pos";
 import type { PosTransaction } from "@/types/pos";
 
@@ -47,6 +48,16 @@ const columns: Column<PosTransaction>[] = [
 
 function Page() {
   const { data: txns = [] } = usePosTransactions();
+  const { search, setSearch, amountSort, setAmountSort, amountRange, setAmountRange, rows } =
+    useTableQuery(txns, ["invoice", "items", "payment", "cashier"], "amount");
+
+  function handleExport() {
+    exportToExcel(
+      "pos-transactions",
+      ["Time", "Invoice", "Items", "Amount", "Payment", "Cashier", "Status"],
+      rows.map((r) => [r.time, r.invoice, r.items, r.amount, r.payment, r.cashier, r.status]),
+    );
+  }
 
   return (
     <>
@@ -59,10 +70,16 @@ function Page() {
         searchPlaceholder="Search..."
         addLabel="Add New"
         onAdd={() => toast.info("Start a new sale from the POS Dashboard")}
+        search={search}
+        onSearchChange={setSearch}
+        onExport={handleExport}
+        amountSort={amountSort}
+        onAmountSortChange={setAmountSort}
+        amountRange={amountRange}
+        onAmountRangeChange={setAmountRange}
       />
       <Card className="overflow-hidden border-border">
-        <DataTable columns={columns} rows={txns} rowKey={(r) => r.invoice} />
-        <EntriesFooter shown={txns.length} total={txns.length} />
+        <DataTable columns={columns} rows={rows} rowKey={(r) => r.invoice} />
       </Card>
     </>
   );

@@ -9,6 +9,7 @@ import { FilterBar } from "@/components/inventory/FilterBar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { exportToExcel } from "@/lib/export";
 import { useBranches, useInventoryReports } from "@/hooks/use-inventory";
 
 export const Route = createFileRoute("/_app/inventory/reports")({
@@ -35,6 +36,14 @@ function Page() {
   const { data = [], isLoading } = useInventoryReports(search, branch);
   const { data: branches = [] } = useBranches();
 
+  function handleExport() {
+    exportToExcel(
+      "inventory-reports",
+      ["Report", "Period", "Generated", "Format"],
+      data.map((r) => [r.report, r.period, r.generated, r.format]),
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -47,6 +56,7 @@ function Page() {
         onSearchChange={setSearch}
         searchPlaceholder="Search reports…"
         primaryLabel="Generate"
+        onExport={handleExport}
         branches={branches}
         branch={branch}
         onBranchChange={setBranch}
