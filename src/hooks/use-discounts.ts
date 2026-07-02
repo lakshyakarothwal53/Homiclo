@@ -34,19 +34,34 @@ export function useDiscountsActive() {
   });
 }
 
-// SUPABASE-SWAP: filter by discount_type ('flat' | 'percentage' | 'category' | 'product')
-export function useDiscountPromos(discountType: string) {
+// filter by discount_type ('flat' | 'percentage' | 'category' | 'product'), optionally by branch
+export function useDiscountPromos(discountType: string, branch?: string) {
+  const allBranches = !branch || branch === "All Branches";
   return useQuery({
-    queryKey: ["discounts", "promos", discountType],
+    queryKey: ["discounts", "promos", discountType, branch ?? "All Branches"],
     queryFn: async (): Promise<PromoRow[]> => {
-      const { data, error } = await supabase
-        .from("discount_promos")
+      let query = (
+        allBranches ? supabase.from("discount_promos") : supabase.from("discount_promos_branches")
+      )
         .select(
           "id, name, code, valueType:value_type, value, minOrder:min_order, validFrom:valid_from, validTo:valid_to, used, cap, status",
         )
         .eq("discount_type", discountType);
+      if (!allBranches) query = query.eq("branch", branch);
+      const { data, error } = await query;
       if (error) throw error;
       return data as unknown as PromoRow[];
+    },
+  });
+}
+
+export function useDiscountBranches() {
+  return useQuery({
+    queryKey: ["discounts", "branches"],
+    queryFn: async (): Promise<string[]> => {
+      const { data, error } = await supabase.from("branches").select("name").order("name");
+      if (error) throw error;
+      return (data ?? []).map((b) => b.name as string);
     },
   });
 }
@@ -64,28 +79,36 @@ export function useDiscountCampaigns() {
   });
 }
 
-export function useDiscountSeasonal() {
+export function useDiscountSeasonal(branch?: string) {
+  const allBranches = !branch || branch === "All Branches";
   return useQuery({
-    queryKey: ["discounts", "seasonal"],
+    queryKey: ["discounts", "seasonal", branch ?? "All Branches"],
     queryFn: async (): Promise<DiscountSeasonRow[]> => {
-      const { data, error } = await supabase
-        .from("discount_seasonal")
-        .select("season, offer, discount, validFrom:valid_from, validTo:valid_to, status");
+      let query = (
+        allBranches
+          ? supabase.from("discount_seasonal")
+          : supabase.from("discount_seasonal_branches")
+      ).select("season, offer, discount, validFrom:valid_from, validTo:valid_to, status");
+      if (!allBranches) query = query.eq("branch", branch);
+      const { data, error } = await query;
       if (error) throw error;
       return data as unknown as DiscountSeasonRow[];
     },
   });
 }
 
-export function useDiscountUsage() {
+export function useDiscountUsage(branch?: string) {
+  const allBranches = !branch || branch === "All Branches";
   return useQuery({
-    queryKey: ["discounts", "usage"],
+    queryKey: ["discounts", "usage", branch ?? "All Branches"],
     queryFn: async (): Promise<DiscountUsageRow[]> => {
-      const { data, error } = await supabase
-        .from("discount_usage")
-        .select(
-          "discount, code, timesUsed:times_used, discountGiven:discount_given, avgOrder:avg_order, conversion",
-        );
+      let query = (
+        allBranches ? supabase.from("discount_usage") : supabase.from("discount_usage_branches")
+      ).select(
+        "discount, code, timesUsed:times_used, discountGiven:discount_given, avgOrder:avg_order, conversion",
+      );
+      if (!allBranches) query = query.eq("branch", branch);
+      const { data, error } = await query;
       if (error) throw error;
       return data as unknown as DiscountUsageRow[];
     },

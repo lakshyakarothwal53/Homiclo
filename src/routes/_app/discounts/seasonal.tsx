@@ -28,7 +28,8 @@ function Page() {
   const [branch, setBranch] = useState("All Branches");
   const [date, setDate] = useState("");
 
-  const { data: seasons = [] } = useDiscountSeasonal();
+  const { data: seasons = [] } = useDiscountSeasonal(branch);
+  const { data: branches = [] } = useDiscountBranches();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -65,6 +66,7 @@ function Page() {
         onQuery={setQuery}
         branch={branch}
         onBranch={setBranch}
+        branches={branches}
         date={date}
         onDate={setDate}
         onExport={handleExport}

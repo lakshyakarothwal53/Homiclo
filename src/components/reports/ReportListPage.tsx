@@ -30,17 +30,20 @@ export function ReportListPage({
   eyebrow,
   title,
   description,
-  rows,
+  category,
 }: {
   eyebrow: string;
   title: string;
   description: string;
-  rows: ReportRow[];
+  category: ReportCategory;
 }) {
   const [query, setQuery] = useState("");
-  const [branch, setBranch] = useState<string>(BRANCHES[0]);
+  const [branch, setBranch] = useState<string>("All Branches");
   const [date, setDate] = useState("");
   const [page, setPage] = useState(1);
+
+  const { data: rows = [] } = useReports(category, branch);
+  const { data: branches = [] } = useReportBranches();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -102,7 +105,8 @@ export function ReportListPage({
             <SelectValue placeholder="All Branches" />
           </SelectTrigger>
           <SelectContent>
-            {BRANCHES.map((b) => (
+            <SelectItem value="All Branches">All Branches</SelectItem>
+            {branches.map((b) => (
               <SelectItem key={b} value={b}>
                 {b}
               </SelectItem>
