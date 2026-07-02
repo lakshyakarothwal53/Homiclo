@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { exportToExcel } from "@/lib/export";
-import { BRANCHES, type ReportRow } from "./data";
+import { useReportBranches, useReports } from "@/hooks/use-reports";
+import type { ReportCategory } from "@/types/reports";
 
 const PAGE_SIZE = 8;
 

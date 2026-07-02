@@ -9,7 +9,7 @@ import { EntriesFooter } from "@/components/billing/EntriesFooter";
 import { DiscountToolbar } from "@/components/discounts/DiscountToolbar";
 import { StatusBadge } from "@/components/discounts/StatusBadge";
 import { exportToExcel } from "@/lib/export";
-import { useDiscountSeasonal } from "@/hooks/use-discounts";
+import { useDiscountBranches, useDiscountSeasonal } from "@/hooks/use-discounts";
 
 const PAGE_SIZE = 8;
 

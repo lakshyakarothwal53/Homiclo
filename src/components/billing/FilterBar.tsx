@@ -21,6 +21,9 @@ export function FilterBar({
   search,
   onSearchChange,
   onExport,
+  branches,
+  branch,
+  onBranchChange,
   amountSort,
   onAmountSortChange,
   amountRange,
@@ -34,6 +37,10 @@ export function FilterBar({
   search?: string;
   onSearchChange?: (value: string) => void;
   onExport?: () => void;
+  /** When `onBranchChange` is provided the branch select becomes controlled. */
+  branches?: string[];
+  branch?: string;
+  onBranchChange?: (value: string) => void;
   /** When `onAmountSortChange` is provided, amount controls replace the date input. */
   amountSort?: AmountSort;
   onAmountSortChange?: (value: AmountSort) => void;
@@ -52,19 +59,35 @@ export function FilterBar({
             className="pl-9"
           />
         </div>
-        {showBranch && (
-          <Select defaultValue="All Branches">
+        {onBranchChange ? (
+          <Select value={branch ?? "all"} onValueChange={onBranchChange}>
             <SelectTrigger className="w-[150px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {BRANCHES.map((b) => (
+              <SelectItem value="all">All Branches</SelectItem>
+              {(branches ?? []).map((b) => (
                 <SelectItem key={b} value={b}>
                   {b}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+        ) : (
+          showBranch && (
+            <Select defaultValue="All Branches">
+              <SelectTrigger className="w-[150px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {BRANCHES.map((b) => (
+                  <SelectItem key={b} value={b}>
+                    {b}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )
         )}
         {onAmountSortChange ? (
           <>

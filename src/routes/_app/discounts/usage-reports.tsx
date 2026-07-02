@@ -8,7 +8,7 @@ import { EntriesFooter } from "@/components/billing/EntriesFooter";
 import { DiscountToolbar } from "@/components/discounts/DiscountToolbar";
 import { formatCurrency } from "@/components/discounts/types";
 import { exportToExcel } from "@/lib/export";
-import { useDiscountUsage } from "@/hooks/use-discounts";
+import { useDiscountBranches, useDiscountUsage } from "@/hooks/use-discounts";
 
 const PAGE_SIZE = 8;
 
