@@ -1,0 +1,242 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
+import { PageHeader } from "@/components/common/PageHeader";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Download, FileText, RefreshCw } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { useAttendanceReports } from "@/hooks/use-attendance";
+
+export const Route = createFileRoute("/_app/attendance/reports")({
+  head: () => ({
+    meta: [
+      { title: "Attendance Reports — HOMIQLO" },
+      {
+        name: "description",
+        content: "Downloadable summaries across periods.",
+      },
+    ],
+  }),
+  component: Page,
+});
+
+function Page() {
+  const [search, setSearch] = useState("");
+  const [period, setPeriod] = useState("monthly");
+  const [format, setFormat] = useState("pdf");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const { data: reports = [], isLoading, refetch } = useAttendanceReports(search);
+
+  const getFormatBadge = (format: string) => {
+    if (format === "PDF") {
+      return "bg-red-100 text-red-700";
+    }
+    return "bg-green-100 text-green-700";
+  };
+
+  const handleGenerateReport = async () => {
+    setIsGenerating(true);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      toast.success(`Report generated in ${format.toUpperCase()} format`);
+      await refetch();
+    } catch (error) {
+      toast.error("Failed to generate report");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleDownload = (reportName: string) => {
+    toast.success(`Downloading ${reportName}...`);
+    const link = document.createElement("a");
+    link.href = "#";
+    link.download = `${reportName.toLowerCase().replace(/\s+/g, "-")}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleRefresh = async () => {
+    await refetch();
+    toast.success("Reports refreshed");
+  };
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Attendance › Reports"
+        title="Attendance Reports"
+        description="Downloadable summaries across periods."
+        actions={
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" className="gap-2" onClick={handleRefresh}>
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </Button>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  size="sm"
+                  className="gap-2 bg-brand text-brand-foreground hover:bg-brand/90"
+                >
+                  <Download className="h-4 w-4" /> Generate Report
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Generate Attendance Report</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="period" className="text-sm font-medium">
+                      Period
+                    </Label>
+                    <Select value={period} onValueChange={setPeriod}>
+                      <SelectTrigger className="mt-1 h-10">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="weekly">Weekly</SelectItem>
+                        <SelectItem value="monthly">Monthly</SelectItem>
+                        <SelectItem value="quarterly">Quarterly</SelectItem>
+                        <SelectItem value="annual">Annual</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="format" className="text-sm font-medium">
+                      Format
+                    </Label>
+                    <Select value={format} onValueChange={setFormat}>
+                      <SelectTrigger className="mt-1 h-10">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pdf">PDF</SelectItem>
+                        <SelectItem value="excel">Excel</SelectItem>
+                        <SelectItem value="csv">CSV</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    onClick={handleGenerateReport}
+                    disabled={isGenerating}
+                    className="w-full bg-brand text-brand-foreground hover:bg-brand/90"
+                  >
+                    {isGenerating ? "Generating..." : "Generate"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        }
+      />
+
+      <Card className="border-border">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Available Reports
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Input
+            placeholder="Search reports by name..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-10"
+          />
+
+          <div className="rounded-lg border border-border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="h-10">Report Name</TableHead>
+                  <TableHead className="h-10">Period</TableHead>
+                  <TableHead className="h-10">Generated On</TableHead>
+                  <TableHead className="h-10">Format</TableHead>
+                  <TableHead className="h-10">Status</TableHead>
+                  <TableHead className="h-10 text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                      Loading...
+                    </TableCell>
+                  </TableRow>
+                ) : reports.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                      No reports found.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  reports.map((report) => (
+                    <TableRow key={report.id} className="hover:bg-muted/50">
+                      <TableCell className="py-3 font-medium">{report.reportName}</TableCell>
+                      <TableCell className="py-3 text-sm">{report.period}</TableCell>
+                      <TableCell className="py-3 text-sm text-muted-foreground">
+                        {report.generatedOn}
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-xs font-medium ${getFormatBadge(report.format)}`}
+                        >
+                          {report.format}
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                          {report.status}
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-3 text-right">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="gap-1"
+                          onClick={() => handleDownload(report.reportName)}
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Download
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="text-sm text-muted-foreground">Showing {reports.length} reports</div>
+        </CardContent>
+      </Card>
+    </>
+  );
+}

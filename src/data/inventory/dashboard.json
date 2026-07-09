@@ -1,0 +1,33 @@
+{
+  "stats": {
+    "totalProducts": 1284,
+    "totalCategories": 24,
+    "stockValue": "₹18.4L",
+    "lowStock": 18,
+    "outOfStock": 5
+  },
+  "stockMovement": [
+    { "d": "01", "inward": 120, "outward": 90 },
+    { "d": "03", "inward": 160, "outward": 110 },
+    { "d": "05", "inward": 140, "outward": 130 },
+    { "d": "07", "inward": 200, "outward": 150 },
+    { "d": "09", "inward": 240, "outward": 180 },
+    { "d": "11", "inward": 280, "outward": 210 },
+    { "d": "13", "inward": 320, "outward": 240 },
+    { "d": "15", "inward": 130, "outward": 160 },
+    { "d": "17", "inward": 190, "outward": 140 },
+    { "d": "19", "inward": 240, "outward": 200 },
+    { "d": "21", "inward": 210, "outward": 170 },
+    { "d": "23", "inward": 290, "outward": 230 },
+    { "d": "25", "inward": 340, "outward": 260 },
+    { "d": "27", "inward": 150, "outward": 130 },
+    { "d": "30", "inward": 180, "outward": 160 }
+  ],
+  "topCategories": [
+    { "name": "Apparel", "productCount": 342, "share": 28 },
+    { "name": "Electronics", "productCount": 218, "share": 18 },
+    { "name": "Groceries", "productCount": 456, "share": 36 },
+    { "name": "Accessories", "productCount": 168, "share": 13 },
+    { "name": "Home & Kitchen", "productCount": 100, "share": 5 }
+  ]
+}
