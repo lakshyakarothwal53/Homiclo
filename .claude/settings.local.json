@@ -29,7 +29,9 @@
       "Bash(ls -la .claude/skills)",
       "Bash(echo \"ESLINT_EXIT=$?\")",
       "Bash(pkill -f \"vite dev\")",
-      "Bash(echo \"MY_ESLINT_EXIT=$?\")"
+      "Bash(echo \"MY_ESLINT_EXIT=$?\")",
+      "Bash(bun install *)",
+      "Bash(git checkout *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\HP\\.claude\\projects\\c--Users-HP-Downloads-homiqlo-admin-hub-main-homiqlo-admin-hub-main\\memory"
