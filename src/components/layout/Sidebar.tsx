@@ -9,7 +9,11 @@ import { ROLE_LABEL, canSeeSection } from "@/lib/roles";
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { role } = useAuth();
-  const nav = role ? NAV.filter((g) => canSeeSection(role, g.label)) : NAV;
+  const nav = (role ? NAV.filter((g) => canSeeSection(role, g.label)) : NAV).map((g) =>
+    g.children && role
+      ? { ...g, children: g.children.filter((c) => !c.hiddenFor?.includes(role)) }
+      : g,
+  );
 
   const initiallyOpen = () => {
     const out: Record<string, boolean> = {};

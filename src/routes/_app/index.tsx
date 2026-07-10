@@ -85,86 +85,15 @@ function DashboardPage() {
   const stockAlertsQuery = useStockAlertsData();
   const loginsQuery = useEmployeeLogins(branch);
 
-  // Extract data from queries, with fallbacks
-  const stats = statsQuery.data || {
-    todaysSales: "₹ 4,38,210",
-    todaysSalesDelta: "+12.4% vs yesterday",
-    employeesPresent: "128 / 142",
-    employeesAttendanceHint: "90.1% attendance",
-    stockAlerts: 14,
-    stockAlertsDelta: "-3 since last week",
-    activeDiscounts: 9,
-    activeDiscountsHint: "3 campaigns expiring this week",
-  };
-
-  const salesData = salesChartQuery.data || [
-    { d: "Mon", sales: 42000, revenue: 31000 },
-    { d: "Tue", sales: 51000, revenue: 38000 },
-    { d: "Wed", sales: 47000, revenue: 34500 },
-    { d: "Thu", sales: 62000, revenue: 46000 },
-    { d: "Fri", sales: 71000, revenue: 53000 },
-    { d: "Sat", sales: 89000, revenue: 67000 },
-    { d: "Sun", sales: 76000, revenue: 58000 },
-  ];
-
-  const attendanceData = attendanceChartQuery.data || [
-    { d: "Mon", present: 124, late: 8, absent: 6 },
-    { d: "Tue", present: 131, late: 5, absent: 4 },
-    { d: "Wed", present: 128, late: 9, absent: 7 },
-    { d: "Thu", present: 134, late: 4, absent: 3 },
-    { d: "Fri", present: 119, late: 12, absent: 9 },
-    { d: "Sat", present: 96, late: 6, absent: 14 },
-    { d: "Sun", present: 58, late: 2, absent: 22 },
-  ];
-
-  const inventoryMix = inventoryMixQuery.data || [
-    { name: "Furniture", value: 38 },
-    { name: "Decor", value: 24 },
-    { name: "Lighting", value: 18 },
-    { name: "Kitchen", value: 12 },
-    { name: "Other", value: 8 },
-  ];
-
-  const recentTx = transactionsQuery.data || [
-    { id: "INV-20481", customer: "Riya Sharma", amount: "₹ 12,480", method: "UPI", status: "Paid" },
-    {
-      id: "INV-20480",
-      customer: "Karan Mehta",
-      amount: "₹  4,250",
-      method: "Card",
-      status: "Paid",
-    },
-    {
-      id: "INV-20479",
-      customer: "Anaya Iyer",
-      amount: "₹ 28,900",
-      method: "Cash",
-      status: "Pending",
-    },
-    { id: "INV-20478", customer: "Vikram Rao", amount: "₹  9,120", method: "UPI", status: "Paid" },
-    {
-      id: "INV-20477",
-      customer: "Meera Joshi",
-      amount: "₹  1,990",
-      method: "Card",
-      status: "Refunded",
-    },
-  ];
-
-  const stockAlerts = stockAlertsQuery.data || [
-    { sku: "HMQ-CHR-204", name: "Walnut Lounge Chair", left: 3, reorder: 10 },
-    { sku: "HMQ-LMP-012", name: "Arc Floor Lamp", left: 5, reorder: 15 },
-    { sku: "HMQ-DEC-118", name: "Ceramic Vase Set", left: 2, reorder: 20 },
-    { sku: "HMQ-KIT-077", name: "Cast Iron Skillet", left: 7, reorder: 25 },
-  ];
-
-  const loginStatus = loginsQuery.data || [
-    { name: "Priya Nair", role: "Cashier · Bandra", status: "online" },
-    { name: "Arjun Kapoor", role: "Floor Manager · Andheri", status: "online" },
-    { name: "Neha Singh", role: "Inventory · Powai", status: "idle" },
-    { name: "Rohan Das", role: "Cashier · Worli", status: "offline" },
-    { name: "Sara Khan", role: "Cashier · Bandra", status: "online" },
-  ];
+  // Live data only — while loading (or on error) widgets show placeholders/empty
+  // states, never mock rows.
+  const stats = statsQuery.data;
+  const salesData = salesChartQuery.data ?? [];
+  const attendanceData = attendanceChartQuery.data ?? [];
+  const inventoryMix = inventoryMixQuery.data ?? [];
+  const recentTx = transactionsQuery.data ?? [];
+  const stockAlerts = stockAlertsQuery.data ?? [];
+  const loginStatus = loginsQuery.data ?? [];
 
   return (
     <>
@@ -201,27 +130,27 @@ function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Sales Today"
-          value={stats.todaysSales}
-          delta={stats.todaysSalesDelta}
+          value={stats?.todaysSales ?? "—"}
+          delta={stats?.todaysSalesDelta}
           icon={IndianRupee}
         />
         <StatCard
           label="Employees Present"
-          value={stats.employeesPresent}
-          delta={stats.employeesAttendanceHint}
+          value={stats?.employeesPresent ?? "—"}
+          delta={stats?.employeesAttendanceHint}
           icon={Users}
         />
         <StatCard
           label="Stock Alerts"
-          value={stats.stockAlerts.toString()}
-          delta={stats.stockAlertsDelta}
+          value={stats ? stats.stockAlerts.toString() : "—"}
+          delta={stats?.stockAlertsDelta}
           trend="down"
           icon={AlertTriangle}
         />
         <StatCard
           label="Active Discounts"
-          value={stats.activeDiscounts.toString()}
-          hint={stats.activeDiscountsHint}
+          value={stats ? stats.activeDiscounts.toString() : "—"}
+          hint={stats?.activeDiscountsHint}
           icon={BadgePercent}
         />
       </div>
@@ -235,7 +164,8 @@ function DashboardPage() {
               <p className="text-xs text-muted-foreground">Last 7 days · Sales vs Revenue</p>
             </div>
             <Badge variant="secondary" className="gap-1 bg-secondary">
-              <ArrowUpRight className="h-3 w-3 text-brand" /> 18.2%
+              <ArrowUpRight className="h-3 w-3 text-brand" />
+              {`₹${salesData.reduce((s, d) => s + d.sales, 0).toLocaleString("en-IN")} this week`}
             </Badge>
           </CardHeader>
           <CardContent className="h-72">
@@ -398,6 +328,15 @@ function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {recentTx.length === 0 && (
+                    <tr className="border-t border-border">
+                      <td colSpan={5} className="px-5 py-8 text-center text-muted-foreground">
+                        {transactionsQuery.isLoading
+                          ? "Loading transactions…"
+                          : "No transactions yet."}
+                      </td>
+                    </tr>
+                  )}
                   {recentTx.map((t) => (
                     <tr key={t.id} className="border-t border-border">
                       <td className="px-5 py-3 font-mono text-xs">{t.id}</td>
@@ -434,6 +373,11 @@ function DashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {stockAlerts.length === 0 && (
+                <p className="py-4 text-center text-sm text-muted-foreground">
+                  {stockAlertsQuery.isLoading ? "Loading alerts…" : "No stock alerts."}
+                </p>
+              )}
               {stockAlerts.map((s) => (
                 <div key={s.sku} className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -456,6 +400,11 @@ function DashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {loginStatus.length === 0 && (
+                <p className="py-4 text-center text-sm text-muted-foreground">
+                  {loginsQuery.isLoading ? "Loading logins…" : "No recent logins."}
+                </p>
+              )}
               {loginStatus.map((u) => (
                 <div key={u.name} className="flex items-center gap-3">
                   <div className="relative">

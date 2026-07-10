@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card } from "@/components/ui/card";
@@ -20,6 +20,8 @@ import {
   useNextRefundNumber,
 } from "@/hooks/use-billing";
 import { viewSalesBillInvoice } from "@/lib/export-utils";
+import { downloadCsv } from "@/lib/pdf-utils";
+import { matchesDate } from "@/lib/report-data";
 import type { BillingSalesBill } from "@/types/billing";
 
 const REFUND_FIELDS: EntityField[] = [
@@ -44,12 +46,32 @@ export const Route = createFileRoute("/_app/billing/sales-bills")({
 });
 
 function Page() {
+  const router = useRouter();
+  const [search, setSearch] = useState("");
+  const [date, setDate] = useState("");
   const [branch, setBranch] = useState("all");
-  const { data: bills = [] } = useBillingSalesBills(undefined, branch);
+  const { data: allBills = [] } = useBillingSalesBills(search, branch);
   const { data: branches = [] } = useBillingBranches();
+  const bills = useMemo(
+    () => allBills.filter((b) => matchesDate(date, b.bill_date, b.date)),
+    [allBills, date],
+  );
   const { page, setPage, totalPages, pageItems } = usePagination(bills);
   const { data: nextRefund } = useNextRefundNumber();
   const createRefund = useCreateRefund();
+
+  function handleExport() {
+    if (bills.length === 0) {
+      toast.error("Nothing to export.");
+      return;
+    }
+    downloadCsv(
+      "sales-bills.csv",
+      ["Invoice", "Date", "Customer", "Amount", "Payment", "Status"],
+      bills.map((b) => [b.invoice, b.date, b.customer, b.amount, b.payment, b.status]),
+    );
+    toast.success(`Exported ${bills.length} sales bills.`);
+  }
 
   function handleRefund(bill: BillingSalesBill, v: EntityValues) {
     if (!nextRefund) {
@@ -137,7 +159,14 @@ function Page() {
         description="Sales Bills overview and controls."
       />
       <FilterBar
+        search={search}
+        onSearchChange={setSearch}
         searchPlaceholder="Search invoices..."
+        date={date}
+        onDateChange={setDate}
+        addLabel="Add New"
+        onAdd={() => router.navigate({ to: "/billing/create-invoice" })}
+        onExport={handleExport}
         branches={branches}
         branch={branch}
         onBranchChange={setBranch}

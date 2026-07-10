@@ -28,8 +28,9 @@ export function DiscountToolbar({
   onBranch: (v: string) => void;
   /** Branch names from the `branches` table (data-driven, "All Branches" is prepended). */
   branches: string[];
-  date: string;
-  onDate: (v: string) => void;
+  /** Omit both date/onDate when the underlying rows have no date to filter by. */
+  date?: string;
+  onDate?: (v: string) => void;
   onExport: () => void;
   addLabel?: string;
   /** Replaces the default Add button — e.g. a Dialog trigger. */
@@ -61,12 +62,14 @@ export function DiscountToolbar({
         </SelectContent>
       </Select>
 
-      <Input
-        type="date"
-        value={date}
-        onChange={(e) => onDate(e.target.value)}
-        className="h-9 w-full bg-card sm:w-44"
-      />
+      {onDate && (
+        <Input
+          type="date"
+          value={date ?? ""}
+          onChange={(e) => onDate(e.target.value)}
+          className="h-9 w-full bg-card sm:w-44"
+        />
+      )}
 
       <div className="flex items-center gap-2 sm:ml-auto">
         <Button variant="outline" size="sm" className="h-9 gap-2" onClick={onExport}>

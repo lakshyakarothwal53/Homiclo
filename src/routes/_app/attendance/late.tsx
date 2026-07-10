@@ -1,9 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -12,9 +19,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Download, AlertTriangle, RefreshCw, Clock } from "lucide-react";
+import { CalendarClock, Download, RefreshCw, Clock, X } from "lucide-react";
 import { toast } from "sonner";
 import { useLateArrivals } from "@/hooks/use-attendance";
+import { matchesDate, parseRowDate } from "@/lib/report-data";
 
 export const Route = createFileRoute("/_app/attendance/late")({
   head: () => ({
@@ -60,9 +68,37 @@ function EmployeeAvatar({ name, size = "sm" }: { name: string; size?: "sm" | "md
   );
 }
 
+const MONTH_KEY_FORMAT: Intl.DateTimeFormatOptions = { month: "long", year: "numeric" };
+
+function monthKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function Page() {
   const [search, setSearch] = useState("");
-  const { data: lateArrivals = [], isLoading, refetch } = useLateArrivals(search);
+  const [date, setDate] = useState("");
+  const [month, setMonth] = useState("all");
+  const { data: allLateArrivals = [], isLoading, refetch } = useLateArrivals(search);
+
+  const monthOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    allLateArrivals.forEach((late) => {
+      const d = parseRowDate(late.date);
+      if (!d) return;
+      const key = monthKey(d);
+      if (!seen.has(key)) seen.set(key, d.toLocaleDateString("en-US", MONTH_KEY_FORMAT));
+    });
+    return [...seen.entries()].sort(([a], [b]) => b.localeCompare(a));
+  }, [allLateArrivals]);
+
+  const lateArrivals = useMemo(() => {
+    return allLateArrivals.filter((late) => {
+      if (!matchesDate(date, late.date)) return false;
+      if (month === "all") return true;
+      const d = parseRowDate(late.date);
+      return d ? monthKey(d) === month : false;
+    });
+  }, [allLateArrivals, date, month]);
 
   const getLatenessColor = (minutes: number) => {
     if (minutes <= 15) return "text-yellow-600 bg-yellow-50";
@@ -166,12 +202,47 @@ function Page() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Input
-            placeholder="Search by employee name or branch..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-10"
-          />
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Input
+              placeholder="Search by employee name or branch..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-10 sm:flex-1"
+            />
+            <div className="flex items-center gap-1">
+              <Input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="h-10 w-full sm:w-44"
+              />
+              {!!date && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10 shrink-0"
+                  aria-label="Clear date filter"
+                  onClick={() => setDate("")}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            <Select value={month} onValueChange={setMonth}>
+              <SelectTrigger className="h-10 w-full sm:w-52">
+                <CalendarClock className="h-4 w-4 text-muted-foreground" />
+                <SelectValue placeholder="All months" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All months</SelectItem>
+                {monthOptions.map(([key, label]) => (
+                  <SelectItem key={key} value={key}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           <div className="rounded-lg border border-border overflow-x-auto">
             <Table>

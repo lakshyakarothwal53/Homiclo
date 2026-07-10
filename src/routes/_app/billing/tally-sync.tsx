@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { RefreshCw, Clock, AlertCircle } from "lucide-react";
@@ -8,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { StatusBadge } from "@/components/billing/StatusBadge";
 import { cn } from "@/lib/utils";
-import { useBillingDashboard, useBillingTallyLog } from "@/hooks/use-billing";
+import { useBillingTallyLog, useTallyStats, useTallySync } from "@/hooks/use-billing";
 import type { BillingTallyRow } from "@/types/billing";
 
 export const Route = createFileRoute("/_app/billing/tally-sync")({
@@ -81,17 +80,36 @@ function SyncStat({
 }
 
 function Page() {
-  const [syncing, setSyncing] = useState(false);
-  const { data: dashboard } = useBillingDashboard();
+  const { data: stats } = useTallyStats();
   const { data: log = [] } = useBillingTallyLog();
+  const tallySync = useTallySync();
+  const syncing = tallySync.isPending;
 
   const syncNow = () => {
-    setSyncing(true);
     toast.loading("Syncing with Tally...", { id: "tally" });
-    setTimeout(() => {
-      setSyncing(false);
-      toast.success("Sync complete · 3 vouchers pushed", { id: "tally" });
-    }, 1400);
+    tallySync.mutate(undefined, {
+      onSuccess: ({ pushed, failed }) => {
+        if (pushed === 0 && failed === 0) {
+          toast.success("Everything already synced — no pending vouchers.", { id: "tally" });
+        } else if (failed === 0) {
+          toast.success(`Sync complete · ${pushed} voucher${pushed !== 1 ? "s" : ""} pushed`, {
+            id: "tally",
+          });
+        } else {
+          toast.warning(
+            `${pushed} pushed, ${failed} failed — check the Tally server in Settings › Tally.`,
+            { id: "tally" },
+          );
+        }
+      },
+      onError: (e) =>
+        toast.error(
+          e instanceof Error
+            ? `${e.message} — run supabase/13_completion_pack.sql to enable the sync log.`
+            : "Sync failed.",
+          { id: "tally" },
+        ),
+    });
   };
 
   return (
@@ -105,22 +123,22 @@ function Page() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <SyncStat
           label="Synced Today"
-          value={dashboard?.tallySyncedToday ?? "—"}
-          hint={dashboard?.tallySyncedHint ?? ""}
+          value={stats ? String(stats.syncedToday) : "—"}
+          hint={stats ? `${stats.syncedTotal} vouchers synced in total` : ""}
           icon={RefreshCw}
           tone="success"
         />
         <SyncStat
           label="Pending Sync"
-          value={dashboard?.tallyPendingSync ?? "—"}
-          hint={dashboard?.tallyPendingHint ?? ""}
+          value={stats ? String(stats.pending) : "—"}
+          hint={stats ? "Sales bills not yet pushed to Tally" : ""}
           icon={Clock}
           tone="warning"
         />
         <SyncStat
           label="Failed"
-          value={dashboard?.tallyFailed ?? "—"}
-          hint={dashboard?.tallyFailedHint ?? ""}
+          value={stats ? String(stats.failed) : "—"}
+          hint={stats ? "Attempts that could not reach Tally" : ""}
           icon={AlertCircle}
           tone="danger"
         />

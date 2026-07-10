@@ -26,7 +26,12 @@ import {
   Cell,
 } from "recharts";
 import { toast } from "sonner";
-import { useAttendanceDashboard, useLateArrivals, useAbsentRecords } from "@/hooks/use-attendance";
+import {
+  useAttendanceDashboard,
+  useLateArrivals,
+  useAbsentRecords,
+  useAttendanceTrend,
+} from "@/hooks/use-attendance";
 
 export const Route = createFileRoute("/_app/attendance/")({
   head: () => ({
@@ -76,30 +81,17 @@ function Page() {
   const { data: dashboard, refetch: refetchDashboard, isRefetching } = useAttendanceDashboard();
   const { data: lateArrivals = [], refetch: refetchLate } = useLateArrivals();
   const { data: absentRecords = [], refetch: refetchAbsent } = useAbsentRecords();
+  const { data: attendanceTrendData = [] } = useAttendanceTrend();
 
   const handleRefresh = async () => {
     await Promise.all([refetchDashboard(), refetchLate(), refetchAbsent()]);
     toast.success("Data refreshed successfully");
   };
 
-  const attendanceTrendData = [
-    { day: "Mon", present: 48, absent: 8, late: 4 },
-    { day: "Tue", present: 50, absent: 6, late: 4 },
-    { day: "Wed", present: 47, absent: 9, late: 4 },
-    { day: "Thu", present: 51, absent: 5, late: 4 },
-    { day: "Fri", present: 49, absent: 7, late: 4 },
-    { day: "Sat", present: 45, absent: 11, late: 4 },
-  ];
-
-  const departmentData = dashboard?.departmentAttendance?.map((dept) => ({
+  const departmentData = (dashboard?.departmentAttendance ?? []).map((dept) => ({
     name: dept.department,
     value: parseInt(dept.percentage),
-  })) || [
-    { name: "Sales", value: 92 },
-    { name: "Operations", value: 88 },
-    { name: "HR", value: 95 },
-    { name: "IT", value: 91 },
-  ];
+  }));
 
   const COLORS = ["#22c55e", "#f97316", "#ef4444", "#3b82f6"];
 
@@ -135,12 +127,20 @@ function Page() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Present Today"
-          value={dashboard?.stats.presentToday ?? "—"}
+          value={dashboard ? String(dashboard.stats.presentToday) : "—"}
           icon={Users}
           trend="up"
         />
-        <StatCard label="Absent" value={dashboard?.stats.absentToday ?? "—"} icon={AlertCircle} />
-        <StatCard label="Late Arrivals" value={dashboard?.stats.lateToday ?? "—"} icon={Clock} />
+        <StatCard
+          label="Absent"
+          value={dashboard ? String(dashboard.stats.absentToday) : "—"}
+          icon={AlertCircle}
+        />
+        <StatCard
+          label="Late Arrivals"
+          value={dashboard ? String(dashboard.stats.lateToday) : "—"}
+          icon={Clock}
+        />
         <StatCard
           label="Avg Attendance"
           value={dashboard?.stats.averageAttendance ?? "—"}
@@ -151,7 +151,7 @@ function Page() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mt-6">
         <Card className="border-border">
           <CardHeader>
-            <CardTitle className="text-base">30-Day Attendance Trend</CardTitle>
+            <CardTitle className="text-base">Attendance Trend (Last 7 Days)</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>

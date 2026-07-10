@@ -4,9 +4,42 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Edit2, Trash2 } from "lucide-react";
-import { useEmployeeProfile, useDeleteEmployee } from "@/hooks/use-employees";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  EntityFormDialog,
+  type EntityField,
+  type EntityValues,
+} from "@/components/inventory/EntityFormDialog";
+import { ArrowLeft, Download, Edit2, Trash2 } from "lucide-react";
+import { useEmployeeProfile, useDeleteEmployee, useUpdateEmployee } from "@/hooks/use-employees";
+import { fetchEmployeeAttendanceSummary } from "@/lib/report-data";
+import { buildTablePdf, downloadPdf } from "@/lib/pdf-utils";
+import type { EmployeeRole, EmployeeStatus } from "@/types/employees";
 import { toast } from "sonner";
+
+const BRANCHES = ["Bandra", "Andheri", "Powai", "Worli", "Fort", "Dadar"];
+const ROLES = ["Cashier", "Floor Manager", "Inventory", "Supervisor", "Admin"];
+const STATUSES = ["Active", "Inactive", "Suspended"];
+
+const EDIT_FIELDS: EntityField[] = [
+  { key: "name", label: "Name", required: true },
+  { key: "email", label: "Email", required: true },
+  { key: "phone", label: "Phone", required: true },
+  { key: "role", label: "Role", type: "select", options: ROLES, required: true },
+  { key: "branch", label: "Branch", type: "select", options: BRANCHES, required: true },
+  { key: "status", label: "Status", type: "select", options: STATUSES, required: true },
+  { key: "salary", label: "Salary", required: true },
+];
 
 export const Route = createFileRoute("/_app/employees/profile")({
   head: () => ({
@@ -39,7 +72,8 @@ function EmployeeProfilePage() {
   const { id } = useSearch({ from: "/_app/employees/profile" });
   const { data: profile, isLoading } = useEmployeeProfile(id);
   const { mutate: deleteEmployee, isPending: isDeleting } = useDeleteEmployee();
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const { mutate: updateEmployee } = useUpdateEmployee();
+  const [editOpen, setEditOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -80,6 +114,48 @@ function EmployeeProfilePage() {
     });
   };
 
+  const handleEditSave = (values: EntityValues) => {
+    updateEmployee(
+      {
+        id: profile.id,
+        name: String(values.name),
+        email: String(values.email),
+        phone: String(values.phone),
+        role: values.role as EmployeeRole,
+        branch: String(values.branch),
+        joinDate: profile.joinDate,
+        status: values.status as EmployeeStatus,
+        salary: String(values.salary),
+      },
+      {
+        onSuccess: () => toast.success("Employee updated successfully"),
+        onError: (error) => toast.error(`Failed to update employee: ${error.message}`),
+      },
+    );
+  };
+
+  const handleDownloadAttendance = async () => {
+    try {
+      const data = await fetchEmployeeAttendanceSummary(profile.id);
+      const rows =
+        data.rows.length > 0
+          ? data.rows
+          : [["No check-in records found for this employee yet.", "", "", "", ""]];
+      downloadPdf(
+        buildTablePdf({
+          title: `Attendance Summary — ${profile.name}`,
+          subtitle: `${profile.role} · ${profile.branch}`,
+          columns: data.columns,
+          rows,
+        }),
+        `attendance-summary-${profile.name.toLowerCase().replace(/\s+/g, "-")}`,
+      );
+      toast.success("Attendance summary downloaded.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not generate attendance summary.");
+    }
+  };
+
   return (
     <>
       <PageHeader
@@ -96,40 +172,51 @@ function EmployeeProfilePage() {
             >
               <ArrowLeft className="h-4 w-4" /> Back
             </Button>
-            <Button variant="outline" size="sm" className="gap-2">
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => setEditOpen(true)}>
               <Edit2 className="h-4 w-4" /> Edit
             </Button>
-            {showDeleteConfirm && (
-              <div className="absolute right-0 top-full mt-2 bg-white border rounded shadow-lg p-3">
-                <p className="text-sm mb-2">Delete employee?</p>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    className="bg-red-500 hover:bg-red-600"
-                    onClick={() => {
-                      handleDelete();
-                      setShowDeleteConfirm(false);
-                    }}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 text-red-500 hover:text-red-600"
+                >
+                  <Trash2 className="h-4 w-4" /> Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete "{profile.name}"?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This permanently removes the employee. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-white hover:bg-destructive/90"
+                    onClick={handleDelete}
                     disabled={isDeleting}
                   >
                     Delete
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setShowDeleteConfirm(false)}>
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2 text-red-500 hover:text-red-600"
-              onClick={() => setShowDeleteConfirm(!showDeleteConfirm)}
-            >
-              <Trash2 className="h-4 w-4" /> Delete
-            </Button>
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         }
+      />
+
+      <EntityFormDialog
+        mode="edit"
+        title="Edit Employee"
+        description="Update this employee's details."
+        fields={EDIT_FIELDS}
+        initial={profile}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSave={handleEditSave}
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -189,8 +276,11 @@ function EmployeeProfilePage() {
       </div>
 
       <Card className="border-border">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Attendance Summary</CardTitle>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleDownloadAttendance}>
+            <Download className="h-4 w-4" /> Download
+          </Button>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">

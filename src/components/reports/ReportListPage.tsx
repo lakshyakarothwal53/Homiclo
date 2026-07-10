@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Download, Plus, Search } from "lucide-react";
+import { Download, Eye, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card } from "@/components/ui/card";
@@ -20,11 +20,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  EntityFormDialog,
+  type EntityField,
+  type EntityValues,
+} from "@/components/inventory/EntityFormDialog";
 import { cn } from "@/lib/utils";
-import { useReportBranches, useReports } from "@/hooks/use-reports";
-import type { ReportCategory } from "@/types/reports";
+import { useCreateReport, useReportBranches, useReports } from "@/hooks/use-reports";
+import { buildTablePdf, downloadCsv, downloadPdf, openPdf } from "@/lib/pdf-utils";
+import { fetchNamedReport, fetchReportData, matchesDate } from "@/lib/report-data";
+import type { ReportCategory, ReportRow } from "@/types/reports";
 
 const PAGE_SIZE = 8;
+
+const ADD_REPORT_FIELDS: EntityField[] = [
+  { key: "name", label: "Report Name", required: true, placeholder: "Weekly Summary" },
+  {
+    key: "type",
+    label: "Type",
+    type: "select",
+    options: ["Daily", "Weekly", "Monthly", "Quarterly", "Yearly", "Custom"],
+    required: true,
+  },
+  { key: "period", label: "Period", required: true, placeholder: "Jul 2026" },
+];
+
+const longDate = (d: Date) =>
+  `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })} ${d.getFullYear()}`;
 
 export function ReportListPage({
   eyebrow,
@@ -41,20 +63,89 @@ export function ReportListPage({
   const [branch, setBranch] = useState<string>("All Branches");
   const [date, setDate] = useState("");
   const [page, setPage] = useState(1);
+  const [addOpen, setAddOpen] = useState(false);
 
   const { data: rows = [] } = useReports(category, branch);
   const { data: branches = [] } = useReportBranches();
+  const createReport = useCreateReport(category);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) => r.name.toLowerCase().includes(q) || r.type.toLowerCase().includes(q));
-  }, [query, rows]);
+    return rows.filter(
+      (r) =>
+        (!q || r.name.toLowerCase().includes(q) || r.type.toLowerCase().includes(q)) &&
+        matchesDate(date, r.generated, r.period),
+    );
+  }, [query, date, rows]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const current = Math.min(page, pageCount);
   const start = (current - 1) * PAGE_SIZE;
   const visible = filtered.slice(start, start + PAGE_SIZE);
+
+  const reportOpts = () => ({
+    branch: branch === "All Branches" ? undefined : branch,
+  });
+
+  async function handleExport() {
+    try {
+      const data = await fetchReportData(category, reportOpts());
+      if (data.rows.length === 0) {
+        toast.error("No live data to export for this category.");
+        return;
+      }
+      downloadCsv(`${category}-report-export`, data.columns, data.rows);
+      toast.success(`Exported ${data.rows.length} rows of live ${category} data.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export failed.");
+    }
+  }
+
+  async function buildRowPdf(r: ReportRow) {
+    const data = await fetchNamedReport(category, r.name, reportOpts());
+    if (data.rows.length === 0) {
+      throw new Error("No live data available for this report.");
+    }
+    return buildTablePdf({ title: r.name, subtitle: `${r.type} · ${r.period}`, ...data });
+  }
+
+  async function handleView(r: ReportRow) {
+    try {
+      openPdf(await buildRowPdf(r));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not open report.");
+    }
+  }
+
+  async function handleDownload(r: ReportRow) {
+    try {
+      downloadPdf(await buildRowPdf(r), r.name.toLowerCase().replace(/\s+/g, "-"));
+      toast.success(`Downloaded "${r.name}".`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not download report.");
+    }
+  }
+
+  function handleAdd(v: EntityValues) {
+    createReport.mutate(
+      {
+        name: String(v.name),
+        type: String(v.type),
+        period: String(v.period),
+        generated: longDate(new Date()),
+        size: "—",
+      },
+      {
+        onSuccess: () => toast.success(`Report "${v.name}" added.`),
+        onError: (e) =>
+          toast.error(
+            e instanceof Error
+              ? `${e.message} — run supabase/13_completion_pack.sql to enable report writes.`
+              : "Could not add report.",
+          ),
+      },
+    );
+  }
 
   return (
     <>
@@ -64,23 +155,28 @@ export function ReportListPage({
         description={description}
         actions={
           <>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2"
-              onClick={() => toast.success("Exporting all reports…")}
-            >
+            <Button variant="outline" size="sm" className="gap-2" onClick={handleExport}>
               <Download className="h-4 w-4" /> Export
             </Button>
             <Button
               size="sm"
               className="gap-2 bg-brand text-brand-foreground hover:bg-brand/90"
-              onClick={() => toast.info("Generate a new report")}
+              onClick={() => setAddOpen(true)}
             >
               <Plus className="h-4 w-4" /> Add New
             </Button>
           </>
         }
+      />
+
+      <EntityFormDialog
+        mode="add"
+        title={`New ${title}`}
+        description="Register a report; View/Download always render it from live data."
+        fields={ADD_REPORT_FIELDS}
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onSave={handleAdd}
       />
 
       {/* Toolbar */}
@@ -113,9 +209,17 @@ export function ReportListPage({
         <Input
           type="date"
           value={date}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={(e) => {
+            setDate(e.target.value);
+            setPage(1);
+          }}
           className="sm:w-44"
         />
+        {!!date && (
+          <Button variant="ghost" size="sm" onClick={() => setDate("")}>
+            Clear date
+          </Button>
+        )}
       </div>
 
       {/* Table */}
@@ -147,14 +251,24 @@ export function ReportListPage({
                   <TableCell className="text-muted-foreground">{r.generated}</TableCell>
                   <TableCell className="text-muted-foreground">{r.size}</TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-2"
-                      onClick={() => toast.success(`Downloading “${r.name}”`)}
-                    >
-                      <Download className="h-3.5 w-3.5" /> Download
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => handleView(r)}
+                      >
+                        <Eye className="h-3.5 w-3.5" /> View
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => handleDownload(r)}
+                      >
+                        <Download className="h-3.5 w-3.5" /> Download
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { PlaceholderPage } from "@/components/common/PlaceholderPage";
+import { ScanLine } from "lucide-react";
+import { PageHeader } from "@/components/common/PageHeader";
+import { ScannerView } from "@/components/pos/ScannerView";
 
 export const Route = createFileRoute("/_app/pos/scanner")({
   head: () => ({
@@ -13,10 +15,17 @@ export const Route = createFileRoute("/_app/pos/scanner")({
 
 function Page() {
   return (
-    <PlaceholderPage
-      eyebrow="POS"
-      title="Scanner"
-      description="Barcode and QR scanning workstation."
-    />
+    <>
+      <PageHeader
+        eyebrow="POS"
+        title="Scanner"
+        description="Barcode and QR scanning workstation."
+      />
+      <ScannerView
+        icon={ScanLine}
+        label="Scanner"
+        instruction="Point the camera at a product barcode"
+      />
+    </>
   );
 }

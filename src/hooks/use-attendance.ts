@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { inRange, parseRowDate } from "@/lib/report-data";
 import type {
   AbsentRecord,
   AttendanceDashboard,
@@ -21,17 +22,214 @@ function like(value: string) {
   return `%${value}%`;
 }
 
+// Overview stats are computed live from employees + employee_checkins +
+// late_arrivals + absent_records (the attendance_dashboard seed row is no
+// longer used — it went stale the moment real check-ins started).
 export function useAttendanceDashboard() {
   return useQuery({
     queryKey: ["attendance", "dashboard"],
     queryFn: async (): Promise<AttendanceDashboard> => {
-      const { data, error } = await supabase.from("attendance_dashboard").select("data").single();
-      if (error) {
-        console.error("Supabase error fetching dashboard:", error);
-        throw error;
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const todayLabel = new Date().toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+
+      const { data: employees, error: empError } = await supabase
+        .from("employees")
+        .select("id, role");
+      if (empError) throw empError;
+      const totalEmployees = employees?.length ?? 0;
+
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 6);
+      const { data: checkins, error: chkError } = await supabase
+        .from("employee_checkins")
+        .select("employee_id, check_date, check_type")
+        .eq("check_type", "check-in")
+        .gte("check_date", weekAgo.toISOString().slice(0, 10));
+      if (chkError) throw chkError;
+
+      const presentToday = new Set(
+        (checkins ?? []).filter((c) => c.check_date === todayIso).map((c) => c.employee_id),
+      ).size;
+
+      const { data: lateRows } = await supabase
+        .from("late_arrivals")
+        .select(
+          "id, date, employee_id, employee_name, check_in_time, lateness_minutes, branch, status",
+        );
+      const lateToday = (lateRows ?? []).filter((l) => l.date === todayLabel).length;
+
+      const { data: absentRows } = await supabase
+        .from("absent_records")
+        .select("id")
+        .eq("date", todayLabel);
+      const onLeave = absentRows?.length ?? 0;
+
+      // Average attendance over the last 7 days of check-ins.
+      const byDay = new Map<string, Set<string>>();
+      (checkins ?? []).forEach((c) => {
+        if (!byDay.has(c.check_date)) byDay.set(c.check_date, new Set());
+        byDay.get(c.check_date)!.add(c.employee_id);
+      });
+      const daysWithData = [...byDay.values()];
+      const averageAttendance =
+        totalEmployees > 0 && daysWithData.length > 0
+          ? `${Math.round(
+              (daysWithData.reduce((s, day) => s + day.size, 0) /
+                (daysWithData.length * totalEmployees)) *
+                100,
+            )}%`
+          : "0%";
+
+      // Department breakdown: % of each designation's headcount that checked
+      // in at least once in the last 7 days. This must stay inside the
+      // attendance-tracking dataset's own employee_id space (EMP0xx codes
+      // shared by daily_logs/late_arrivals/absent_records/live_tracking/
+      // employee_checkins) — the separate `employees` table uses unrelated
+      // uuids and names, so joining against it here always produced 0%.
+      const [designationRows, liveDesignationRows, rosterRows] = await Promise.all([
+        supabase.from("absent_records").select("employee_id, designation"),
+        supabase.from("live_tracking").select("employee_id, designation"),
+        supabase.from("daily_logs").select("employee_id"),
+      ]);
+      const designationMap = new Map<string, string>();
+      (designationRows.data ?? []).forEach((r) => designationMap.set(r.employee_id, r.designation));
+      (liveDesignationRows.data ?? []).forEach((r) =>
+        designationMap.set(r.employee_id, r.designation),
+      );
+      const roster = [...new Set((rosterRows.data ?? []).map((r) => r.employee_id))];
+
+      const attendedEmployeeIds = new Set((checkins ?? []).map((c) => c.employee_id));
+      const roleTotals = new Map<string, number>();
+      const roleAttended = new Map<string, number>();
+      roster.forEach((id) => {
+        const dept = designationMap.get(id) ?? "Unassigned";
+        roleTotals.set(dept, (roleTotals.get(dept) ?? 0) + 1);
+        if (attendedEmployeeIds.has(id)) {
+          roleAttended.set(dept, (roleAttended.get(dept) ?? 0) + 1);
+        }
+      });
+      const departmentAttendance = [...roleTotals.entries()].map(([department, total]) => ({
+        department,
+        percentage: String(
+          total > 0 ? Math.round(((roleAttended.get(department) ?? 0) / total) * 100) : 0,
+        ),
+      }));
+
+      return {
+        stats: {
+          totalEmployees,
+          presentToday,
+          absentToday: Math.max(0, totalEmployees - presentToday),
+          lateToday,
+          averageAttendance,
+          onLeave,
+        },
+        recentLateArrivals: (lateRows ?? []).slice(0, 5).map((l) => ({
+          id: l.id,
+          date: l.date,
+          employeeId: l.employee_id,
+          employeeName: l.employee_name,
+          checkInTime: l.check_in_time,
+          latenessMinutes: l.lateness_minutes,
+          branch: l.branch,
+          status: l.status,
+        })) as AttendanceDashboard["recentLateArrivals"],
+        departmentAttendance,
+      };
+    },
+  });
+}
+
+const LATE_CUTOFF_MINUTES = 9 * 60 + 15; // 09:15 AM shift start + grace
+
+// "09:31 AM" → minutes since midnight, or null when unparseable.
+function parseTimeToMinutes(raw: unknown): number | null {
+  if (typeof raw !== "string") return null;
+  const m = raw.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const mer = m[3]?.toUpperCase();
+  if (mer === "PM" && h !== 12) h += 12;
+  if (mer === "AM" && h === 12) h = 0;
+  return h * 60 + min;
+}
+
+export interface AttendanceTrendPoint {
+  day: string;
+  present: number;
+  late: number;
+  absent: number;
+}
+
+// Day-by-day present/late/absent for a true trailing 7-calendar-day window
+// (today back 6 days), built from employee_checkins. Scoped to the roster
+// size seen in daily_logs (the attendance module's own employee_id space;
+// see the department-breakdown comment in useAttendanceDashboard for why
+// this can't be cross-referenced against the `employees` table). Days with
+// no check-in rows still render as a bar (0 present, roster absent) — the
+// window is fixed at 7 real days, not however many distinct dates happen to
+// have data.
+export function useAttendanceTrend() {
+  return useQuery({
+    queryKey: ["attendance", "trend"],
+    queryFn: async (): Promise<AttendanceTrendPoint[]> => {
+      const { data: rosterRows, error: rosterError } = await supabase
+        .from("daily_logs")
+        .select("employee_id");
+      if (rosterError) throw rosterError;
+      const totalRoster = new Set((rosterRows ?? []).map((r) => r.employee_id)).size;
+
+      const last7Dates: string[] = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        last7Dates.push(d.toISOString().slice(0, 10));
       }
-      console.log("Dashboard data from Supabase:", data);
-      return data.data as AttendanceDashboard;
+
+      const { data: checkins, error } = await supabase
+        .from("employee_checkins")
+        .select("employee_id, check_date, check_time")
+        .eq("check_type", "check-in")
+        .gte("check_date", last7Dates[0])
+        .lte("check_date", last7Dates[last7Dates.length - 1]);
+      if (error) throw error;
+
+      const byDate = new Map<string, { employee_id: string; check_time: string | null }[]>();
+      (checkins ?? []).forEach((c) => {
+        if (!byDate.has(c.check_date)) byDate.set(c.check_date, []);
+        byDate.get(c.check_date)!.push(c);
+      });
+
+      return last7Dates.map((date) => {
+        const rows = byDate.get(date) ?? [];
+        const firstCheckin = new Map<string, number>();
+        rows.forEach((c) => {
+          const mins = parseTimeToMinutes(c.check_time);
+          if (mins === null) return;
+          const prev = firstCheckin.get(c.employee_id);
+          if (prev === undefined || mins < prev) firstCheckin.set(c.employee_id, mins);
+        });
+        const uniquePresent = new Set(rows.map((c) => c.employee_id)).size;
+        const lateCount = [...firstCheckin.values()].filter(
+          (mins) => mins > LATE_CUTOFF_MINUTES,
+        ).length;
+        const day = new Date(date + "T00:00:00").toLocaleDateString("en-US", {
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+        });
+        return {
+          day,
+          present: Math.max(0, uniquePresent - lateCount),
+          late: lateCount,
+          absent: Math.max(0, totalRoster - uniquePresent),
+        };
+      });
     },
   });
 }
@@ -58,24 +256,97 @@ export function useDailyLogs(search?: string) {
   });
 }
 
-export function useEmployeeAttendance(search?: string) {
+export type AttendancePeriodOpts = { from?: string; to?: string };
+
+/**
+ * Roster (id/name/designation/branch) comes from employee_attendance — that
+ * part is static reference data, not a date-scoped fact. The present/absent/
+ * late/leave counts and attendance % are computed live from daily_logs
+ * (per-day status per employee) and absent_records (leave_type), scoped to
+ * the selected period — the stored employee_attendance totals have no date
+ * column at all, so they can't answer "for this month" and are only used
+ * here for roster identity, never for the counts.
+ */
+export function useEmployeeAttendance(search?: string, opts: AttendancePeriodOpts = {}) {
   return useQuery({
-    queryKey: ["attendance", "employee", search ?? ""],
+    queryKey: ["attendance", "employee", search ?? "", opts.from ?? "", opts.to ?? ""],
     queryFn: async (): Promise<EmployeeAttendance[]> => {
-      let query = supabase
+      let rosterQuery = supabase
         .from("employee_attendance")
-        .select(
-          "id, employeeId:employee_id, employeeName:employee_name, designation, branch, totalPresent:total_present, totalAbsent:total_absent, totalLate:total_late, totalLeave:total_leave, attendancePercentage:attendance_percentage, lastCheckIn:last_check_in",
-        );
+        .select("employee_id, employee_name, designation, branch, last_check_in");
       if (search)
-        query = query.or(`employee_name.ilike.${like(search)},employee_id.ilike.${like(search)}`);
-      const { data, error } = await query;
-      if (error) {
-        console.error("Error fetching employee attendance from Supabase:", error);
-        throw error;
-      }
-      console.log("Employee attendance loaded from Supabase:", data);
-      return data as unknown as EmployeeAttendance[];
+        rosterQuery = rosterQuery.or(
+          `employee_name.ilike.${like(search)},employee_id.ilike.${like(search)}`,
+        );
+      const { data: roster, error: rosterError } = await rosterQuery;
+      if (rosterError) throw rosterError;
+
+      const { data: logs, error: logsError } = await supabase
+        .from("daily_logs")
+        .select("employee_id, date, status");
+      if (logsError) throw logsError;
+
+      const { data: leaves, error: leavesError } = await supabase
+        .from("absent_records")
+        .select("employee_id, date, leave_type");
+      if (leavesError) throw leavesError;
+
+      const inWindow = (date: string) => inRange(parseRowDate(date), opts.from, opts.to);
+
+      const countsByEmployee = new Map<
+        string,
+        { present: number; absent: number; late: number; leave: number }
+      >();
+      (logs ?? [])
+        .filter((l) => inWindow(l.date))
+        .forEach((l) => {
+          const c = countsByEmployee.get(l.employee_id) ?? {
+            present: 0,
+            absent: 0,
+            late: 0,
+            leave: 0,
+          };
+          if (l.status === "Present") c.present += 1;
+          else if (l.status === "Late") c.late += 1;
+          else if (l.status === "Absent") c.absent += 1;
+          countsByEmployee.set(l.employee_id, c);
+        });
+      (leaves ?? [])
+        .filter((l) => l.leave_type && inWindow(l.date))
+        .forEach((l) => {
+          const c = countsByEmployee.get(l.employee_id) ?? {
+            present: 0,
+            absent: 0,
+            late: 0,
+            leave: 0,
+          };
+          c.leave += 1;
+          countsByEmployee.set(l.employee_id, c);
+        });
+
+      return (roster ?? []).map((r) => {
+        const c = countsByEmployee.get(r.employee_id) ?? {
+          present: 0,
+          absent: 0,
+          late: 0,
+          leave: 0,
+        };
+        const totalTracked = c.present + c.absent + c.late;
+        const attendancePercentage =
+          totalTracked > 0 ? `${((c.present / totalTracked) * 100).toFixed(2)}%` : "0.00%";
+        return {
+          employeeId: r.employee_id,
+          employeeName: r.employee_name,
+          designation: r.designation,
+          branch: r.branch,
+          totalPresent: c.present,
+          totalAbsent: c.absent,
+          totalLate: c.late,
+          totalLeave: c.leave,
+          attendancePercentage,
+          lastCheckIn: r.last_check_in ?? undefined,
+        } satisfies EmployeeAttendance;
+      });
     },
   });
 }
@@ -124,6 +395,39 @@ export function useAbsentRecords(search?: string) {
   });
 }
 
+export type AbsentRecordInput = {
+  date: string;
+  employeeId: string;
+  employeeName: string;
+  designation: string;
+  branch: string;
+  leaveType: string;
+  reason: string;
+};
+
+export function useCreateAbsentRecord() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: AbsentRecordInput): Promise<AbsentRecordInput> => {
+      const { error } = await supabase.from("absent_records").insert({
+        date: input.date,
+        employee_id: input.employeeId,
+        employee_name: input.employeeName,
+        designation: input.designation,
+        branch: input.branch,
+        leave_type: input.leaveType,
+        reason: input.reason,
+        status: "Absent",
+      });
+      if (error) throw error;
+      return input;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["attendance"] });
+    },
+  });
+}
+
 export function useLiveTracking(search?: string) {
   return useQuery({
     queryKey: ["attendance", "live-tracking", search ?? ""],
@@ -161,6 +465,33 @@ export function useAttendanceReports(search?: string) {
       }
       console.log("Attendance reports loaded from Supabase:", data);
       return data as unknown as AttendanceReport[];
+    },
+  });
+}
+
+export function useCreateAttendanceReport() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { reportName: string; period: string; format: string }) => {
+      const generatedOn = new Date().toLocaleString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const { error } = await supabase.from("attendance_reports").insert({
+        report_name: input.reportName,
+        period: input.period,
+        generated_on: generatedOn,
+        format: input.format,
+        status: "Ready",
+      });
+      if (error) throw error;
+      return input;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["attendance", "reports"] });
     },
   });
 }
@@ -274,9 +605,9 @@ export function useOfficeLocations() {
   return useQuery({
     queryKey: ["attendance", "office-locations"],
     queryFn: async (): Promise<OfficeLocation[]> => {
-      const { data, error } = await supabase.from("office_locations").select(
-        "id, name, branch, latitude, longitude, radius_meters:radiusMeters, address",
-      );
+      const { data, error } = await supabase
+        .from("office_locations")
+        .select("id, name, branch, latitude, longitude, radiusMeters:radius_meters, address");
       if (error) {
         console.error("Error fetching office locations:", error);
         throw error;
@@ -294,7 +625,7 @@ export function useEmployeeCheckins(employeeId: string, checkDate?: string) {
       let query = supabase
         .from("employee_checkins")
         .select(
-          "id, employee_id:employeeId, employee_name:employeeName, branch, check_date:checkDate, check_type:checkType, check_time:checkTime, latitude, longitude, geofence_verified:geofenceVerified, distance_from_office_m:distanceFromOfficeM, geofence_error_message:geofenceErrorMessage, status, notes",
+          "id, employeeId:employee_id, employeeName:employee_name, branch, checkDate:check_date, checkType:check_type, checkTime:check_time, latitude, longitude, geofenceVerified:geofence_verified, distanceFromOfficeM:distance_from_office_m, geofenceErrorMessage:geofence_error_message, status, notes",
         )
         .eq("employee_id", employeeId);
 
@@ -322,7 +653,7 @@ export function useEmployeeMonthlySummary(employeeId: string, year?: number, mon
       const { data, error } = await supabase
         .from("employee_monthly_summary")
         .select(
-          "id, employee_id:employeeId, employee_name:employeeName, branch, year, month, working_days:workingDays, present_days:presentDays, absent_days:absentDays, late_days:lateDays, leave_days:leaveDays, attendance_percentage:attendancePercentage",
+          "id, employeeId:employee_id, employeeName:employee_name, branch, year, month, workingDays:working_days, presentDays:present_days, absentDays:absent_days, lateDays:late_days, leaveDays:leave_days, attendancePercentage:attendance_percentage",
         )
         .eq("employee_id", employeeId)
         .eq("year", defaultYear)

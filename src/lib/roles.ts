@@ -77,8 +77,14 @@ export function allowedPathPrefixes(role: Role): string[] {
 }
 
 export function canAccessPath(role: Role, pathname: string): boolean {
-  if (ROLE_ACCESS[role].includes("*")) return true;
   const path = pathname !== "/" && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+  // Leaf-level exclusions: NAV items marked hiddenFor a role are also
+  // unreachable by typing their URL (e.g. Super Admin's personal pages).
+  const hiddenLeaf = NAV.some((g) =>
+    g.children?.some((c) => c.hiddenFor?.includes(role) && path === c.to),
+  );
+  if (hiddenLeaf) return false;
+  if (ROLE_ACCESS[role].includes("*")) return true;
   return allowedPathPrefixes(role).some((root) =>
     root === "/" ? path === "/" : path === root || path.startsWith(root + "/"),
   );

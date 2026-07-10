@@ -254,8 +254,8 @@ function Page() {
                 {currentLocation && (
                   <div className="bg-green-50 dark:bg-green-950 p-3 rounded-lg border border-green-200 dark:border-green-800">
                     <p className="text-xs text-green-900 dark:text-green-100">
-                      <strong>Coordinates:</strong>{" "}
-                      {currentLocation.latitude.toFixed(6)}, {currentLocation.longitude.toFixed(6)}
+                      <strong>Coordinates:</strong> {currentLocation.latitude.toFixed(6)},{" "}
+                      {currentLocation.longitude.toFixed(6)}
                     </p>
                     <p className="text-xs text-green-900 dark:text-green-100 mt-1">
                       <strong>Distance from office:</strong> {distanceText}
@@ -323,7 +323,9 @@ function Page() {
 
                 <Button
                   onClick={() => handleCheckIn("check-out")}
-                  disabled={submitCheckin.isPending || !currentLocation || !hasCheckedIn || hasCheckedOut}
+                  disabled={
+                    submitCheckin.isPending || !currentLocation || !hasCheckedIn || hasCheckedOut
+                  }
                   className="bg-orange-600 hover:bg-orange-700 text-white"
                 >
                   {submitCheckin.isPending ? (

@@ -6,8 +6,16 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatINR } from "@/components/pos/products";
-import { usePosProducts } from "@/hooks/use-pos";
+import { useCreatePosTransaction, useNextPosInvoiceNumber, usePosProducts } from "@/hooks/use-pos";
+import { useAuth } from "@/components/auth/AuthProvider";
 import type { PosProduct } from "@/types/pos";
 
 export const Route = createFileRoute("/_app/pos/")({
@@ -26,10 +34,14 @@ const DISCOUNT_RATE = 0.1;
 type CartLine = { product: PosProduct; qty: number };
 
 function Page() {
+  const { user } = useAuth();
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [paymentMode, setPaymentMode] = useState("UPI");
 
   const { data: visible = [] } = usePosProducts(query.trim() || undefined);
+  const { data: nextInvoice } = useNextPosInvoiceNumber();
+  const createTransaction = useCreatePosTransaction();
 
   const addToCart = (product: PosProduct) =>
     setCart((prev) => {
@@ -45,6 +57,33 @@ function Page() {
   const discount = Math.round(subtotal * DISCOUNT_RATE);
   const gst = Math.round((subtotal - discount) * GST_RATE);
   const total = subtotal - discount + gst;
+
+  function handleCheckout() {
+    if (!nextInvoice) {
+      toast.error("Still loading invoice number, try again.");
+      return;
+    }
+    const now = new Date();
+    const time = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+    createTransaction.mutate(
+      {
+        invoice: nextInvoice,
+        time,
+        items: itemCount,
+        amount: formatINR(total),
+        payment: paymentMode,
+        cashier: user?.name ?? "Unknown",
+        status: "Completed",
+      },
+      {
+        onSuccess: () => {
+          toast.success(`Payment of ${formatINR(total)} completed · ${nextInvoice}`);
+          setCart([]);
+        },
+        onError: (e) => toast.error(e instanceof Error ? e.message : "Payment failed."),
+      },
+    );
+  }
 
   return (
     <>
@@ -163,9 +202,23 @@ function Page() {
                 <span className="text-xl font-bold text-foreground">{formatINR(total)}</span>
               </div>
 
+              <div className="mt-4">
+                <Select value={paymentMode} onValueChange={setPaymentMode}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="UPI">UPI</SelectItem>
+                    <SelectItem value="Cash">Cash</SelectItem>
+                    <SelectItem value="Card">Card</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <Button
-                className="mt-5 w-full bg-brand text-brand-foreground hover:bg-brand/90"
-                onClick={() => toast.success(`Payment of ${formatINR(total)} initiated`)}
+                className="mt-3 w-full bg-brand text-brand-foreground hover:bg-brand/90"
+                disabled={createTransaction.isPending}
+                onClick={handleCheckout}
               >
                 Proceed to Payment
               </Button>

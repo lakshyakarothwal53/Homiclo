@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -67,6 +67,7 @@ function toAlert(v: EntityValues): LowStockAlert {
 }
 
 function Page() {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [branch, setBranch] = useState("all");
   const { data = [], isLoading } = useLowStockAlerts(search, branch);
@@ -75,6 +76,14 @@ function Page() {
 
   const updateAlert = useUpdateLowStockAlert();
   const deleteAlert = useDeleteLowStockAlert();
+
+  // Reordering means creating a real stock-inward record (qty/supplier/cost
+  // aren't knowable from the alert row alone), so send the user to the form
+  // that actually creates one instead of faking the action here.
+  function handleReorder(alert: LowStockAlert) {
+    toast.info(`Create a stock-inward entry for ${alert.product} (${alert.sku}).`);
+    router.navigate({ to: "/inventory/stock-inward" });
+  }
 
   function handleUpdate(originalSku: string, v: EntityValues) {
     const row = toAlert(v);
@@ -132,7 +141,7 @@ function Page() {
                 <Button
                   size="sm"
                   className="bg-brand text-brand-foreground hover:bg-brand/90"
-                  onClick={() => toast.success(`Reorder raised for ${r.product}`)}
+                  onClick={() => handleReorder(r)}
                 >
                   Reorder
                 </Button>

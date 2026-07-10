@@ -13,7 +13,32 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Download, Eye } from "lucide-react";
+import { toast } from "sonner";
 import { useEmployeeReports } from "@/hooks/use-employees";
+import { buildTablePdf, downloadPdf, openPdf } from "@/lib/pdf-utils";
+import { fetchMonthlyPayroll, fetchReportData } from "@/lib/report-data";
+import type { ReportData } from "@/lib/report-data";
+import type { ReportCategory } from "@/types/reports";
+
+// Pick the live dataset a report renders from, based on its name. Payroll
+// gets its own real calculator (base salary × attendance); "sales" only
+// matches actual sales-named reports so "Performance Review" (an HR
+// evaluation, unrelated to invoices) doesn't get routed to billing data.
+async function fetchForReport(reportName: string): Promise<ReportData> {
+  if (/payroll/i.test(reportName)) return fetchMonthlyPayroll();
+  const category: ReportCategory = /attendance/i.test(reportName)
+    ? "attendance"
+    : /sales/i.test(reportName)
+      ? "sales"
+      : "employee";
+  return fetchReportData(category);
+}
+
+async function buildReportPdf(reportName: string, period: string) {
+  const data = await fetchForReport(reportName);
+  if (data.rows.length === 0) throw new Error("No live data available for this report.");
+  return buildTablePdf({ title: reportName, subtitle: period, ...data });
+}
 
 export const Route = createFileRoute("/_app/employees/reports")({
   head: () => ({
@@ -40,17 +65,24 @@ function ReportsPage() {
     setCurrentPage(Math.max(1, Math.min(page, totalPages)));
   };
 
-  const handleDownload = (reportName: string) => {
-    const element = document.createElement("a");
-    element.setAttribute(
-      "href",
-      "data:text/plain;charset=utf-8," + encodeURIComponent("Report data"),
-    );
-    element.setAttribute("download", `${reportName}.pdf`);
-    element.style.display = "none";
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
+  const handleView = async (reportName: string, period: string) => {
+    try {
+      openPdf(await buildReportPdf(reportName, period));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not open report.");
+    }
+  };
+
+  const handleDownload = async (reportName: string, period: string) => {
+    try {
+      downloadPdf(
+        await buildReportPdf(reportName, period),
+        reportName.toLowerCase().replace(/\s+/g, "-"),
+      );
+      toast.success(`Downloaded "${reportName}".`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not download report.");
+    }
   };
 
   return (
@@ -81,7 +113,9 @@ function ReportsPage() {
         <Card className="border-border">
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Current Period</p>
-            <p className="text-lg font-medium">Jul 2026</p>
+            <p className="text-lg font-medium">
+              {new Date().toLocaleString("en-US", { month: "short", year: "numeric" })}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -137,7 +171,7 @@ function ReportsPage() {
                             size="sm"
                             variant="outline"
                             className="gap-2"
-                            onClick={() => window.open(`#`, "_blank")}
+                            onClick={() => handleView(report.report, report.period)}
                           >
                             <Eye className="h-4 w-4" /> View
                           </Button>
@@ -145,7 +179,7 @@ function ReportsPage() {
                             size="sm"
                             variant="outline"
                             className="gap-2"
-                            onClick={() => handleDownload(report.report)}
+                            onClick={() => handleDownload(report.report, report.period)}
                           >
                             <Download className="h-4 w-4" /> Download
                           </Button>

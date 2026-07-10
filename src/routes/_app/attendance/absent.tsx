@@ -30,7 +30,8 @@ import {
 } from "@/components/ui/table";
 import { Download, UserX, RefreshCw, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { useAbsentRecords } from "@/hooks/use-attendance";
+import { useAbsentRecords, useCreateAbsentRecord } from "@/hooks/use-attendance";
+import { useEmployees } from "@/hooks/use-employees";
 
 export const Route = createFileRoute("/_app/attendance/absent")({
   head: () => ({
@@ -81,6 +82,8 @@ function Page() {
   const [openDialog, setOpenDialog] = useState(false);
   const [formData, setFormData] = useState({ employee: "", date: "", type: "", reason: "" });
   const { data: absentRecords = [], isLoading, refetch } = useAbsentRecords(search);
+  const { data: employees = [] } = useEmployees();
+  const createAbsent = useCreateAbsentRecord();
 
   const getLeaveTypeColor = (type?: string) => {
     switch (type) {
@@ -144,10 +147,36 @@ function Page() {
       toast.error("Please fill in all required fields");
       return;
     }
-    toast.success("Absent record added successfully");
-    setOpenDialog(false);
-    setFormData({ employee: "", date: "", type: "", reason: "" });
-    refetch();
+    const emp = employees.find((e) => e.id === formData.employee);
+    if (!emp) {
+      toast.error("Select a valid employee.");
+      return;
+    }
+    const dateLabel = new Date(formData.date + "T00:00:00").toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    createAbsent.mutate(
+      {
+        date: dateLabel,
+        employeeId: emp.id,
+        employeeName: emp.name,
+        designation: emp.role,
+        branch: emp.branch,
+        leaveType: formData.type,
+        reason: formData.reason,
+      },
+      {
+        onSuccess: () => {
+          toast.success(`Absent record added for ${emp.name}.`);
+          setOpenDialog(false);
+          setFormData({ employee: "", date: "", type: "", reason: "" });
+        },
+        onError: (e) =>
+          toast.error(e instanceof Error ? e.message : "Could not add absent record."),
+      },
+    );
   };
 
   const handleRefresh = async () => {
@@ -196,10 +225,11 @@ function Page() {
                         <SelectValue placeholder="Select employee" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="emp-001">John Smith</SelectItem>
-                        <SelectItem value="emp-002">Jane Doe</SelectItem>
-                        <SelectItem value="emp-003">Mike Johnson</SelectItem>
-                        <SelectItem value="emp-004">Sarah Williams</SelectItem>
+                        {employees.map((e) => (
+                          <SelectItem key={e.id} value={e.id}>
+                            {e.name} · {e.branch}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>

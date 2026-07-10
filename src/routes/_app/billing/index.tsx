@@ -60,7 +60,7 @@ function Page() {
           icon={BarChart3}
         />
         <StatCard
-          label="Refunds"
+          label="Refunds Today"
           value={dashboard?.refunds ?? "—"}
           hint={dashboard?.refundsHint}
           icon={RotateCcw}

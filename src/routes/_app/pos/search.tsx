@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card } from "@/components/ui/card";
@@ -22,48 +22,61 @@ export const Route = createFileRoute("/_app/pos/search")({
   component: Page,
 });
 
-const columns: Column<PosProduct>[] = [
-  {
-    key: "sku",
-    header: "SKU",
-    render: (r) => <span className="font-mono text-xs">{r.sku}</span>,
-  },
-  { key: "name", header: "Product", render: (r) => <span className="font-medium">{r.name}</span> },
-  {
-    key: "category",
-    header: "Category",
-    render: (r) => <span className="text-muted-foreground">{r.category}</span>,
-  },
-  { key: "price", header: "Price", render: (r) => formatINR(r.price) },
-  {
-    key: "stock",
-    header: "Stock",
-    render: (r) => (
-      <span className={r.stock <= 10 ? "font-medium text-brand" : "text-foreground"}>
-        {r.stock}
-      </span>
-    ),
-  },
-  {
-    key: "action",
-    header: "Action",
-    render: (r) => (
-      <Button
-        size="sm"
-        className="bg-brand text-brand-foreground hover:bg-brand/90"
-        onClick={() => toast.success(`${r.name} added to cart`)}
-      >
-        Add to Cart
-      </Button>
-    ),
-  },
-];
-
 function Page() {
+  const router = useRouter();
+  const [search, setSearch] = useState("");
   const [branch, setBranch] = useState("all");
-  const { data: rows = [] } = usePosProducts(undefined, branch);
+  const { data: rows = [] } = usePosProducts(search, branch);
   const { data: branches = [] } = usePosBranches();
   const { page, setPage, totalPages, pageItems } = usePagination(rows);
+
+  // The cart lives on the POS Dashboard, not this search page — "Add to
+  // Cart" here sends the cashier there to complete the sale.
+  function goToCart(product: PosProduct) {
+    toast.info(`Add ${product.name} to the cart on POS Dashboard.`);
+    router.navigate({ to: "/pos" });
+  }
+
+  const columns: Column<PosProduct>[] = [
+    {
+      key: "sku",
+      header: "SKU",
+      render: (r) => <span className="font-mono text-xs">{r.sku}</span>,
+    },
+    {
+      key: "name",
+      header: "Product",
+      render: (r) => <span className="font-medium">{r.name}</span>,
+    },
+    {
+      key: "category",
+      header: "Category",
+      render: (r) => <span className="text-muted-foreground">{r.category}</span>,
+    },
+    { key: "price", header: "Price", render: (r) => formatINR(r.price) },
+    {
+      key: "stock",
+      header: "Stock",
+      render: (r) => (
+        <span className={r.stock <= 10 ? "font-medium text-brand" : "text-foreground"}>
+          {r.stock}
+        </span>
+      ),
+    },
+    {
+      key: "action",
+      header: "Action",
+      render: (r) => (
+        <Button
+          size="sm"
+          className="bg-brand text-brand-foreground hover:bg-brand/90"
+          onClick={() => goToCart(r)}
+        >
+          Add to Cart
+        </Button>
+      ),
+    },
+  ];
 
   return (
     <>
@@ -73,9 +86,9 @@ function Page() {
         description="Search overview and controls."
       />
       <FilterBar
-        searchPlaceholder="Search..."
-        addLabel="Add New"
-        onAdd={() => toast.info("Open new product form")}
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search by name or SKU..."
         branches={branches}
         branch={branch}
         onBranchChange={setBranch}

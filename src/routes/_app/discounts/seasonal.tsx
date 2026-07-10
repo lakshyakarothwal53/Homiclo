@@ -20,6 +20,7 @@ import { StatusBadge } from "@/components/discounts/StatusBadge";
 import { downloadCsv } from "@/components/discounts/types";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
 import { usePagination } from "@/hooks/use-pagination";
+import { parseRowDate } from "@/lib/report-data";
 import {
   useDiscountBranches,
   useDiscountSeasonal,
@@ -77,11 +78,19 @@ function Page() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return seasons;
-    return seasons.filter(
-      (r) => r.season.toLowerCase().includes(q) || r.offer.toLowerCase().includes(q),
-    );
-  }, [query, seasons]);
+    return seasons.filter((r) => {
+      if (q && !r.season.toLowerCase().includes(q) && !r.offer.toLowerCase().includes(q)) {
+        return false;
+      }
+      if (date) {
+        const on = new Date(date).getTime();
+        const from = parseRowDate(r.validFrom);
+        const to = parseRowDate(r.validTo);
+        if (from && to && (on < from.getTime() || on > to.getTime())) return false;
+      }
+      return true;
+    });
+  }, [query, date, seasons]);
 
   const { page, setPage, totalPages, pageItems } = usePagination(filtered);
 

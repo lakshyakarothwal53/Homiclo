@@ -14,9 +14,10 @@ import { FilterBar } from "@/components/inventory/FilterBar";
 import { InventoryStatusBadge } from "@/components/inventory/InventoryStatusBadge";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Upload } from "lucide-react";
+import { Barcode } from "lucide-react";
 import { calculateProductStatus } from "@/lib/inventory-utils";
 import { exportProductsToCSV } from "@/lib/export-utils";
+import { printBarcodes } from "@/lib/barcode-utils";
 import type { Product } from "@/types/inventory";
 import {
   useBranches,
@@ -160,6 +161,22 @@ function Page() {
         eyebrow="Inventory"
         title="Products"
         description="Products overview and controls."
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => {
+              if (filteredByPrice.length === 0) {
+                toast.error("No products to print.");
+                return;
+              }
+              printBarcodes(filteredByPrice);
+            }}
+          >
+            <Barcode className="h-4 w-4" /> Print Barcodes
+          </Button>
+        }
       />
       <FilterBar
         search={search}
@@ -218,6 +235,12 @@ function Page() {
             </TableCell>
             <TableCell className="px-5 py-3 text-right">
               <div className="flex items-center justify-end gap-4">
+                <button
+                  className="text-sm font-medium text-muted-foreground hover:text-brand hover:underline"
+                  onClick={() => printBarcodes([p])}
+                >
+                  Barcode
+                </button>
                 <ProductFormDialog
                   mode="edit"
                   title="Edit Product"

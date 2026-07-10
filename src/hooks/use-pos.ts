@@ -53,6 +53,22 @@ export function usePosBranches() {
   });
 }
 
+export function useNextPosInvoiceNumber() {
+  return useQuery({
+    queryKey: ["pos", "next-invoice-number"],
+    queryFn: async (): Promise<string> => {
+      const { data, error } = await supabase
+        .from("pos_transactions")
+        .select("invoice")
+        .order("invoice", { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      const lastNum = data?.[0]?.invoice ? parseInt(data[0].invoice.replace(/\D/g, ""), 10) : 10248;
+      return `INV-${lastNum + 1}`;
+    },
+  });
+}
+
 export function useCreatePosTransaction() {
   const queryClient = useQueryClient();
   return useMutation({

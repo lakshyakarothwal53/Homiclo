@@ -40,7 +40,19 @@ const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
 
 const displayDate = (d: Date) => `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })}`;
 
-let nextId = 3;
+let nextId = 2;
+
+const DRAFT_KEY = "homiqlo_invoice_draft";
+
+type Draft = {
+  customer: string;
+  mobile: string;
+  gstNumber: string;
+  dob: string;
+  invoiceDate: string;
+  paymentMode: string;
+  items: LineItem[];
+};
 
 function Page() {
   const router = useRouter();
@@ -48,13 +60,41 @@ function Page() {
   const [mobile, setMobile] = useState("");
   const [gstNumber, setGstNumber] = useState("");
   const [dob, setDob] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [paymentMode, setPaymentMode] = useState("UPI");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [debouncedName, setDebouncedName] = useState("");
   const [items, setItems] = useState<LineItem[]>([
-    { id: 1, product: "Cotton T-Shirt L", qty: 2, rate: 599, tax: 18 },
-    { id: 2, product: "Wireless Earbuds", qty: 1, rate: 2499, tax: 18 },
+    { id: 1, product: "", qty: 1, rate: 0, tax: 18 },
   ]);
+
+  // Restore a saved draft once on mount.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw) as Draft;
+      setCustomer(d.customer ?? "");
+      setMobile(d.mobile ?? "");
+      setGstNumber(d.gstNumber ?? "");
+      setDob(d.dob ?? "");
+      if (d.invoiceDate) setInvoiceDate(d.invoiceDate);
+      setPaymentMode(d.paymentMode ?? "UPI");
+      if (Array.isArray(d.items) && d.items.length > 0) {
+        setItems(d.items);
+        nextId = Math.max(...d.items.map((i) => i.id)) + 1;
+      }
+      toast.info("Draft restored.");
+    } catch {
+      /* corrupt draft — start fresh */
+    }
+  }, []);
+
+  function saveDraft() {
+    const draft: Draft = { customer, mobile, gstNumber, dob, invoiceDate, paymentMode, items };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    toast.success("Draft saved — it will be restored next time you open this page.");
+  }
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedName(customer), 300);
@@ -108,19 +148,25 @@ function Page() {
       return;
     }
 
-    const now = new Date();
-    const isoDate = now.toISOString().slice(0, 10);
-    const dateLabel = displayDate(now);
+    const chosen = invoiceDate ? new Date(invoiceDate + "T00:00:00") : new Date();
+    const isoDate = invoiceDate || new Date().toISOString().slice(0, 10);
+    const dateLabel = displayDate(chosen);
     const amount = inr(total);
     const gstin = gstNumber.trim();
 
     try {
-      await upsertCustomer.mutateAsync({
-        mobile: mobile.trim(),
-        name: customer,
-        gst: gstin || null,
-        dob: dob || null,
-      });
+      // Customer master is optional infrastructure (supabase/13_completion_pack.sql).
+      // Never let a missing customers table block invoice generation.
+      try {
+        await upsertCustomer.mutateAsync({
+          mobile: mobile.trim(),
+          name: customer,
+          gst: gstin || null,
+          dob: dob || null,
+        });
+      } catch (customerError) {
+        console.warn("Customer save skipped:", customerError);
+      }
 
       await createInvoice.mutateAsync({
         invoice: nextInvoice,
@@ -159,6 +205,7 @@ function Page() {
         });
       }
 
+      localStorage.removeItem(DRAFT_KEY);
       toast.success(`Invoice ${nextInvoice} generated · ${amount}`);
       router.navigate({ to: "/billing/payments" });
     } catch (e) {
@@ -231,11 +278,12 @@ function Page() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="inv-date">Invoice Date</Label>
-              <Input id="inv-date" type="date" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="due-date">Due Date</Label>
-              <Input id="due-date" type="date" />
+              <Input
+                id="inv-date"
+                type="date"
+                value={invoiceDate}
+                onChange={(e) => setInvoiceDate(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="payment-mode">Payment Mode</Label>
@@ -336,7 +384,7 @@ function Page() {
           </div>
 
           <div className="mt-6 flex justify-end gap-2">
-            <Button variant="outline" onClick={() => toast.success("Draft saved")}>
+            <Button variant="outline" onClick={saveDraft}>
               Save Draft
             </Button>
             <Button

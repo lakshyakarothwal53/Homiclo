@@ -33,6 +33,23 @@ export function useEmployees(search?: string, branch?: string) {
   });
 }
 
+// 09:15 AM shift start + grace, matching the cutoff used elsewhere (Dashboard
+// attendance chart, Attendance Overview trend).
+const LATE_CUTOFF_MINUTES = 9 * 60 + 15;
+const ATTENDANCE_WINDOW_DAYS = 30;
+
+function parseTimeToMinutes(raw: unknown): number | null {
+  if (typeof raw !== "string") return null;
+  const m = raw.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const mer = m[3]?.toUpperCase();
+  if (mer === "PM" && h !== 12) h += 12;
+  if (mer === "AM" && h === 12) h = 0;
+  return h * 60 + min;
+}
+
 export function useEmployeeProfile(employeeId?: string) {
   return useQuery({
     queryKey: ["employees", "profile", employeeId ?? ""],
@@ -44,14 +61,40 @@ export function useEmployeeProfile(employeeId?: string) {
         .eq("id", employeeId)
         .single();
       if (error) throw error;
+
+      // Real attendance for this specific employee over the last 30 days —
+      // previously hardcoded to 18/2/3/90% identically for every employee.
+      const since = new Date();
+      since.setDate(since.getDate() - (ATTENDANCE_WINDOW_DAYS - 1));
+      const { data: checkins } = await supabase
+        .from("employee_checkins")
+        .select("check_date, check_time")
+        .eq("employee_id", employeeId)
+        .eq("check_type", "check-in")
+        .gte("check_date", since.toISOString().slice(0, 10));
+
+      const firstCheckinByDate = new Map<string, number>();
+      (checkins ?? []).forEach((c) => {
+        const mins = parseTimeToMinutes(c.check_time);
+        if (mins === null) return;
+        const prev = firstCheckinByDate.get(c.check_date);
+        if (prev === undefined || mins < prev) firstCheckinByDate.set(c.check_date, mins);
+      });
+      const daysPresent = new Set((checkins ?? []).map((c) => c.check_date)).size;
+      const daysLate = [...firstCheckinByDate.values()].filter(
+        (m) => m > LATE_CUTOFF_MINUTES,
+      ).length;
+      const daysAbsent = Math.max(0, ATTENDANCE_WINDOW_DAYS - daysPresent);
+      const attendanceRate = `${Math.round((daysPresent / ATTENDANCE_WINDOW_DAYS) * 100)}%`;
+
       return {
         ...data,
         address: "Not set",
         emergencyContact: "Not set",
-        daysPresent: 18,
-        daysAbsent: 2,
-        daysLate: 3,
-        attendanceRate: "90%",
+        daysPresent,
+        daysAbsent,
+        daysLate,
+        attendanceRate,
       } as unknown as EmployeeProfile;
     },
   });

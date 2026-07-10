@@ -16,6 +16,18 @@ import {
 } from "@/components/ui/select";
 import { DEPARTMENTS, EXPORT_FORMATS, REPORT_TYPES } from "@/components/reports/data";
 import { useReportBranches } from "@/hooks/use-reports";
+import { buildTablePdf, downloadCsv, downloadPdf, openPdf } from "@/lib/pdf-utils";
+import { fetchReportData } from "@/lib/report-data";
+import type { ReportCategory } from "@/types/reports";
+
+const TYPE_TO_CATEGORY: Record<string, ReportCategory> = {
+  Sales: "sales",
+  Attendance: "attendance",
+  Employee: "employee",
+  Inventory: "inventory",
+  "Discount Performance": "discount",
+  Financial: "financial",
+};
 
 export const Route = createFileRoute("/_app/reports/export")({
   head: () => ({
@@ -37,6 +49,53 @@ function Page() {
 
   const { data: branchNames = [] } = useReportBranches();
   const branchOptions = ["All", ...branchNames];
+
+  async function loadData() {
+    const category = TYPE_TO_CATEGORY[reportType] ?? "sales";
+    const data = await fetchReportData(category, {
+      from: fromDate || undefined,
+      to: toDate || undefined,
+      branch: branch === "All" ? undefined : branch,
+    });
+    if (data.rows.length === 0) {
+      throw new Error("No data matches the selected filters.");
+    }
+    return data;
+  }
+
+  const subtitle = () => {
+    const parts = [branch !== "All" ? branch : "All branches", department];
+    if (fromDate || toDate) parts.push(`${fromDate || "…"} → ${toDate || "…"}`);
+    return parts.join(" · ");
+  };
+
+  async function handlePreview() {
+    try {
+      const data = await loadData();
+      openPdf(buildTablePdf({ title: `${reportType} Report`, subtitle: subtitle(), ...data }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Preview failed.");
+    }
+  }
+
+  async function handleGenerate() {
+    try {
+      const data = await loadData();
+      const filename = `${reportType.toLowerCase().replace(/\s+/g, "-")}-report`;
+      if (format.startsWith("PDF")) {
+        downloadPdf(
+          buildTablePdf({ title: `${reportType} Report`, subtitle: subtitle(), ...data }),
+          filename,
+        );
+      } else {
+        // Excel opens CSV natively; keep a single robust text format.
+        downloadCsv(filename, data.columns, data.rows);
+      }
+      toast.success(`${reportType} report generated (${data.rows.length} rows).`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Generate failed.");
+    }
+  }
 
   return (
     <>
@@ -119,16 +178,12 @@ function Page() {
           </div>
 
           <div className="mt-6 flex justify-end gap-2">
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={() => toast.info(`Previewing ${reportType} report`)}
-            >
+            <Button variant="outline" className="gap-2" onClick={handlePreview}>
               <Eye className="h-4 w-4" /> Preview
             </Button>
             <Button
               className="gap-2 bg-brand text-brand-foreground hover:bg-brand/90"
-              onClick={() => toast.success(`Generating ${reportType} report as ${format}…`)}
+              onClick={handleGenerate}
             >
               <Download className="h-4 w-4" /> Generate &amp; Download
             </Button>

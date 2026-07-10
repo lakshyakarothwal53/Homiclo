@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import { toast } from "sonner";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card } from "@/components/ui/card";
 import { FilterBar } from "@/components/billing/FilterBar";
@@ -48,8 +47,10 @@ const columns: Column<PosTransaction>[] = [
 ];
 
 function Page() {
+  const router = useRouter();
+  const [search, setSearch] = useState("");
   const [branch, setBranch] = useState("all");
-  const { data: txns = [] } = usePosTransactions(undefined, branch);
+  const { data: txns = [] } = usePosTransactions(search, branch);
   const { data: branches = [] } = usePosBranches();
   const { page, setPage, totalPages, pageItems } = usePagination(txns);
 
@@ -61,9 +62,11 @@ function Page() {
         description="Transactions overview and controls."
       />
       <FilterBar
-        searchPlaceholder="Search..."
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search invoice or cashier..."
         addLabel="Add New"
-        onAdd={() => toast.info("Start a new sale from the POS Dashboard")}
+        onAdd={() => router.navigate({ to: "/pos" })}
         branches={branches}
         branch={branch}
         onBranchChange={setBranch}

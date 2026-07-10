@@ -84,7 +84,7 @@ export async function signIn(email: string, password: string): Promise<SessionUs
           name: employeeMatch.name,
           initials: employeeMatch.name
             .split(" ")
-            .map((n) => n[0])
+            .map((n: string) => n[0])
             .join("")
             .toUpperCase(),
           role: "employee",

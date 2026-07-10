@@ -1,9 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -12,9 +19,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Download, RefreshCw, CheckCircle, Clock, XCircle } from "lucide-react";
+import {
+  CalendarClock,
+  Download,
+  FileDown,
+  RefreshCw,
+  CheckCircle,
+  Clock,
+  XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useDailyLogs } from "@/hooks/use-attendance";
+import { buildTablePdf, downloadPdf } from "@/lib/pdf-utils";
+import { parseRowDate } from "@/lib/report-data";
 
 export const Route = createFileRoute("/_app/attendance/logs")({
   head: () => ({
@@ -60,9 +77,35 @@ function EmployeeAvatar({ name, size = "sm" }: { name: string; size?: "sm" | "md
   );
 }
 
+const MONTH_KEY_FORMAT: Intl.DateTimeFormatOptions = { month: "long", year: "numeric" };
+
+function monthKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function Page() {
   const [search, setSearch] = useState("");
-  const { data: logs = [], isLoading, refetch } = useDailyLogs(search);
+  const [month, setMonth] = useState("all");
+  const { data: allLogs = [], isLoading, refetch } = useDailyLogs(search);
+
+  const monthOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    allLogs.forEach((log) => {
+      const d = parseRowDate(log.date);
+      if (!d) return;
+      const key = monthKey(d);
+      if (!seen.has(key)) seen.set(key, d.toLocaleDateString("en-US", MONTH_KEY_FORMAT));
+    });
+    return [...seen.entries()].sort(([a], [b]) => b.localeCompare(a));
+  }, [allLogs]);
+
+  const logs = useMemo(() => {
+    if (month === "all") return allLogs;
+    return allLogs.filter((log) => {
+      const d = parseRowDate(log.date);
+      return d ? monthKey(d) === month : false;
+    });
+  }, [allLogs, month]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -87,6 +130,8 @@ function Page() {
         return <Clock className="h-4 w-4 text-orange-600" />;
       case "Absent":
         return <XCircle className="h-4 w-4 text-red-600" />;
+      case "Leave":
+        return <CalendarClock className="h-4 w-4 text-blue-600" />;
       default:
         return null;
     }
@@ -136,6 +181,32 @@ function Page() {
     toast.success("Logs exported successfully");
   };
 
+  const handleDownloadPdf = () => {
+    if (logs.length === 0) {
+      toast.error("No data to download");
+      return;
+    }
+    const monthLabel =
+      month === "all" ? "All months" : monthOptions.find(([k]) => k === month)?.[1];
+    const doc = buildTablePdf({
+      title: "Attendance Daily Logs",
+      subtitle: monthLabel,
+      columns: ["Employee", "ID", "Date", "Check-In", "Check-Out", "Status", "Branch", "Location"],
+      rows: logs.map((log) => [
+        log.employeeName,
+        log.id,
+        log.date,
+        log.checkInTime || "—",
+        log.checkOutTime || "—",
+        log.status,
+        log.branch,
+        log.location || "—",
+      ]),
+    });
+    downloadPdf(doc, `attendance-daily-logs-${new Date().toISOString().split("T")[0]}`);
+    toast.success("Daily logs downloaded.");
+  };
+
   const handleRefresh = async () => {
     await refetch();
     toast.success("Data refreshed");
@@ -154,7 +225,10 @@ function Page() {
               Refresh
             </Button>
             <Button size="sm" variant="outline" className="gap-2" onClick={handleExport}>
-              <Download className="h-4 w-4" /> Export
+              <Download className="h-4 w-4" /> Export CSV
+            </Button>
+            <Button size="sm" variant="outline" className="gap-2" onClick={handleDownloadPdf}>
+              <FileDown className="h-4 w-4" /> Download PDF
             </Button>
           </div>
         }
@@ -165,18 +239,35 @@ function Page() {
           <CardTitle className="text-base">Log Entries</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Input
-            placeholder="Search by employee name or ID..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-10"
-          />
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Input
+              placeholder="Search by employee name or ID..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-10 sm:flex-1"
+            />
+            <Select value={month} onValueChange={setMonth}>
+              <SelectTrigger className="h-10 w-full sm:w-52">
+                <CalendarClock className="h-4 w-4 text-muted-foreground" />
+                <SelectValue placeholder="All months" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All months</SelectItem>
+                {monthOptions.map(([key, label]) => (
+                  <SelectItem key={key} value={key}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           <div className="rounded-lg border border-border overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/50">
                   <TableHead className="h-12 font-semibold">Employee</TableHead>
+                  <TableHead className="h-12 font-semibold">Date</TableHead>
                   <TableHead className="h-12 font-semibold">Check-In</TableHead>
                   <TableHead className="h-12 font-semibold">Check-Out</TableHead>
                   <TableHead className="h-12 font-semibold">Status</TableHead>
@@ -187,13 +278,13 @@ function Page() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                       Loading...
                     </TableCell>
                   </TableRow>
                 ) : logs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                       No logs found.
                     </TableCell>
                   </TableRow>
@@ -208,6 +299,9 @@ function Page() {
                             <span className="text-xs text-muted-foreground">{log.id}</span>
                           </div>
                         </div>
+                      </TableCell>
+                      <TableCell className="py-4 text-sm text-muted-foreground">
+                        {log.date}
                       </TableCell>
                       <TableCell className="py-4 text-sm">{log.checkInTime || "—"}</TableCell>
                       <TableCell className="py-4 text-sm">{log.checkOutTime || "—"}</TableCell>
@@ -232,7 +326,7 @@ function Page() {
             </Table>
           </div>
           <div className="text-sm text-muted-foreground">
-            Showing {logs.length} of {logs.length} entries
+            Showing {logs.length} of {allLogs.length} entries
           </div>
         </CardContent>
       </Card>

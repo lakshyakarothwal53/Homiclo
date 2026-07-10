@@ -1,4 +1,4 @@
-import { Search, Download, Plus } from "lucide-react";
+import { Search, Download, Plus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,16 +9,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const BRANCHES = ["All Branches", "Bandra", "Andheri", "Powai", "Worli"];
-
 export function FilterBar({
   search,
   onSearchChange,
   searchPlaceholder = "Search...",
   addLabel = "Add New",
   onAdd,
+  onExport,
   showBranch = true,
   showDate = true,
+  date,
+  onDateChange,
   branches,
   branch,
   onBranchChange,
@@ -29,8 +30,12 @@ export function FilterBar({
   searchPlaceholder?: string;
   addLabel?: string;
   onAdd?: () => void;
+  onExport?: () => void;
   showBranch?: boolean;
   showDate?: boolean;
+  /** When `onDateChange` is provided the date input becomes controlled and data-driven. */
+  date?: string;
+  onDateChange?: (value: string) => void;
   /** When `onBranchChange` is provided the branch select becomes controlled and data-driven. */
   branches?: string[];
   branch?: string;
@@ -48,48 +53,58 @@ export function FilterBar({
             onChange={(e) => onSearchChange?.(e.target.value)}
           />
         </div>
-        {showBranch &&
-          (onBranchChange ? (
-            <Select value={branch ?? "all"} onValueChange={onBranchChange}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Branches</SelectItem>
-                {(branches ?? []).map((b) => (
-                  <SelectItem key={b} value={b}>
-                    {b}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Select defaultValue="All Branches">
-              <SelectTrigger className="w-[150px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {BRANCHES.map((b) => (
-                  <SelectItem key={b} value={b}>
-                    {b}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ))}
-        {showDate && <Input type="date" className="w-[160px]" />}
+        {showBranch && (
+          <Select value={branch ?? "all"} onValueChange={(v) => onBranchChange?.(v)}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Branches</SelectItem>
+              {(branches ?? []).map((b) => (
+                <SelectItem key={b} value={b}>
+                  {b}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {showDate && (
+          <div className="flex items-center gap-1">
+            <Input
+              type="date"
+              className="w-[160px]"
+              value={date ?? ""}
+              onChange={(e) => onDateChange?.(e.target.value)}
+            />
+            {!!date && onDateChange && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                aria-label="Clear date filter"
+                onClick={() => onDateChange("")}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" className="gap-2">
-          <Download className="h-4 w-4" /> Export
-        </Button>
-        <Button
-          size="sm"
-          onClick={onAdd}
-          className="gap-2 bg-brand text-brand-foreground hover:bg-brand/90"
-        >
-          <Plus className="h-4 w-4" /> {addLabel}
-        </Button>
+        {onExport && (
+          <Button variant="outline" size="sm" className="gap-2" onClick={onExport}>
+            <Download className="h-4 w-4" /> Export
+          </Button>
+        )}
+        {onAdd && (
+          <Button
+            size="sm"
+            onClick={onAdd}
+            className="gap-2 bg-brand text-brand-foreground hover:bg-brand/90"
+          >
+            <Plus className="h-4 w-4" /> {addLabel}
+          </Button>
+        )}
       </div>
     </div>
   );

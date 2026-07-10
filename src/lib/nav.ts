@@ -12,7 +12,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export type NavLeaf = { label: string; to: string };
+// `hiddenFor` hides a leaf from specific roles (e.g. Super Admin has no
+// personal check-in/profile). Kept as plain strings to avoid a circular
+// import with roles.ts.
+export type NavLeaf = { label: string; to: string; hiddenFor?: string[] };
 export type NavGroup = {
   label: string;
   icon: LucideIcon;
@@ -27,7 +30,7 @@ export const NAV: NavGroup[] = [
     icon: Clock,
     children: [
       { label: "Overview", to: "/attendance" },
-      { label: "My Check-in", to: "/attendance/employee-checkin" },
+      { label: "My Check-in", to: "/attendance/employee-checkin", hiddenFor: ["super_admin"] },
       { label: "Daily Logs", to: "/attendance/logs" },
       { label: "History", to: "/attendance/history" },
       { label: "Late Arrivals", to: "/attendance/late" },
@@ -41,8 +44,12 @@ export const NAV: NavGroup[] = [
     label: "Employees",
     icon: Users,
     children: [
-      { label: "My Profile", to: "/employees/profile-detail" },
-      { label: "Mark Attendance", to: "/attendance/employee-checkin" },
+      { label: "My Profile", to: "/employees/profile-detail", hiddenFor: ["super_admin"] },
+      {
+        label: "Mark Attendance",
+        to: "/attendance/employee-checkin",
+        hiddenFor: ["super_admin"],
+      },
       { label: "Employee List", to: "/employees" },
       { label: "Add Employee", to: "/employees/add" },
       { label: "Profile", to: "/employees/profile" },
@@ -137,7 +144,7 @@ export const NAV: NavGroup[] = [
     children: [
       { label: "Company", to: "/settings/company" },
       { label: "Roles & Permissions", to: "/settings/roles" },
-      { label: "Payment Gateway", to: "/settings/payment-gateway" },
+      { label: "Payment Gateway", to: "/settings/payment-gateway", hiddenFor: ["super_admin"] },
       { label: "Tally", to: "/settings/tally" },
       { label: "Attendance", to: "/settings/attendance" },
       { label: "Notifications", to: "/settings/notifications" },

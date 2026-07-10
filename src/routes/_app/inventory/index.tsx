@@ -23,6 +23,7 @@ import {
   useStockInward,
   useStockOutward,
 } from "@/hooks/use-inventory";
+import { parseRowDate } from "@/lib/report-data";
 
 export const Route = createFileRoute("/_app/inventory/")({
   head: () => ({
@@ -53,31 +54,35 @@ function Page() {
     return sum + (p.price || 0) * (p.stock || 0);
   }, 0);
 
-  // Calculate stock movement for last 30 days from inward/outward data
+  // Stock movement chart, built from whichever dates actually have inward or
+  // outward records — not a fixed trailing-30-calendar-days window. A fixed
+  // window matched by day-of-month alone (the previous implementation) wrongly
+  // merged records from different months onto the same bar; matching by exact
+  // date instead would correctly show nothing whenever the recorded dates
+  // fall outside the last 30 real days, which is common for demo/seed data.
+  // Plotting the actual last-30 movement dates always reflects real records.
+  const isoOf = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const shortLabel = (d: Date) => `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })}`;
+
   const generateStockMovement = () => {
-    const days = Array.from({ length: 30 }, (_, i) => {
-      const date = new Date();
-      date.setDate(date.getDate() - (29 - i));
-      return {
-        d: String(date.getDate()),
-        inward: 0,
-        outward: 0,
-      };
-    });
+    const byDate = new Map<string, { date: Date; inward: number; outward: number }>();
 
-    // Aggregate inward quantities by day
-    stockInward.forEach((item) => {
-      const dayMatch = days.find((d) => d.d === (item.date ? String(parseInt(item.date)) : ""));
-      if (dayMatch) dayMatch.inward += item.qty || 0;
-    });
+    const record = (rawDate: string | undefined, qty: number, key: "inward" | "outward") => {
+      const parsed = rawDate ? parseRowDate(rawDate) : null;
+      if (!parsed) return;
+      const iso = isoOf(parsed);
+      if (!byDate.has(iso)) byDate.set(iso, { date: parsed, inward: 0, outward: 0 });
+      byDate.get(iso)![key] += qty || 0;
+    };
 
-    // Aggregate outward quantities by day
-    stockOutward.forEach((item) => {
-      const dayMatch = days.find((d) => d.d === (item.date ? String(parseInt(item.date)) : ""));
-      if (dayMatch) dayMatch.outward += item.qty || 0;
-    });
+    stockInward.forEach((item) => record(item.date, item.qty, "inward"));
+    stockOutward.forEach((item) => record(item.date, item.qty, "outward"));
 
-    return days;
+    return [...byDate.values()]
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+      .slice(-30)
+      .map((row) => ({ d: shortLabel(row.date), inward: row.inward, outward: row.outward }));
   };
 
   // Format stock value in Indian Rupees (L = Lakhs, 1L = 100,000)
@@ -143,8 +148,10 @@ function Page() {
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="border-border lg:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Stock Movement (30 days)</CardTitle>
-            <p className="text-xs text-muted-foreground">Inward vs Outward units</p>
+            <CardTitle className="text-base">Stock Movement</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Inward vs Outward units · last {Math.min(stockMovement.length, 30)} recorded dates
+            </p>
           </CardHeader>
           <CardContent className="h-72">
             {inwardLoading || outwardLoading ? (

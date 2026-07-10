@@ -20,6 +20,7 @@ function Page() {
       <ScannerView
         icon={QrCode}
         label="QR Code"
+        format="qr"
         instruction="Position the qr code in front of the scanner"
       />
     </>

@@ -43,7 +43,6 @@ export const Route = createFileRoute("/_app/discounts/usage-reports")({
 function Page() {
   const [query, setQuery] = useState("");
   const [branch, setBranch] = useState("All Branches");
-  const [date, setDate] = useState("");
 
   const { data: usage = [], isLoading } = useDiscountUsage(branch);
   const { data: branches = [] } = useDiscountBranches();
@@ -143,8 +142,6 @@ function Page() {
         branch={branch}
         onBranch={setBranch}
         branches={branches}
-        date={date}
-        onDate={setDate}
         onExport={handleExport}
         addSlot={<UsageDialog mode="add" onSave={handleCreate} />}
       />

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import type { ReportCategory, ReportRow } from "@/types/reports";
@@ -19,6 +19,21 @@ export function useReports(category: ReportCategory, branch?: string) {
       const { data, error } = await query;
       if (error) throw error;
       return data as ReportRow[];
+    },
+  });
+}
+
+export function useCreateReport(category: ReportCategory) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: Omit<ReportRow, "id">): Promise<ReportRow> => {
+      const row = { id: crypto.randomUUID(), category, ...input };
+      const { error } = await supabase.from("reports").insert(row);
+      if (error) throw error;
+      return row;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
     },
   });
 }

@@ -75,7 +75,14 @@ function Page() {
     return () => clearInterval(interval);
   }, [autoRefresh, refetch]);
 
-  const presentCount = tracking.length;
+  const presentCount = tracking.filter((t) => t.currentStatus === "Present").length;
+
+  // temperature is stored pre-formatted (e.g. "37.2°C"); fall back to
+  // appending the unit only if a bare number ever comes through.
+  const formatTemperature = (raw?: string) => {
+    if (!raw) return "—";
+    return /°c/i.test(raw) ? raw : `${raw}°C`;
+  };
 
   const handleRefresh = async () => {
     await refetch();
@@ -214,7 +221,15 @@ function Page() {
                           <EmployeeAvatar name={track.employeeName} />
                           <div className="flex flex-col">
                             <span className="font-medium text-sm">{track.employeeName}</span>
-                            <span className="text-xs text-green-600 font-medium">● Online</span>
+                            <span
+                              className={`text-xs font-medium ${
+                                track.currentStatus === "Present"
+                                  ? "text-green-600"
+                                  : "text-muted-foreground"
+                              }`}
+                            >
+                              ● {track.currentStatus}
+                            </span>
                           </div>
                         </div>
                       </TableCell>
@@ -229,7 +244,7 @@ function Page() {
                       <TableCell className="py-4 text-center">
                         <div className="flex items-center justify-center gap-1.5 text-sm font-medium">
                           <Thermometer className="h-4 w-4 text-orange-600" />
-                          {track.temperature}°C
+                          {formatTemperature(track.temperature)}
                         </div>
                       </TableCell>
                       <TableCell className="py-4">

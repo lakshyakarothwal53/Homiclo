@@ -29,7 +29,9 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { useAttendanceReports } from "@/hooks/use-attendance";
+import { useAttendanceReports, useCreateAttendanceReport } from "@/hooks/use-attendance";
+import { buildTablePdf, downloadCsv, downloadPdf } from "@/lib/pdf-utils";
+import { fetchReportData } from "@/lib/report-data";
 
 export const Route = createFileRoute("/_app/attendance/reports")({
   head: () => ({
@@ -48,8 +50,9 @@ function Page() {
   const [search, setSearch] = useState("");
   const [period, setPeriod] = useState("monthly");
   const [format, setFormat] = useState("pdf");
-  const [isGenerating, setIsGenerating] = useState(false);
   const { data: reports = [], isLoading, refetch } = useAttendanceReports(search);
+  const createReport = useCreateAttendanceReport();
+  const isGenerating = createReport.isPending;
 
   const getFormatBadge = (format: string) => {
     if (format === "PDF") {
@@ -58,27 +61,41 @@ function Page() {
     return "bg-green-100 text-green-700";
   };
 
-  const handleGenerateReport = async () => {
-    setIsGenerating(true);
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      toast.success(`Report generated in ${format.toUpperCase()} format`);
-      await refetch();
-    } catch (error) {
-      toast.error("Failed to generate report");
-    } finally {
-      setIsGenerating(false);
-    }
+  const handleGenerateReport = () => {
+    const periodLabel = `${period.charAt(0).toUpperCase()}${period.slice(1)} · ${new Date().toLocaleString(
+      "en-US",
+      { month: "long", year: "numeric" },
+    )}`;
+    createReport.mutate(
+      {
+        reportName: `${period.charAt(0).toUpperCase()}${period.slice(1)} Attendance Summary`,
+        period: periodLabel,
+        format: format.toUpperCase(),
+      },
+      {
+        onSuccess: (r) => toast.success(`${r.reportName} generated (${r.format}).`),
+        onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to generate report"),
+      },
+    );
   };
 
-  const handleDownload = (reportName: string) => {
-    toast.success(`Downloading ${reportName}...`);
-    const link = document.createElement("a");
-    link.href = "#";
-    link.download = `${reportName.toLowerCase().replace(/\s+/g, "-")}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownload = async (reportName: string, reportFormat: string, periodLabel: string) => {
+    try {
+      const data = await fetchReportData("attendance");
+      if (data.rows.length === 0) {
+        toast.error("No attendance data available.");
+        return;
+      }
+      const filename = reportName.toLowerCase().replace(/\s+/g, "-");
+      if (reportFormat.toUpperCase() === "PDF") {
+        downloadPdf(buildTablePdf({ title: reportName, subtitle: periodLabel, ...data }), filename);
+      } else {
+        downloadCsv(filename, data.columns, data.rows);
+      }
+      toast.success(`Downloaded ${reportName}.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not download report.");
+    }
   };
 
   const handleRefresh = async () => {
@@ -222,7 +239,9 @@ function Page() {
                           size="sm"
                           variant="ghost"
                           className="gap-1"
-                          onClick={() => handleDownload(report.reportName)}
+                          onClick={() =>
+                            handleDownload(report.reportName, report.format, report.period)
+                          }
                         >
                           <Download className="h-3.5 w-3.5" />
                           Download

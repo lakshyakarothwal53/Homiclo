@@ -37,13 +37,9 @@ export function CategoryDialog({
   const open = isControlled ? controlledOpen : internalOpen;
 
   const [name, setName] = useState(initial?.name ?? "");
-  const [productCount, setProductCount] = useState(String(initial?.productCount ?? 0));
-  const [stockValue, setStockValue] = useState(initial?.stockValue ?? "₹0");
 
   function reset() {
     setName(initial?.name ?? "");
-    setProductCount(String(initial?.productCount ?? 0));
-    setStockValue(initial?.stockValue ?? "₹0");
   }
 
   // Keep fields in sync when the dialog reopens (e.g. editing a different row).
@@ -62,11 +58,7 @@ export function CategoryDialog({
       toast.error("Category name is required.");
       return;
     }
-    onSave({
-      name: name.trim(),
-      productCount: Number(productCount) || 0,
-      stockValue: stockValue.trim() || "₹0",
-    });
+    onSave({ name: name.trim() });
     setOpen(false);
   }
 
@@ -84,6 +76,7 @@ export function CategoryDialog({
           <DialogTitle>{mode === "add" ? "Add Category" : "Edit Category"}</DialogTitle>
           <DialogDescription>
             {mode === "add" ? "Create a new product category." : "Update this category's details."}
+            {" Product count and stock value are calculated automatically from actual products."}
           </DialogDescription>
         </DialogHeader>
 
@@ -96,28 +89,6 @@ export function CategoryDialog({
               onChange={(e) => setName(e.target.value)}
               placeholder="Apparel"
             />
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div className="grid gap-1.5">
-              <Label htmlFor="c-count">Product count</Label>
-              <Input
-                id="c-count"
-                type="number"
-                min={0}
-                value={productCount}
-                onChange={(e) => setProductCount(e.target.value)}
-                placeholder="0"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="c-value">Stock value</Label>
-              <Input
-                id="c-value"
-                value={stockValue}
-                onChange={(e) => setStockValue(e.target.value)}
-                placeholder="₹0"
-              />
-            </div>
           </div>
         </div>
 

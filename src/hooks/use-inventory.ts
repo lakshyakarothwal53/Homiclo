@@ -57,27 +57,52 @@ export function useProducts(search?: string, branch?: string) {
   });
 }
 
+function formatStockValue(value: number): string {
+  if (value >= 100000) return `₹${(value / 100000).toFixed(1)}L`;
+  if (value >= 1000) return `₹${(value / 1000).toFixed(1)}K`;
+  return `₹${value}`;
+}
+
 export function useCategories(search?: string, branch?: string) {
   const allBranches = !branch || branch === "all";
   return useQuery({
     queryKey: ["inventory", "categories", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<Category[]> => {
       if (allBranches) {
-        let query = supabase
-          .from("categories")
-          .select(
-            "name, productCount:product_count, stockValue:stock_value, lastUpdated:last_updated",
-          );
+        // categories.product_count/stock_value are seed-time snapshots that
+        // drift the moment products are added/edited/deleted — compute both
+        // live from the products table instead of trusting the stored columns.
+        let query = supabase.from("categories").select("name, last_updated:last_updated");
         if (search) query = query.ilike("name", like(search));
-        const { data, error } = await query;
-        if (error) {
-          console.error("Error fetching categories from Supabase:", error);
-          throw error;
-        }
-        console.log("Categories loaded from Supabase:", data);
-        return data as unknown as Category[];
+        const { data: cats, error } = await query;
+        if (error) throw error;
+
+        const { data: products, error: prodError } = await supabase
+          .from("products")
+          .select("category, price, stock");
+        if (prodError) throw prodError;
+
+        const live: Record<string, { count: number; value: number }> = {};
+        (products ?? []).forEach((p) => {
+          const cat = (p.category && p.category.trim()) || "Uncategorized";
+          if (!live[cat]) live[cat] = { count: 0, value: 0 };
+          live[cat].count += 1;
+          live[cat].value += (p.price ?? 0) * (p.stock ?? 0);
+        });
+
+        return (cats ?? []).map((c) => {
+          const agg = live[c.name] ?? { count: 0, value: 0 };
+          return {
+            name: c.name,
+            productCount: agg.count,
+            stockValue: formatStockValue(agg.value),
+            lastUpdated: c.last_updated,
+          };
+        });
       }
 
+      // No live products_branches data exists yet to aggregate from, so the
+      // branch-scoped path keeps reading the per-branch junction table.
       let query = supabase
         .from("category_branches")
         .select(
@@ -90,7 +115,6 @@ export function useCategories(search?: string, branch?: string) {
         console.error("Error fetching category branches from Supabase:", error);
         throw error;
       }
-      console.log("Categories (branches) loaded from Supabase:", data);
       return data as unknown as Category[];
     },
   });
@@ -206,20 +230,40 @@ export function useInventoryReports(search?: string, branch?: string) {
   });
 }
 
+export function useCreateInventoryReport() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: InventoryReport): Promise<InventoryReport> => {
+      const { error } = await supabase.from("inventory_reports").insert({
+        report: input.report,
+        period: input.period,
+        generated: input.generated,
+        format: input.format,
+      });
+      if (error) throw error;
+      return input;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventory", "reports"] });
+    },
+  });
+}
+
 export type CategoryInput = {
   name: string;
-  productCount: number;
-  stockValue: string;
 };
 
 export function useCreateCategory() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: CategoryInput): Promise<CategoryInput> => {
+      // product_count/stock_value are no longer read (useCategories computes
+      // them live from products) but the columns are still not-null, so seed
+      // zero values for a freshly created, still-empty category.
       const { error } = await supabase.from("categories").insert({
         name: input.name,
-        product_count: input.productCount,
-        stock_value: input.stockValue,
+        product_count: 0,
+        stock_value: "₹0",
         last_updated: "Just now",
       });
       if (error) throw error;
@@ -237,12 +281,7 @@ export function useUpdateCategory() {
     mutationFn: async (input: CategoryInput & { originalName: string }): Promise<CategoryInput> => {
       const { error } = await supabase
         .from("categories")
-        .update({
-          name: input.name,
-          product_count: input.productCount,
-          stock_value: input.stockValue,
-          last_updated: "Just now",
-        })
+        .update({ name: input.name, last_updated: "Just now" })
         .eq("name", input.originalName);
       if (error) throw error;
       return input;

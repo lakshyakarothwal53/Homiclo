@@ -39,6 +39,7 @@ export type BillingPayment = {
   amount: string;
   mode: string;
   status: string;
+  pay_date?: string;
 };
 
 export type BillingRefund = {
@@ -48,6 +49,8 @@ export type BillingRefund = {
   amount: string;
   reason: string;
   status: string;
+  refund_date?: string;
+  amount_num?: number;
 };
 
 export type BillingTaxInvoice = {

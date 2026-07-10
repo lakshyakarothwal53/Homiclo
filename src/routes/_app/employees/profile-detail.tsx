@@ -22,7 +22,7 @@ export const Route = createFileRoute("/_app/employees/profile-detail")({
 function ProfileDetailPage() {
   const { user } = useAuth();
   const { data: profile, isLoading: isProfileLoading } = useEmployeeProfile(user?.id);
-  const { data: monthlySummary } = useEmployeeMonthlySummary(user?.id);
+  const { data: monthlySummary } = useEmployeeMonthlySummary(user?.id ?? "");
 
   if (isProfileLoading) {
     return <div className="text-center py-8">Loading profile...</div>;
@@ -169,9 +169,7 @@ function ProfileDetailPage() {
                     </div>
 
                     <div className="bg-red-50 dark:bg-red-950 p-3 rounded-lg border border-red-200 dark:border-red-800">
-                      <p className="text-xs text-red-600 dark:text-red-300 font-medium">
-                        Absent
-                      </p>
+                      <p className="text-xs text-red-600 dark:text-red-300 font-medium">Absent</p>
                       <p className="text-2xl font-bold text-red-900 dark:text-red-100 mt-1">
                         {monthlySummary.absentDays}
                       </p>

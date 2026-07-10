@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { loadTallyConfig, pushToTally, salesVoucherXml } from "@/lib/tally";
 import type {
   BillingDashboard,
   BillingPayment,
@@ -16,17 +17,6 @@ function like(value: string) {
   return `%${value}%`;
 }
 
-interface DashboardRaw {
-  todayRevenue: number;
-  todayInvoiceCount: number;
-  pendingPayments: number;
-  pendingCount: number;
-  thisMonthRevenue: number;
-  lastMonthRevenue: number;
-  refundsAmount: number;
-  refundsThisWeek: number;
-}
-
 function formatINR(n: number): string {
   if (n >= 10000000) return "₹" + (n / 10000000).toFixed(1) + "Cr";
   if (n >= 100000) return "₹" + (n / 100000).toFixed(1) + "L";
@@ -39,22 +29,71 @@ function monthDelta(current: number, previous: number): string {
   return pct >= 0 ? `Up ${pct}% vs last month` : `Down ${Math.abs(pct)}% vs last month`;
 }
 
+function parseAmountNum(raw: unknown): number {
+  if (typeof raw !== "string") return 0;
+  return parseFloat(raw.replace(/[₹,\s]/g, "")) || 0;
+}
+
+// Computed entirely client-side (rather than via the billing_dashboard_stats
+// RPC) so the numbers stay correct without depending on redefining a
+// security-definer SQL function this app has no DDL access to. The RPC's
+// refund figures were also wrong: 'refundsThisWeek' summed every refund ever
+// recorded with no date filter at all (a lifetime total mislabeled as a
+// weekly count) — replaced with real daily + current-month refund totals.
 export function useBillingDashboard() {
   return useQuery({
     queryKey: ["billing", "dashboard"],
     queryFn: async (): Promise<BillingDashboard> => {
-      const { data, error } = await supabase.rpc("billing_dashboard_stats");
-      if (error) throw error;
-      const r = data as DashboardRaw;
+      const today = new Date();
+      const todayIso = today.toISOString().slice(0, 10);
+      const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+      const lastMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const lastMonthStart = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, "0")}-01`;
+      const lastMonthEnd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+
+      const [todayBills, pendingBills, monthBills, lastMonthBills, refunds] = await Promise.all([
+        supabase.from("billing_sales_bills").select("amount_num").eq("bill_date", todayIso),
+        supabase.from("billing_sales_bills").select("amount_num").eq("status", "Pending"),
+        supabase.from("billing_sales_bills").select("amount_num").gte("bill_date", monthStart),
+        supabase
+          .from("billing_sales_bills")
+          .select("amount_num")
+          .gte("bill_date", lastMonthStart)
+          .lt("bill_date", lastMonthEnd),
+        // `*` so refund_date (added by 13_completion_pack.sql) is picked up
+        // when present without erroring on older schemas.
+        supabase.from("billing_refunds").select("*"),
+      ]);
+      if (todayBills.error) throw todayBills.error;
+      if (pendingBills.error) throw pendingBills.error;
+      if (monthBills.error) throw monthBills.error;
+      if (refunds.error) throw refunds.error;
+
+      const sumAmountNum = (rows: { amount_num?: number }[] | null) =>
+        (rows ?? []).reduce((s, r) => s + (r.amount_num ?? 0), 0);
+
+      const todayRevenue = sumAmountNum(todayBills.data);
+      const pendingPayments = sumAmountNum(pendingBills.data);
+      const thisMonthRevenue = sumAmountNum(monthBills.data);
+      const lastMonthRevenue = sumAmountNum(lastMonthBills.data);
+
+      const refundRows = (refunds.data ?? []) as (BillingRefund & { refund_date?: string })[];
+      const refundsToday = refundRows
+        .filter((r) => r.refund_date === todayIso)
+        .reduce((s, r) => s + parseAmountNum(r.amount), 0);
+      const refundsThisMonth = refundRows
+        .filter((r) => (r.refund_date ?? "") >= monthStart)
+        .reduce((s, r) => s + parseAmountNum(r.amount), 0);
+
       return {
-        todayRevenue: formatINR(r.todayRevenue),
-        todayRevenueHint: `${r.todayInvoiceCount} invoice${r.todayInvoiceCount !== 1 ? "s" : ""}`,
-        pendingPayments: formatINR(r.pendingPayments),
-        pendingPaymentsHint: `${r.pendingCount} invoice${r.pendingCount !== 1 ? "s" : ""}`,
-        thisMonth: formatINR(r.thisMonthRevenue),
-        thisMonthDelta: monthDelta(r.thisMonthRevenue, r.lastMonthRevenue),
-        refunds: formatINR(r.refundsAmount),
-        refundsHint: `${r.refundsThisWeek} this week`,
+        todayRevenue: formatINR(todayRevenue),
+        todayRevenueHint: `${todayBills.data?.length ?? 0} invoice${(todayBills.data?.length ?? 0) !== 1 ? "s" : ""}`,
+        pendingPayments: formatINR(pendingPayments),
+        pendingPaymentsHint: `${pendingBills.data?.length ?? 0} invoice${(pendingBills.data?.length ?? 0) !== 1 ? "s" : ""}`,
+        thisMonth: formatINR(thisMonthRevenue),
+        thisMonthDelta: monthDelta(thisMonthRevenue, lastMonthRevenue),
+        refunds: formatINR(refundsToday),
+        refundsHint: `${formatINR(refundsThisMonth)} this month`,
         // tally stats unchanged — still sourced from billing_dashboard seed row
         tallySyncedToday: "",
         tallySyncedHint: "",
@@ -86,13 +125,19 @@ export function useBillingSalesBills(search?: string, branch?: string) {
   return useQuery({
     queryKey: ["billing", "sales-bills", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<BillingSalesBill[]> => {
-      let query = (
-        allBranches
-          ? supabase.from("billing_sales_bills")
-          : supabase.from("billing_sales_bills_branches")
-      )
-        .select("invoice, date, customer, amount, payment, status")
-        .order("invoice", { ascending: false });
+      // billing_sales_bills_branches predates 04_computed.sql and has no
+      // bill_date column — select it only for the global table; the branch
+      // path falls back to the `date` text field (handled by callers via
+      // matchesDate(date, b.bill_date, b.date)).
+      let query = allBranches
+        ? supabase
+            .from("billing_sales_bills")
+            .select("invoice, date, customer, amount, payment, status, bill_date")
+            .order("invoice", { ascending: false })
+        : supabase
+            .from("billing_sales_bills_branches")
+            .select("invoice, date, customer, amount, payment, status")
+            .order("invoice", { ascending: false });
       if (!allBranches) query = query.eq("branch", branch);
       if (search) query = query.or(`invoice.ilike.${like(search)},customer.ilike.${like(search)}`);
       const { data, error } = await query;
@@ -107,9 +152,15 @@ export function useBillingPayments(search?: string, branch?: string) {
   return useQuery({
     queryKey: ["billing", "payments", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<BillingPayment[]> => {
-      let query = (
-        allBranches ? supabase.from("billing_payments") : supabase.from("billing_payments_branches")
-      ).select("receipt, date, customer, invoice, amount, mode, status");
+      // billing_payments_branches has no pay_date column — see the
+      // billing_sales_bills_branches comment in useBillingSalesBills above.
+      let query = allBranches
+        ? supabase
+            .from("billing_payments")
+            .select("receipt, date, customer, invoice, amount, mode, status, pay_date")
+        : supabase
+            .from("billing_payments_branches")
+            .select("receipt, date, customer, invoice, amount, mode, status");
       if (!allBranches) query = query.eq("branch", branch);
       if (search) query = query.or(`receipt.ilike.${like(search)},customer.ilike.${like(search)}`);
       const { data, error } = await query;
@@ -124,9 +175,11 @@ export function useBillingRefunds(search?: string, branch?: string) {
   return useQuery({
     queryKey: ["billing", "refunds", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<BillingRefund[]> => {
+      // `*` so the optional refund_date column (supabase/13_completion_pack.sql)
+      // is picked up when present without breaking older schemas.
       let query = (
         allBranches ? supabase.from("billing_refunds") : supabase.from("billing_refunds_branches")
-      ).select("refund, invoice, customer, amount, reason, status");
+      ).select("*");
       if (!allBranches) query = query.eq("branch", branch);
       if (search)
         query = query.or(
@@ -172,6 +225,96 @@ export function useBillingTallyLog() {
   });
 }
 
+export type TallyStats = {
+  syncedToday: number;
+  syncedTotal: number;
+  pending: number;
+  failed: number;
+};
+
+// Live stats derived from the sync log + the bills that haven't been pushed yet.
+export function useTallyStats() {
+  return useQuery({
+    queryKey: ["billing", "tally-stats"],
+    queryFn: async (): Promise<TallyStats> => {
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const { data: log, error } = await supabase
+        .from("billing_tally_log")
+        .select("reference, status, created_at");
+      if (error) throw error;
+      const { data: bills } = await supabase.from("billing_sales_bills").select("invoice");
+
+      const syncedRefs = new Set(
+        (log ?? []).filter((r) => r.status === "Synced").map((r) => r.reference),
+      );
+      const pending = (bills ?? []).filter((b) => !syncedRefs.has(b.invoice)).length;
+      const syncedToday = (log ?? []).filter(
+        (r) => r.status === "Synced" && String(r.created_at ?? "").startsWith(todayIso),
+      ).length;
+      const failed = (log ?? []).filter((r) => r.status === "Failed").length;
+
+      return { syncedToday, syncedTotal: syncedRefs.size, pending, failed };
+    },
+  });
+}
+
+export type TallySyncResult = { pushed: number; failed: number };
+
+/**
+ * Real sync: push every un-synced sales bill to the configured Tally HTTP
+ * gateway as a Sales voucher and record each attempt in billing_tally_log.
+ */
+export function useTallySync() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (): Promise<TallySyncResult> => {
+      const config = await loadTallyConfig();
+
+      const { data: log, error: logError } = await supabase
+        .from("billing_tally_log")
+        .select("reference, status");
+      if (logError) throw logError;
+      const syncedRefs = new Set(
+        (log ?? []).filter((r) => r.status === "Synced").map((r) => r.reference),
+      );
+
+      const { data: bills, error: billsError } = await supabase
+        .from("billing_sales_bills")
+        .select("invoice, date, customer, amount, payment, status, bill_date, amount_num");
+      if (billsError) throw billsError;
+
+      const unsynced = (bills ?? []).filter((b) => !syncedRefs.has(b.invoice));
+      if (unsynced.length === 0) return { pushed: 0, failed: 0 };
+
+      let pushed = 0;
+      let failed = 0;
+      const timeLabel = new Date().toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      for (const bill of unsynced) {
+        const ok = await pushToTally(config, salesVoucherXml(bill, config.company));
+        const { error: insertError } = await supabase.from("billing_tally_log").insert({
+          time: timeLabel,
+          voucher: "Sales",
+          reference: bill.invoice,
+          amount: bill.amount,
+          status: ok ? "Synced" : "Failed",
+        });
+        if (insertError) throw insertError;
+        if (ok) pushed++;
+        else failed++;
+      }
+
+      return { pushed, failed };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["billing"] });
+    },
+  });
+}
+
 export function useBillingReports(search?: string, branch?: string) {
   const allBranches = !branch || branch === "all";
   return useQuery({
@@ -185,6 +328,25 @@ export function useBillingReports(search?: string, branch?: string) {
       const { data, error } = await query;
       if (error) throw error;
       return data as BillingReport[];
+    },
+  });
+}
+
+export function useCreateBillingReport() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: BillingReport): Promise<BillingReport> => {
+      const { error } = await supabase.from("billing_reports").insert({
+        report: input.report,
+        period: input.period,
+        generated: input.generated,
+        format: input.format,
+      });
+      if (error) throw error;
+      return input;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["billing", "reports"] });
     },
   });
 }
@@ -205,7 +367,7 @@ export function useCreateBillingInvoice() {
   return useMutation({
     mutationFn: async (input: BillingSalesBill): Promise<BillingSalesBill> => {
       const amountNum = input.amount_num ?? (parseFloat(input.amount.replace(/[₹,\s]/g, "")) || 0);
-      const billDate = input.bill_date ?? Date().toString().slice(0, 10);
+      const billDate = input.bill_date ?? new Date().toISOString().slice(0, 10);
       const { error } = await supabase.from("billing_sales_bills").insert({
         invoice: input.invoice,
         date: input.date,

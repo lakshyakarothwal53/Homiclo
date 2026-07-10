@@ -1,69 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-
-// Mock data fallbacks (only used when database queries fail)
-const mockSalesData = [
-  { d: "Mon", sales: 42000, revenue: 31000 },
-  { d: "Tue", sales: 51000, revenue: 38000 },
-  { d: "Wed", sales: 47000, revenue: 34500 },
-  { d: "Thu", sales: 62000, revenue: 46000 },
-  { d: "Fri", sales: 71000, revenue: 53000 },
-  { d: "Sat", sales: 89000, revenue: 67000 },
-  { d: "Sun", sales: 76000, revenue: 58000 },
-];
-
-const mockAttendanceData = [
-  { d: "Mon", present: 124, late: 8, absent: 6 },
-  { d: "Tue", present: 131, late: 5, absent: 4 },
-  { d: "Wed", present: 128, late: 9, absent: 7 },
-  { d: "Thu", present: 134, late: 4, absent: 3 },
-  { d: "Fri", present: 119, late: 12, absent: 9 },
-  { d: "Sat", present: 96, late: 6, absent: 14 },
-  { d: "Sun", present: 58, late: 2, absent: 22 },
-];
-
-const mockInventoryMix = [
-  { name: "Furniture", value: 38 },
-  { name: "Decor", value: 24 },
-  { name: "Lighting", value: 18 },
-  { name: "Kitchen", value: 12 },
-  { name: "Other", value: 8 },
-];
-
-const mockRecentTx = [
-  { id: "INV-20481", customer: "Riya Sharma", amount: "₹ 12,480", method: "UPI", status: "Paid" },
-  { id: "INV-20480", customer: "Karan Mehta", amount: "₹  4,250", method: "Card", status: "Paid" },
-  {
-    id: "INV-20479",
-    customer: "Anaya Iyer",
-    amount: "₹ 28,900",
-    method: "Cash",
-    status: "Pending",
-  },
-  { id: "INV-20478", customer: "Vikram Rao", amount: "₹  9,120", method: "UPI", status: "Paid" },
-  {
-    id: "INV-20477",
-    customer: "Meera Joshi",
-    amount: "₹  1,990",
-    method: "Card",
-    status: "Refunded",
-  },
-];
-
-const mockStockAlerts = [
-  { sku: "HMQ-CHR-204", name: "Walnut Lounge Chair", left: 3, reorder: 10 },
-  { sku: "HMQ-LMP-012", name: "Arc Floor Lamp", left: 5, reorder: 15 },
-  { sku: "HMQ-DEC-118", name: "Ceramic Vase Set", left: 2, reorder: 20 },
-  { sku: "HMQ-KIT-077", name: "Cast Iron Skillet", left: 7, reorder: 25 },
-];
-
-const mockLogins = [
-  { name: "Priya Nair", role: "Cashier · Bandra", status: "online" },
-  { name: "Arjun Kapoor", role: "Floor Manager · Andheri", status: "online" },
-  { name: "Neha Singh", role: "Inventory · Powai", status: "idle" },
-  { name: "Rohan Das", role: "Cashier · Worli", status: "offline" },
-  { name: "Sara Khan", role: "Cashier · Bandra", status: "online" },
-];
+import { parseRowDate } from "@/lib/report-data";
 
 // Helper functions
 function getTodayDate(): string {
@@ -92,10 +29,29 @@ function getDayOfWeek(date: Date): string {
   return days[date.getDay()];
 }
 
+function isoOf(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function parseAmount(raw: unknown): number {
   if (typeof raw !== "string") return 0;
   return parseFloat(raw.replace("₹", "").replace(/,/g, "")) || 0;
 }
+
+// "09:31 AM" → minutes since midnight, or null when unparseable.
+function parseTimeToMinutes(raw: unknown): number | null {
+  if (typeof raw !== "string") return null;
+  const m = raw.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const mer = m[3]?.toUpperCase();
+  if (mer === "PM" && h !== 12) h += 12;
+  if (mer === "AM" && h === 12) h = 0;
+  return h * 60 + min;
+}
+
+const LATE_CUTOFF_MINUTES = 9 * 60 + 15; // 09:15 AM shift start + grace
 
 // A branch is "scoped" when it names a real branch (not undefined / "all").
 // Scoped reads use the per-branch junction table (billing_sales_bills_branches);
@@ -104,7 +60,13 @@ function isScoped(branch?: string): boolean {
   return !!branch && branch !== "all";
 }
 
-// Sum sales for a given date, scoped to a branch when provided.
+// Sum sales for a given (ISO) date, scoped to a branch when provided.
+//
+// billing_sales_bills_branches predates 04_computed.sql (which added
+// bill_date/amount_num to the global billing_sales_bills table), so the
+// branch-scoped junction table only has the original free-text `date`
+// column. Match against that via parseRowDate instead of filtering on a
+// bill_date column that may not exist yet on this table.
 async function sumSalesForDate(date: string, branch?: string): Promise<number> {
   const sumRows = (rows: { amount?: string }[] | null) =>
     (rows ?? []).reduce((total, row) => total + parseAmount(row.amount), 0);
@@ -112,12 +74,18 @@ async function sumSalesForDate(date: string, branch?: string): Promise<number> {
   if (isScoped(branch)) {
     const { data } = await supabase
       .from("billing_sales_bills_branches")
-      .select("amount")
-      .eq("date", date)
+      .select("amount, date")
       .eq("branch", branch);
-    return sumRows(data);
+    const matching = (data ?? []).filter((row) => {
+      const d = parseRowDate(row.date);
+      return d ? isoOf(d) === date : false;
+    });
+    return sumRows(matching);
   }
-  const { data } = await supabase.from("billing_sales_bills").select("amount").eq("date", date);
+  const { data } = await supabase
+    .from("billing_sales_bills")
+    .select("amount")
+    .eq("bill_date", date);
   return sumRows(data);
 }
 
@@ -177,69 +145,63 @@ export function useDashboardStats(branch?: string) {
   return useQuery({
     queryKey: ["dashboard", "stats", branch ?? "all"],
     queryFn: async (): Promise<DashboardStats> => {
-      try {
-        const today = getTodayDate();
-        const yesterday = getYesterdayDate();
-        const scoped = isScoped(branch);
+      const today = getTodayDate();
+      const yesterday = getYesterdayDate();
+      const scoped = isScoped(branch);
 
-        // 1 & 2. Today's + yesterday's sales (branch-scoped when applicable)
-        const todaysSalesAmount = await sumSalesForDate(today, branch);
-        const yesterdaysSalesAmount = await sumSalesForDate(yesterday, branch);
-        const salesDelta = calculateDelta(todaysSalesAmount, yesterdaysSalesAmount);
+      // 1 & 2. Today's + yesterday's sales (branch-scoped when applicable)
+      const todaysSalesAmount = await sumSalesForDate(today, branch);
+      const yesterdaysSalesAmount = await sumSalesForDate(yesterday, branch);
+      const salesDelta = calculateDelta(todaysSalesAmount, yesterdaysSalesAmount);
 
-        // 3. Employees present today (unique check-ins), scoped to branch
-        let presentQuery = supabase
-          .from("employee_checkins")
-          .select("employee_id")
-          .eq("check_date", today)
-          .eq("check_type", "check-in");
-        if (scoped) presentQuery = presentQuery.eq("branch", branch);
-        const { data: presentData } = await presentQuery;
-        const presentCount = new Set((presentData ?? []).map((r: any) => r.employee_id)).size;
+      // 3. Employees present today (unique check-ins), scoped to branch
+      let presentQuery = supabase
+        .from("employee_checkins")
+        .select("employee_id")
+        .eq("check_date", today)
+        .eq("check_type", "check-in");
+      if (scoped) presentQuery = presentQuery.eq("branch", branch);
+      const { data: presentData } = await presentQuery;
+      const presentCount = new Set((presentData ?? []).map((r) => r.employee_id)).size;
 
-        // 4. Total employees, scoped to branch
-        let employeesQuery = supabase.from("employees").select("id");
-        if (scoped) employeesQuery = employeesQuery.eq("branch", branch);
-        const { data: allEmployees } = await employeesQuery;
-        const totalEmployees = allEmployees?.length || 0;
-        const attendancePercentage =
-          totalEmployees > 0 ? Math.round((presentCount / totalEmployees) * 100) : 0;
+      // 4. Total employees, scoped to branch
+      let employeesQuery = supabase.from("employees").select("id");
+      if (scoped) employeesQuery = employeesQuery.eq("branch", branch);
+      const { data: allEmployees } = await employeesQuery;
+      const totalEmployees = allEmployees?.length || 0;
+      const attendancePercentage =
+        totalEmployees > 0 ? Math.round((presentCount / totalEmployees) * 100) : 0;
 
-        // 5. Stock alerts count (global — low_stock_alerts has no branch column yet)
-        const { data: stockAlertsData } = await supabase.from("low_stock_alerts").select("sku");
-        const alertsCount = stockAlertsData?.length || 0;
+      // 5. Stock alerts count + critical breakdown (global — low_stock_alerts has no branch column yet)
+      const { data: stockAlertsData } = await supabase
+        .from("low_stock_alerts")
+        .select("sku, status");
+      const alertsCount = stockAlertsData?.length || 0;
+      const criticalCount = (stockAlertsData ?? []).filter((a) => a.status === "Critical").length;
 
-        // 6. Active discounts count (global)
-        const { data: activeDiscountsData } = await supabase
-          .from("discount_promos")
-          .select("id")
-          .eq("status", "Active");
-        const activeDiscountsCount = activeDiscountsData?.length || 0;
+      // 6. Active discounts count + expiring within 7 days (global)
+      const { data: activeDiscountsData } = await supabase
+        .from("discount_promos")
+        .select("id, valid_to")
+        .eq("status", "Active");
+      const activeDiscountsCount = activeDiscountsData?.length || 0;
+      const weekAhead = new Date();
+      weekAhead.setDate(weekAhead.getDate() + 7);
+      const expiringSoon = (activeDiscountsData ?? []).filter((d) => {
+        if (!d.valid_to) return false;
+        const to = new Date(d.valid_to);
+        return !Number.isNaN(to.getTime()) && to >= new Date(today) && to <= weekAhead;
+      }).length;
 
-        return {
-          todaysSales: formatCurrency(todaysSalesAmount),
-          todaysSalesDelta: salesDelta,
-          employeesPresent: `${presentCount} / ${totalEmployees}`,
-          employeesAttendanceHint: `${attendancePercentage}% attendance`,
-          stockAlerts: alertsCount,
-          stockAlertsDelta: "-3 since last week",
-          activeDiscounts: activeDiscountsCount,
-          activeDiscountsHint: `${activeDiscountsCount > 0 ? Math.ceil(activeDiscountsCount * 0.15) : 0} campaigns expiring this week`,
-        };
-      } catch (error) {
-        console.error("Error fetching dashboard stats:", error);
-      }
-
-      // Fallback to mock data
       return {
-        todaysSales: "₹ 4,38,210",
-        todaysSalesDelta: "+12.4% vs yesterday",
-        employeesPresent: "128 / 142",
-        employeesAttendanceHint: "90.1% attendance",
-        stockAlerts: 14,
-        stockAlertsDelta: "-3 since last week",
-        activeDiscounts: 9,
-        activeDiscountsHint: "3 campaigns expiring this week",
+        todaysSales: formatCurrency(todaysSalesAmount),
+        todaysSalesDelta: salesDelta,
+        employeesPresent: `${presentCount} / ${totalEmployees}`,
+        employeesAttendanceHint: `${attendancePercentage}% attendance`,
+        stockAlerts: alertsCount,
+        stockAlertsDelta: `${criticalCount} critical`,
+        activeDiscounts: activeDiscountsCount,
+        activeDiscountsHint: `${expiringSoon} expiring this week`,
       };
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
@@ -252,32 +214,51 @@ export function useSalesChartData(branch?: string) {
   return useQuery({
     queryKey: ["dashboard", "sales-chart", branch ?? "all"],
     queryFn: async (): Promise<SalesChartData[]> => {
-      try {
-        const last7DaysData: SalesChartData[] = [];
+      const since = new Date();
+      since.setDate(since.getDate() - 6);
+      const sinceIso = isoOf(since);
 
-        // Get data for last 7 days
-        for (let i = 6; i >= 0; i--) {
-          const date = new Date();
-          date.setDate(date.getDate() - i);
-          const dateStr = date.toISOString().split("T")[0];
-          const dayOfWeek = getDayOfWeek(date);
+      const byDate: Record<string, number> = {};
 
-          const dailySales = await sumSalesForDate(dateStr, branch);
-          // Estimate revenue as 75% of sales (approximation)
-          const dailyRevenue = Math.round(dailySales * 0.75);
-
-          last7DaysData.push({
-            d: dayOfWeek,
-            sales: dailySales,
-            revenue: dailyRevenue,
-          });
-        }
-
-        return last7DaysData.length > 0 ? last7DaysData : mockSalesData;
-      } catch (error) {
-        console.error("Error fetching sales chart data:", error);
-        return mockSalesData;
+      if (isScoped(branch)) {
+        // billing_sales_bills_branches has no bill_date column — see the
+        // comment on sumSalesForDate above.
+        const { data } = await supabase
+          .from("billing_sales_bills_branches")
+          .select("amount, date")
+          .eq("branch", branch);
+        (data ?? []).forEach((row) => {
+          const d = parseRowDate(row.date);
+          if (!d) return;
+          const iso = isoOf(d);
+          if (iso < sinceIso) return;
+          byDate[iso] = (byDate[iso] ?? 0) + parseAmount(row.amount);
+        });
+      } else {
+        const { data } = await supabase
+          .from("billing_sales_bills")
+          .select("amount, bill_date")
+          .gte("bill_date", sinceIso);
+        (data ?? []).forEach((row) => {
+          if (!row.bill_date) return;
+          byDate[row.bill_date] = (byDate[row.bill_date] ?? 0) + parseAmount(row.amount);
+        });
       }
+
+      const last7DaysData: SalesChartData[] = [];
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split("T")[0];
+        const dailySales = byDate[dateStr] ?? 0;
+        last7DaysData.push({
+          d: getDayOfWeek(date),
+          sales: dailySales,
+          // Revenue approximated as 75% of gross sales (no cost data yet)
+          revenue: Math.round(dailySales * 0.75),
+        });
+      }
+      return last7DaysData;
     },
     staleTime: 1000 * 60 * 5,
     refetchInterval: 1000 * 60 * 3,
@@ -289,55 +270,56 @@ export function useAttendanceChartData(branch?: string) {
   return useQuery({
     queryKey: ["dashboard", "attendance-chart", branch ?? "all"],
     queryFn: async (): Promise<AttendanceChartData[]> => {
-      try {
-        const last7DaysData: AttendanceChartData[] = [];
-        const scoped = isScoped(branch);
+      const scoped = isScoped(branch);
 
-        // Get total employees (branch-scoped)
-        let employeesQuery = supabase.from("employees").select("id");
-        if (scoped) employeesQuery = employeesQuery.eq("branch", branch);
-        const { data: allEmployees } = await employeesQuery;
+      // Get total employees (branch-scoped)
+      let employeesQuery = supabase.from("employees").select("id");
+      if (scoped) employeesQuery = employeesQuery.eq("branch", branch);
+      const { data: allEmployees } = await employeesQuery;
+      const totalEmployees = allEmployees?.length || 0;
 
-        const totalEmployees = allEmployees?.length || 142;
+      const since = new Date();
+      since.setDate(since.getDate() - 6);
+      const sinceIso = since.toISOString().split("T")[0];
 
-        // Get data for last 7 days
-        for (let i = 6; i >= 0; i--) {
-          const date = new Date();
-          date.setDate(date.getDate() - i);
-          const dateStr = date.toISOString().split("T")[0];
-          const dayOfWeek = getDayOfWeek(date);
+      let checkInQuery = supabase
+        .from("employee_checkins")
+        .select("employee_id, check_date, check_time")
+        .eq("check_type", "check-in")
+        .gte("check_date", sinceIso);
+      if (scoped) checkInQuery = checkInQuery.eq("branch", branch);
+      const { data: checkInData } = await checkInQuery;
 
-          // Count check-ins for this day (branch-scoped)
-          let checkInQuery = supabase
-            .from("employee_checkins")
-            .select("employee_id, check_type")
-            .eq("check_date", dateStr);
-          if (scoped) checkInQuery = checkInQuery.eq("branch", branch);
-          const { data: checkInData } = await checkInQuery;
+      const last7DaysData: AttendanceChartData[] = [];
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split("T")[0];
 
-          // Count presents (employees with at least one check-in)
-          const uniquePresent = new Set(checkInData?.map((c: any) => c.employee_id) || []).size;
+        const dayRows = (checkInData ?? []).filter((c) => c.check_date === dateStr);
+        const firstCheckin = new Map<string, number>();
+        dayRows.forEach((c) => {
+          const mins = parseTimeToMinutes(c.check_time);
+          if (mins === null) return;
+          const prev = firstCheckin.get(c.employee_id);
+          if (prev === undefined || mins < prev) firstCheckin.set(c.employee_id, mins);
+        });
 
-          // Count lates (simplified - would need actual check-in time data)
-          // Approximation: assume 5-10% of employees are typically late
-          const lateCheckIns: unknown[] = [];
+        const uniquePresent = new Set(dayRows.map((c) => c.employee_id)).size;
+        const lateCount = [...firstCheckin.values()].filter(
+          (mins) => mins > LATE_CUTOFF_MINUTES,
+        ).length;
+        const absentCount = Math.max(0, totalEmployees - uniquePresent);
 
-          const lateCount = Math.min(lateCheckIns.length, Math.ceil(totalEmployees * 0.08));
-          const absentCount = Math.max(0, totalEmployees - uniquePresent - lateCount);
-
-          last7DaysData.push({
-            d: dayOfWeek,
-            present: uniquePresent,
-            late: lateCount,
-            absent: absentCount,
-          });
-        }
-
-        return last7DaysData.length > 0 ? last7DaysData : mockAttendanceData;
-      } catch (error) {
-        console.error("Error fetching attendance chart data:", error);
-        return mockAttendanceData;
+        last7DaysData.push({
+          d: getDayOfWeek(date),
+          present: Math.max(0, uniquePresent - lateCount),
+          late: lateCount,
+          absent: absentCount,
+        });
       }
+
+      return last7DaysData;
     },
     staleTime: 1000 * 60 * 5,
     refetchInterval: 1000 * 60 * 3,
@@ -349,87 +331,62 @@ export function useInventoryMixData(branch?: string) {
   return useQuery({
     queryKey: ["dashboard", "inventory-mix", branch ?? "all"],
     queryFn: async (): Promise<CategoryData[]> => {
-      try {
-        // Branch-scoped: read per-branch product_count from the category_branches
-        // junction (the established branch pattern) instead of counting products.
-        if (isScoped(branch)) {
-          const { data: rows } = await supabase
-            .from("category_branches")
-            .select("category, product_count")
-            .eq("branch", branch);
+      // Branch-scoped: read per-branch product_count from the category_branches
+      // junction (the established branch pattern) instead of counting products.
+      if (isScoped(branch)) {
+        const { data: rows, error } = await supabase
+          .from("category_branches")
+          .select("category, product_count")
+          .eq("branch", branch);
+        if (error) throw error;
 
-          const withStock = (rows ?? []).filter((r: any) => r.product_count > 0);
-          const total = withStock.reduce((sum: number, r: any) => sum + r.product_count, 0);
-          const branchData = withStock
-            .map((r: any) => ({
-              name: `${r.category} (${r.product_count})`,
-              value: total > 0 ? Math.round((r.product_count / total) * 100) : 0,
-              count: r.product_count as number,
-            }))
-            .sort((a, b) => b.count - a.count);
-
-          if (branchData.length > 0) {
-            const sumPct = branchData.reduce((s, i) => s + i.value, 0);
-            if (sumPct !== 100) branchData[branchData.length - 1].value += 100 - sumPct;
-            return branchData;
-          }
-          return mockInventoryMix;
-        }
-
-        // Fetch ALL products from Supabase with category field
-        const { data: products, error } = await supabase.from("products").select("id, category");
-
-        if (error) {
-          console.error("Error fetching products:", error);
-          return mockInventoryMix;
-        }
-
-        if (!products || products.length === 0) {
-          console.warn("No products found in database");
-          return mockInventoryMix;
-        }
-
-        console.log(`Total products in database: ${products.length}`);
-
-        // Count products by category
-        const categoryCount: Record<string, number> = {};
-        products.forEach((p: any) => {
-          const cat = (p.category && p.category.trim()) || "Uncategorized";
-          categoryCount[cat] = (categoryCount[cat] || 0) + 1;
-        });
-
-        // Log category breakdown
-        console.log("Category breakdown:", categoryCount);
-
-        // Convert to percentages and sort by count (descending)
-        const total = products.length;
-        const categoryData = Object.entries(categoryCount)
-          .map(([name, count]) => ({
-            name: `${name} (${count})`, // Show category name with product count
-            value: total > 0 ? Math.round((count / total) * 100) : 0,
-            count, // Store actual count for debugging
-            category: name, // Store original category name
+        const withStock = (rows ?? []).filter((r) => r.product_count > 0);
+        const total = withStock.reduce((sum: number, r) => sum + r.product_count, 0);
+        const branchData = withStock
+          .map((r) => ({
+            name: `${r.category} (${r.product_count})`,
+            value: total > 0 ? Math.round((r.product_count / total) * 100) : 0,
+            count: r.product_count as number,
           }))
-          .sort((a, b) => b.count - a.count); // Sort by product count descending, ALL categories
+          .sort((a, b) => b.count - a.count);
 
-        // Ensure percentages add up to 100 (adjust last item if needed)
-        if (categoryData.length > 0) {
-          const sumPercentages = categoryData.reduce((sum, item) => sum + item.value, 0);
-          if (sumPercentages !== 100) {
-            categoryData[categoryData.length - 1].value += 100 - sumPercentages;
-          }
+        if (branchData.length > 0) {
+          const sumPct = branchData.reduce((s, i) => s + i.value, 0);
+          if (sumPct !== 100) branchData[branchData.length - 1].value += 100 - sumPct;
         }
-
-        console.log(
-          `Inventory mix calculated: ${categoryData.length} categories, total products: ${total}`,
-          categoryData,
-        );
-
-        return categoryData.length > 0 ? categoryData : mockInventoryMix;
-      } catch (error) {
-        console.error("Error fetching inventory mix:", error);
-        return mockInventoryMix;
+        return branchData;
       }
+
+      const { data: products, error } = await supabase.from("products").select("sku, category");
+      if (error) throw error;
+      if (!products || products.length === 0) return [];
+
+      // Count products by category
+      const categoryCount: Record<string, number> = {};
+      products.forEach((p: { category?: string }) => {
+        const cat = (p.category && p.category.trim()) || "Uncategorized";
+        categoryCount[cat] = (categoryCount[cat] || 0) + 1;
+      });
+
+      // Convert to percentages and sort by count (descending)
+      const total = products.length;
+      const categoryData = Object.entries(categoryCount)
+        .map(([name, count]) => ({
+          name: `${name} (${count})`,
+          value: total > 0 ? Math.round((count / total) * 100) : 0,
+          count,
+        }))
+        .sort((a, b) => b.count - a.count);
+
+      // Ensure percentages add up to 100 (adjust last item if needed)
+      if (categoryData.length > 0) {
+        const sumPercentages = categoryData.reduce((sum, item) => sum + item.value, 0);
+        if (sumPercentages !== 100) {
+          categoryData[categoryData.length - 1].value += 100 - sumPercentages;
+        }
+      }
+
+      return categoryData;
     },
     staleTime: 1000 * 60 * 10,
     refetchInterval: 1000 * 60 * 5,
@@ -441,32 +398,46 @@ export function useRecentTransactions(branch?: string) {
   return useQuery({
     queryKey: ["dashboard", "recent-transactions", branch ?? "all"],
     queryFn: async (): Promise<RecentTransaction[]> => {
-      try {
-        const query = isScoped(branch)
-          ? supabase
-              .from("billing_sales_bills_branches")
-              .select("invoice, date, customer, amount, payment, status")
-              .eq("branch", branch)
-          : supabase
-              .from("billing_sales_bills")
-              .select("invoice, date, customer, amount, payment, status");
+      if (isScoped(branch)) {
+        // billing_sales_bills_branches has no bill_date column — order by
+        // invoice (monotonically increasing) and sort by parsed `date` too,
+        // matching the recency ordering the global path gets from bill_date.
+        const { data, error } = await supabase
+          .from("billing_sales_bills_branches")
+          .select("invoice, date, customer, amount, payment, status")
+          .eq("branch", branch)
+          .order("invoice", { ascending: false });
+        if (error) throw error;
 
-        const { data, error } = await query.order("date", { ascending: false }).limit(5);
-
-        if (!error && data && data.length > 0) {
-          return data.map((txn: any) => ({
-            id: txn.invoice,
-            customer: txn.customer,
-            amount: txn.amount,
-            method: txn.payment,
-            status: txn.status,
-          }));
-        }
-      } catch (error) {
-        console.warn("Error fetching recent transactions from Supabase:", error);
+        const sorted = [...(data ?? [])].sort((a, b) => {
+          const da = parseRowDate(a.date)?.getTime() ?? 0;
+          const db = parseRowDate(b.date)?.getTime() ?? 0;
+          return db - da || b.invoice.localeCompare(a.invoice);
+        });
+        return sorted.slice(0, 5).map((txn) => ({
+          id: txn.invoice,
+          customer: txn.customer,
+          amount: txn.amount,
+          method: txn.payment,
+          status: txn.status,
+        }));
       }
 
-      return mockRecentTx;
+      const { data, error } = await supabase
+        .from("billing_sales_bills")
+        .select("invoice, date, customer, amount, payment, status, bill_date")
+        .order("bill_date", { ascending: false })
+        .order("invoice", { ascending: false })
+        .limit(5);
+      if (error) throw error;
+
+      return (data ?? []).map((txn) => ({
+        id: txn.invoice,
+        customer: txn.customer,
+        amount: txn.amount,
+        method: txn.payment,
+        status: txn.status,
+      }));
     },
   });
 }
@@ -476,26 +447,19 @@ export function useStockAlertsData() {
   return useQuery({
     queryKey: ["dashboard", "stock-alerts"],
     queryFn: async (): Promise<StockAlert[]> => {
-      try {
-        const { data, error } = await supabase
-          .from("low_stock_alerts")
-          .select("sku, product, current_stock, min_level")
-          .order("current_stock")
-          .limit(4);
+      const { data, error } = await supabase
+        .from("low_stock_alerts")
+        .select("sku, product, current_stock, min_level")
+        .order("current_stock")
+        .limit(4);
+      if (error) throw error;
 
-        if (!error && data && data.length > 0) {
-          return data.map((alert: any) => ({
-            sku: alert.sku,
-            name: alert.product,
-            left: alert.current_stock,
-            reorder: alert.min_level,
-          }));
-        }
-      } catch (error) {
-        console.warn("Error fetching stock alerts from Supabase:", error);
-      }
-
-      return mockStockAlerts;
+      return (data ?? []).map((alert) => ({
+        sku: alert.sku,
+        name: alert.product,
+        left: alert.current_stock,
+        reorder: alert.min_level,
+      }));
     },
   });
 }
@@ -505,28 +469,22 @@ export function useEmployeeLogins(branch?: string) {
   return useQuery({
     queryKey: ["dashboard", "employee-logins", branch ?? "all"],
     queryFn: async (): Promise<EmployeeLogin[]> => {
-      try {
-        // Fetch recent employee logins (branch-scoped)
-        let loginsQuery = supabase
-          .from("employee_logins")
-          .select("employee_name, employee_role, branch, status");
-        if (isScoped(branch)) loginsQuery = loginsQuery.eq("branch", branch);
-        const { data: logins } = await loginsQuery
-          .order("login_time", { ascending: false })
-          .limit(5);
+      let loginsQuery = supabase
+        .from("employee_logins")
+        .select("employee_name, employee_role, branch, status");
+      if (isScoped(branch)) loginsQuery = loginsQuery.eq("branch", branch);
+      const { data: logins, error } = await loginsQuery
+        .order("login_time", { ascending: false })
+        .limit(5);
+      if (error) throw error;
 
-        if (logins && logins.length > 0) {
-          return logins.map((login: any) => ({
-            name: login.employee_name,
-            role: `${login.employee_role} · ${login.branch}`,
-            status: login.status || "offline",
-          }));
-        }
-      } catch (error) {
-        console.error("Error fetching employee logins:", error);
-      }
-
-      return mockLogins;
+      return (logins ?? []).map((login) => ({
+        name: login.employee_name,
+        role: login.employee_role.includes("·")
+          ? login.employee_role
+          : `${login.employee_role} · ${login.branch}`,
+        status: login.status || "offline",
+      }));
     },
     staleTime: 1000 * 60 * 2,
     refetchInterval: 1000 * 60,
