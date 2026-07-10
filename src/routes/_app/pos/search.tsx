@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
 import { formatINR } from "@/components/pos/products";
+import { useCart } from "@/components/pos/CartProvider";
 import { usePagination } from "@/hooks/use-pagination";
 import { usePosBranches, usePosProducts } from "@/hooks/use-pos";
 import type { PosProduct } from "@/types/pos";
@@ -23,18 +24,18 @@ export const Route = createFileRoute("/_app/pos/search")({
 });
 
 function Page() {
-  const router = useRouter();
   const [search, setSearch] = useState("");
   const [branch, setBranch] = useState("all");
   const { data: rows = [] } = usePosProducts(search, branch);
   const { data: branches = [] } = usePosBranches();
   const { page, setPage, totalPages, pageItems } = usePagination(rows);
+  const { addToCart } = useCart();
 
-  // The cart lives on the POS Dashboard, not this search page — "Add to
-  // Cart" here sends the cashier there to complete the sale.
-  function goToCart(product: PosProduct) {
-    toast.info(`Add ${product.name} to the cart on POS Dashboard.`);
-    router.navigate({ to: "/pos" });
+  // The cart is shared across all POS pages (CartProvider on the /pos layout),
+  // so adding here shows up on the POS Dashboard when the cashier checks out.
+  function addProduct(product: PosProduct) {
+    addToCart(product);
+    toast.success(`${product.name} added to cart.`);
   }
 
   const columns: Column<PosProduct>[] = [
@@ -70,7 +71,7 @@ function Page() {
         <Button
           size="sm"
           className="bg-brand text-brand-foreground hover:bg-brand/90"
-          onClick={() => goToCart(r)}
+          onClick={() => addProduct(r)}
         >
           Add to Cart
         </Button>

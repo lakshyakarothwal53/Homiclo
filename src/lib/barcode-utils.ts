@@ -2,6 +2,7 @@ import JsBarcode from "jsbarcode";
 
 export type BarcodeProduct = {
   sku: string;
+  barcode?: string;
   name: string;
   price?: number;
 };
@@ -29,7 +30,7 @@ export function printBarcodes(products: BarcodeProduct[]) {
     .map((p) => {
       let svg: string;
       try {
-        svg = barcodeSvg(p.sku);
+        svg = barcodeSvg(p.barcode || p.sku);
       } catch {
         return "";
       }

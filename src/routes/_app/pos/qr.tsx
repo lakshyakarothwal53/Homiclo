@@ -1,28 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { QrCode } from "lucide-react";
-import { PageHeader } from "@/components/common/PageHeader";
-import { ScannerView } from "@/components/pos/ScannerView";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
+// The Impact IHS310X is a 1D scanner and the app generates no QR codes, so the
+// dedicated QR page has been retired. Kept as a redirect so old links/bookmarks
+// land on the camera-scan (barcode) fallback instead of 404-ing.
 export const Route = createFileRoute("/_app/pos/qr")({
-  head: () => ({
-    meta: [
-      { title: "QR Scanner — HOMIQLO" },
-      { name: "description", content: "QR overview and controls." },
-    ],
-  }),
-  component: Page,
+  beforeLoad: () => {
+    throw redirect({ to: "/pos/barcode" });
+  },
 });
-
-function Page() {
-  return (
-    <>
-      <PageHeader eyebrow="POS › QR" title="QR Scanner" description="QR overview and controls." />
-      <ScannerView
-        icon={QrCode}
-        label="QR Code"
-        format="qr"
-        instruction="Position the qr code in front of the scanner"
-      />
-    </>
-  );
-}

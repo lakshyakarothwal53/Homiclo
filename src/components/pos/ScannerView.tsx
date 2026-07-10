@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { usePosProducts } from "@/hooks/use-pos";
+import { useCart } from "@/components/pos/CartProvider";
 import { printBarcodes } from "@/lib/barcode-utils";
 import { formatINR } from "@/components/pos/products";
 import type { PosProduct } from "@/types/pos";
@@ -51,18 +52,23 @@ export function ScannerView({
   const rafRef = useRef<number | null>(null);
 
   const { data: products = [] } = usePosProducts();
+  const { addToCart } = useCart();
 
   function lookup(code: string) {
     const clean = code.trim();
     if (!clean) return;
     setLastCode(clean);
-    const product = products.find(
-      (p) =>
-        p.sku.toLowerCase() === clean.toLowerCase() || p.name.toLowerCase() === clean.toLowerCase(),
-    );
+    const product =
+      products.find((p) => p.barcode === clean) ??
+      products.find(
+        (p) =>
+          p.sku.toLowerCase() === clean.toLowerCase() ||
+          p.name.toLowerCase() === clean.toLowerCase(),
+      );
     if (product) {
       setScanned(product);
-      toast.success(`${product.name} · ${formatINR(product.price)}`);
+      addToCart(product);
+      toast.success(`${product.name} added to cart · ${formatINR(product.price)}`);
     } else {
       setScanned(null);
       toast.error(`No product found for "${clean}".`);

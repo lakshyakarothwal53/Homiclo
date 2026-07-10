@@ -7,6 +7,7 @@ export type AdjustmentReason = "Damage" | "Audit Correction" | "Theft" | "Return
 
 export interface Product {
   sku: string;
+  barcode?: string;
   name: string;
   category: string;
   price: number;

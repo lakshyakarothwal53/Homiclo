@@ -14,6 +14,10 @@ Run these in the Supabase dashboard **SQL Editor**, in order:
 | 8     | `08_billing_branches.sql`       | Billing per-branch support                                |
 | 9     | `09_discounts_branches.sql`     | Discounts per-branch support                              |
 | 10    | `10_compute_product_counts.sql` | Triggers to auto-compute category product counts          |
+| 11    | `11_add_minimum_stock.sql`      | Adds `min_stock` to products                              |
+| 12    | `12_branch_authority.sql`       | Branch authority infra                                    |
+| 13    | `13_completion_pack.sql`        | `app_settings` + remaining CRUD policies                 |
+| 14    | `14_product_barcode.sql`        | Auto-generated unique EAN-13 `barcode` on products        |
 
 ## Steps
 
