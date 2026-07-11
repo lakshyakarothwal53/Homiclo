@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 
 import { usePosSettings } from "@/hooks/use-pos";
-import type { PosLineItem, PosProduct } from "@/types/pos";
+import type { AppliedCoupon, PosLineItem, PosProduct } from "@/types/pos";
 
 export type CartLine = { product: PosProduct; qty: number };
 
@@ -22,6 +22,9 @@ type CartContextValue = {
   clear: () => void;
   totals: CartTotals;
   asLineItems: () => PosLineItem[];
+  coupon: AppliedCoupon | null;
+  applyCoupon: (coupon: AppliedCoupon) => void;
+  removeCoupon: () => void;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -41,6 +44,10 @@ function loadCart(): CartLine[] {
 export function CartProvider({ children }: { children: ReactNode }) {
   const { settings } = usePosSettings();
   const [lines, setLines] = useState<CartLine[]>(loadCart);
+  const [coupon, setCoupon] = useState<AppliedCoupon | null>(null);
+
+  const applyCoupon = useCallback((next: AppliedCoupon) => setCoupon(next), []);
+  const removeCoupon = useCallback(() => setCoupon(null), []);
 
   useEffect(() => {
     try {
@@ -72,16 +79,27 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setLines((prev) => prev.filter((l) => l.product.sku !== sku));
   }, []);
 
-  const clear = useCallback(() => setLines([]), []);
+  const clear = useCallback(() => {
+    setLines([]);
+    setCoupon(null);
+  }, []);
 
+  // Discount is driven entirely by an applied coupon (fetched from discount
+  // settings); with no coupon there is no discount.
   const totals = useMemo<CartTotals>(() => {
     const itemCount = lines.reduce((n, l) => n + l.qty, 0);
     const subtotal = lines.reduce((s, l) => s + l.product.price * l.qty, 0);
-    const discount = Math.round(subtotal * (settings.discountRate / 100));
+    let discount = 0;
+    if (coupon) {
+      discount =
+        coupon.valueType === "percentage"
+          ? Math.round(subtotal * (coupon.value / 100))
+          : Math.min(coupon.value, subtotal);
+    }
     const gst = Math.round((subtotal - discount) * (settings.gstRate / 100));
     const total = subtotal - discount + gst;
     return { itemCount, subtotal, discount, gst, total };
-  }, [lines, settings.discountRate, settings.gstRate]);
+  }, [lines, coupon, settings.gstRate]);
 
   const asLineItems = useCallback(
     (): PosLineItem[] =>
@@ -97,8 +115,30 @@ export function CartProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ lines, addToCart, setQty, removeLine, clear, totals, asLineItems }),
-    [lines, addToCart, setQty, removeLine, clear, totals, asLineItems],
+    () => ({
+      lines,
+      addToCart,
+      setQty,
+      removeLine,
+      clear,
+      totals,
+      asLineItems,
+      coupon,
+      applyCoupon,
+      removeCoupon,
+    }),
+    [
+      lines,
+      addToCart,
+      setQty,
+      removeLine,
+      clear,
+      totals,
+      asLineItems,
+      coupon,
+      applyCoupon,
+      removeCoupon,
+    ],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

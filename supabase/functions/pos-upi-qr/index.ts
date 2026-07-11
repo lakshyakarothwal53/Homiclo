@@ -50,7 +50,10 @@ Deno.serve(async (req) => {
         }),
       });
       const data = await res.json();
-      if (!res.ok) return json({ error: data.error?.description ?? "Razorpay error", data }, res.status);
+      if (!res.ok) {
+        console.error("Razorpay qr_codes create failed:", res.status, JSON.stringify(data));
+        return json({ error: data.error?.description ?? "Razorpay error", data }, res.status);
+      }
       return json({ qrId: data.id, imageUrl: data.image_url, status: "created" });
     }
 

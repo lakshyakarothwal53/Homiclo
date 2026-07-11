@@ -4,23 +4,12 @@ import { toast } from "sonner";
 
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTableCard, type Column } from "@/components/inventory/DataTableCard";
-import { DeleteConfirm } from "@/components/inventory/DeleteConfirm";
-import {
-  EntityFormDialog,
-  type EntityField,
-  type EntityValues,
-} from "@/components/inventory/EntityFormDialog";
 import { FilterBar } from "@/components/inventory/FilterBar";
 import { InventoryStatusBadge } from "@/components/inventory/InventoryStatusBadge";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { usePagination } from "@/hooks/use-pagination";
-import {
-  useBranches,
-  useDeleteLowStockAlert,
-  useLowStockAlerts,
-  useUpdateLowStockAlert,
-} from "@/hooks/use-inventory";
+import { useBranches, useLowStockAlerts } from "@/hooks/use-inventory";
 import type { LowStockAlert } from "@/types/inventory";
 
 export const Route = createFileRoute("/_app/inventory/alerts")({
@@ -42,30 +31,6 @@ const COLUMNS: Column[] = [
   { key: "action", label: "Action", align: "right" },
 ];
 
-const FIELDS: EntityField[] = [
-  { key: "sku", label: "SKU", required: true, placeholder: "SKU-1001" },
-  { key: "product", label: "Product", required: true, placeholder: "Cotton T-Shirt (L)" },
-  { key: "currentStock", label: "Current Stock", type: "number", placeholder: "4" },
-  { key: "minLevel", label: "Min Level", type: "number", placeholder: "10" },
-  {
-    key: "status",
-    label: "Status",
-    type: "select",
-    options: ["Critical", "Low"],
-    required: true,
-  },
-];
-
-function toAlert(v: EntityValues): LowStockAlert {
-  return {
-    sku: String(v.sku),
-    product: String(v.product),
-    currentStock: Number(v.currentStock) || 0,
-    minLevel: Number(v.minLevel) || 0,
-    status: v.status as LowStockAlert["status"],
-  };
-}
-
 function Page() {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -74,33 +39,13 @@ function Page() {
   const { data: branches = [] } = useBranches();
   const { page, setPage, totalPages, pageItems } = usePagination(data);
 
-  const updateAlert = useUpdateLowStockAlert();
-  const deleteAlert = useDeleteLowStockAlert();
-
-  // Reordering means creating a real stock-inward record (qty/supplier/cost
-  // aren't knowable from the alert row alone), so send the user to the form
-  // that actually creates one instead of faking the action here.
+  // Alerts are derived from products (stock < min_stock) — they aren't
+  // hand-edited, so there's no add/edit/delete here. The only action is to
+  // reorder, which routes to the stock-inward form (qty/supplier/cost aren't
+  // knowable from the alert row alone) rather than faking the action here.
   function handleReorder(alert: LowStockAlert) {
     toast.info(`Create a stock-inward entry for ${alert.product} (${alert.sku}).`);
     router.navigate({ to: "/inventory/stock-inward" });
-  }
-
-  function handleUpdate(originalSku: string, v: EntityValues) {
-    const row = toAlert(v);
-    updateAlert.mutate(
-      { ...row, originalSku },
-      {
-        onSuccess: () => toast.success(`${row.sku} updated.`),
-        onError: (e) => toast.error(e instanceof Error ? e.message : "Could not update alert."),
-      },
-    );
-  }
-
-  function handleDelete(sku: string) {
-    deleteAlert.mutate(sku, {
-      onSuccess: () => toast.success(`${sku} deleted.`),
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Could not delete alert."),
-    });
   }
 
   return (
@@ -145,17 +90,6 @@ function Page() {
                 >
                   Reorder
                 </Button>
-                <EntityFormDialog
-                  mode="edit"
-                  title="Edit Low Stock Alert"
-                  fields={FIELDS}
-                  initial={r}
-                  trigger={
-                    <button className="text-sm font-medium text-brand hover:underline">Edit</button>
-                  }
-                  onSave={(v) => handleUpdate(r.sku, v)}
-                />
-                <DeleteConfirm label={r.sku} onConfirm={() => handleDelete(r.sku)} />
               </div>
             </TableCell>
           </TableRow>

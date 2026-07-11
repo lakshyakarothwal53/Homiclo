@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { fetchLowStockAlerts } from "@/lib/inventory-utils";
 import { parseRowDate } from "@/lib/report-data";
 
 // Helper functions
@@ -172,12 +173,11 @@ export function useDashboardStats(branch?: string) {
       const attendancePercentage =
         totalEmployees > 0 ? Math.round((presentCount / totalEmployees) * 100) : 0;
 
-      // 5. Stock alerts count + critical breakdown (global — low_stock_alerts has no branch column yet)
-      const { data: stockAlertsData } = await supabase
-        .from("low_stock_alerts")
-        .select("sku, status");
-      const alertsCount = stockAlertsData?.length || 0;
-      const criticalCount = (stockAlertsData ?? []).filter((a) => a.status === "Critical").length;
+      // 5. Stock alerts count + critical breakdown, derived live from products
+      // (products has no branch dimension, so this is global).
+      const stockAlertsData = await fetchLowStockAlerts();
+      const alertsCount = stockAlertsData.length;
+      const criticalCount = stockAlertsData.filter((a) => a.status === "Critical").length;
 
       // 6. Active discounts count + expiring within 7 days (global)
       const { data: activeDiscountsData } = await supabase
@@ -442,23 +442,17 @@ export function useRecentTransactions(branch?: string) {
   });
 }
 
-// Fetch stock alerts from low_stock_alerts
+// Stock alerts, derived live from products (stock < min_stock).
 export function useStockAlertsData() {
   return useQuery({
     queryKey: ["dashboard", "stock-alerts"],
     queryFn: async (): Promise<StockAlert[]> => {
-      const { data, error } = await supabase
-        .from("low_stock_alerts")
-        .select("sku, product, current_stock, min_level")
-        .order("current_stock")
-        .limit(4);
-      if (error) throw error;
-
-      return (data ?? []).map((alert) => ({
+      const alerts = await fetchLowStockAlerts();
+      return alerts.slice(0, 4).map((alert) => ({
         sku: alert.sku,
         name: alert.product,
-        left: alert.current_stock,
-        reorder: alert.min_level,
+        left: alert.currentStock,
+        reorder: alert.minLevel,
       }));
     },
   });

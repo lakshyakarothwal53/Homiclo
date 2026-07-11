@@ -125,7 +125,7 @@ supabase/          # SQL run by hand in the Supabase dashboard SQL editor
   - `ROLE_ACCESS` maps each role to the `NAV` section labels it may see (`["*"]` = everything, only `super_admin`).
   - `canAccessPath(role, pathname)` backs the route guard in `src/routes/_app.tsx` (`beforeLoad`), so a forbidden section is unreachable by typing its URL, not just hidden from the sidebar.
   - `roleHome(role)` decides the post-login/redirect destination — employees land on `/attendance/employee-checkin`, everyone else on `/`.
-- **Branch scoping**: every role except `super_admin` is branch-scoped (`isBranchScoped()`). Non-super-admin queries filter by `useAuth().user.branch`. Many Supabase tables ship in pairs — a global table and a `<table>_branches` variant (e.g. `pos_products` / `pos_products_branches`, `reports` / `reports_branches`) — hooks pick the branch-scoped table when a branch filter is active. Follow this pattern when adding queries to a new module.
+- **Branch scoping**: every role except `super_admin` is branch-scoped (`isBranchScoped()`). Non-super-admin queries filter by `useAuth().user.branch`. Many Supabase tables ship in pairs — a global table and a `<table>_branches` variant (e.g. `billing_sales_bills` / `billing_sales_bills_branches`, `reports` / `reports_branches`) — hooks pick the branch-scoped table when a branch filter is active. Follow this pattern when adding queries to a new module. **Exception — product data is not branch-scoped**: `products` is the single source of truth and has no branch dimension, so `useProducts` / `usePosProducts` read `products` for every branch (their old `products_branches` / `pos_products_branches` twins are retired — see the Product data model note below).
 
 ## Component Patterns
 
@@ -186,9 +186,16 @@ supabase/          # SQL run by hand in the Supabase dashboard SQL editor
 - Pattern: `useQuery({ queryKey: ['resource', ...params], queryFn })` for reads, `useMutation({ mutationFn, onSuccess: () => queryClient.invalidateQueries(['resource']) })` for writes.
 - Supabase columns are snake_case; hooks alias them back to the camelCase shape defined in `src/types/<module>.ts` (e.g. `select("...", "joinDate:join_date", ...)`).
 - Branch-aware hooks accept an optional `branch` param and switch between the global table and its `_branches` counterpart — see the Branch scoping note above. A `like(value)` helper (`%value%`) is duplicated per hook file for `ilike` search filters.
-- There are **no mock fallbacks left anywhere** — dashboard widgets, notification alerts, and attendance overview all compute from live tables and render loading/empty states instead of canned rows. Notifications are *derived* per category from module tables (low_stock_alerts, late_arrivals/absent_records/employee_checkins, billing_payments/refunds, billing_tally_log/discount_promos) in `use-notifications.ts`, not read from the seeded `notifications` table.
+- There are **no mock fallbacks left anywhere** — dashboard widgets, notification alerts, and attendance overview all compute from live tables and render loading/empty states instead of canned rows. Notifications are *derived* per category from module tables (products for low-stock, late_arrivals/absent_records/employee_checkins, billing_payments/refunds, billing_tally_log/discount_promos) in `use-notifications.ts`, not read from the seeded `notifications` table.
 - Cross-module report/export tooling lives in `src/lib/`: `pdf-utils.ts` (jsPDF table PDFs + CSV download), `report-data.ts` (live dataset per report category + date parsing/filter helpers), `barcode-utils.ts` (JsBarcode CODE128 print sheets), `tally.ts` (Tally XML voucher push over the HTTP gateway, config in `app_settings` key `tally`).
 - Settings pages (Company / Tally / Preferences / Notification rules) persist JSONB blobs to the `app_settings` key-value table; roles/report "Add New" writes need the policies from `supabase/13_completion_pack.sql`.
+
+### Product data model (canonical — read product facts only from `products`)
+
+`products` (PK `sku`) is the **single source of truth** for every product fact (name, price, stock, min level, status, barcode). Never read product data from a second table or re-store name/price/stock elsewhere — link to it by `sku` instead. Full write-up + diagrams in `model.md` and `product-data-model.md` (repo root).
+
+- **Low-stock alerts are derived, not stored.** Use `fetchLowStockAlerts()` / `deriveLowStockStatus()` in `src/lib/inventory-utils.ts` (products where `stock < min_stock`; `Critical` when `stock ≤ floor(min_stock/2)`, else `Low`). It backs `useLowStockAlerts`, the dashboard alert widgets, `use-notifications` `stockAlerts()`, and `report-data.ts` `fetchLowStockSummary()`. The Inventory → Alerts page is **read-only** (no create/edit/delete) — alerts appear/clear automatically.
+- **Retired-but-not-yet-dropped tables** (still in Supabase, no longer read by the app): `pos_products`, `pos_products_branches`, `products_branches`, `low_stock_alerts`, `low_stock_alerts_branches`, `discounts_active`. `supabase/15_redundancy_cleanup.sql` Part 1 (additive `product_sku` FKs) is safe to run now; **Part 2 (the DROPs) runs later, only after this refactor is verified in production.** Don't reintroduce reads of these tables.
 
 ## Supabase Integration
 

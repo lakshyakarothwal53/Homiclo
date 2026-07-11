@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
+import { fetchLowStockAlerts } from "@/lib/inventory-utils";
 import type { AlertItem } from "@/types/notifications";
 
 // Alerts are derived live from the module tables (stock, attendance, billing,
@@ -19,24 +20,21 @@ import type { AlertItem } from "@/types/notifications";
 // current state of the data.
 
 async function stockAlerts(): Promise<AlertItem[]> {
-  const { data } = await supabase
-    .from("low_stock_alerts")
-    .select("sku, product, current_stock, min_level, status")
-    .order("current_stock");
-  return (data ?? []).map(
+  const data = await fetchLowStockAlerts();
+  return data.map(
     (a): AlertItem => ({
       id: `stock-${a.sku}`,
       title:
-        a.current_stock === 0
+        a.currentStock === 0
           ? `Critical: ${a.product} out of stock`
-          : `${a.product} — ${a.current_stock} units left`,
+          : `${a.product} — ${a.currentStock} units left`,
       description:
-        a.current_stock === 0
+        a.currentStock === 0
           ? `${a.sku} has 0 units remaining. Reorder immediately.`
-          : `${a.sku} is below the minimum level (${a.min_level}).`,
+          : `${a.sku} is below the minimum level (${a.minLevel}).`,
       time: a.status,
-      tone: a.status === "Critical" || a.current_stock === 0 ? "danger" : "warning",
-      icon: a.current_stock === 0 ? AlertTriangle : Diamond,
+      tone: a.status === "Critical" || a.currentStock === 0 ? "danger" : "warning",
+      icon: a.currentStock === 0 ? AlertTriangle : Diamond,
       category: "stock",
     }),
   );

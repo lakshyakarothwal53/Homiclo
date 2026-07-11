@@ -29,6 +29,10 @@ export type BillingSalesBill = {
   status: string;
   bill_date?: string;
   amount_num?: number;
+  customerMobile?: string;
+  customerDob?: string;
+  customerGstin?: string;
+  invoiceDate?: string;
 };
 
 export type BillingPayment = {

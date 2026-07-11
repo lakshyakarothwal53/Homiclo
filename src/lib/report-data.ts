@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { fetchLowStockAlerts } from "@/lib/inventory-utils";
 import type { ReportCategory } from "@/types/reports";
 
 export type ReportData = {
@@ -405,14 +406,10 @@ export async function fetchStockAgeing(opts: ReportOpts = {}): Promise<ReportDat
 
 /** Live low-stock alerts — the same rows the Inventory > Low Stock Alerts page shows. */
 export async function fetchLowStockSummary(): Promise<ReportData> {
-  const { data, error } = await supabase
-    .from("low_stock_alerts")
-    .select("sku, product, current_stock, min_level, status")
-    .order("current_stock");
-  if (error) throw error;
+  const data = await fetchLowStockAlerts();
   return {
     columns: ["SKU", "Product", "Current Stock", "Min Level", "Status"],
-    rows: (data ?? []).map((r) => [r.sku, r.product, r.current_stock, r.min_level, r.status]),
+    rows: data.map((r) => [r.sku, r.product, r.currentStock, r.minLevel, r.status]),
   };
 }
 
@@ -831,8 +828,9 @@ export async function fetchMonthlyAttendanceReport(opts: ReportOpts = {}): Promi
 
   const rows = (roster ?? []).map((r) => {
     const c = counts.get(r.employee_id) ?? { present: 0, absent: 0, late: 0, leave: 0 };
+    // Late arrivals still attended, so they count toward attendance %.
     const tracked = c.present + c.absent + c.late;
-    const pct = tracked > 0 ? `${((c.present / tracked) * 100).toFixed(2)}%` : "0.00%";
+    const pct = tracked > 0 ? `${(((c.present + c.late) / tracked) * 100).toFixed(2)}%` : "0.00%";
     return [r.employee_name, r.designation, r.branch, c.present, c.absent, c.late, c.leave, pct];
   });
 

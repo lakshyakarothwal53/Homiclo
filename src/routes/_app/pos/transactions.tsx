@@ -52,6 +52,11 @@ async function reprint(r: PosTransaction, settings: PosSettings) {
         discount,
         gst,
         total,
+        customerName: r.customerName,
+        customerMobile: r.customerMobile,
+        customerDob: r.customerDob,
+        customerGstin: r.customerGstin,
+        invoiceDate: r.invoiceDate,
       },
       settings,
     );
@@ -97,7 +102,12 @@ function Page() {
       key: "action",
       header: "",
       render: (r) => (
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => reprint(r, settings)}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          onClick={() => reprint(r, settings)}
+        >
           <Printer className="h-3.5 w-3.5" /> Reprint
         </Button>
       ),

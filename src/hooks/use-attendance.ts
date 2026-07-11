@@ -358,21 +358,26 @@ export function useDailyLogs(search?: string) {
 export type AttendancePeriodOpts = { from?: string; to?: string };
 
 /**
- * Roster (id/name/designation/branch) comes from employee_attendance — that
- * part is static reference data, not a date-scoped fact. The present/absent/
- * late/leave counts and attendance % are computed live from daily_logs
- * (per-day status per employee) and absent_records (leave_type), scoped to
- * the selected period — the stored employee_attendance totals have no date
- * column at all, so they can't answer "for this month" and are only used
- * here for roster identity, never for the counts.
+ * Roster + attendance counts per employee. For an "all time" view (no period
+ * selected) the accumulated totals stored on employee_attendance
+ * (total_present/absent/late/leave) are the accurate figures — daily_logs only
+ * holds a sparse per-day sample, so recomputing from it would collapse everyone
+ * to 0%/100%. When a specific period IS selected, the stored totals can't
+ * answer "for this window" (they have no date column), so the counts are
+ * recomputed live from daily_logs (per-day status) + absent_records
+ * (leave_type), scoped to that period. Attendance % always counts late as
+ * attended: (present + late) / (present + late + absent), leave excluded.
  */
 export function useEmployeeAttendance(search?: string, opts: AttendancePeriodOpts = {}) {
   return useQuery({
     queryKey: ["attendance", "employee", search ?? "", opts.from ?? "", opts.to ?? ""],
     queryFn: async (): Promise<EmployeeAttendance[]> => {
+      const periodSelected = Boolean(opts.from || opts.to);
       let rosterQuery = supabase
         .from("employee_attendance")
-        .select("employee_id, employee_name, designation, branch, last_check_in");
+        .select(
+          "employee_id, employee_name, designation, branch, last_check_in, total_present, total_absent, total_late, total_leave",
+        );
       if (search)
         rosterQuery = rosterQuery.or(
           `employee_name.ilike.${like(search)},employee_id.ilike.${like(search)}`,
@@ -424,15 +429,24 @@ export function useEmployeeAttendance(search?: string, opts: AttendancePeriodOpt
         });
 
       return (roster ?? []).map((r) => {
-        const c = countsByEmployee.get(r.employee_id) ?? {
-          present: 0,
-          absent: 0,
-          late: 0,
-          leave: 0,
-        };
+        // All-time view → the accurate accumulated totals stored on the row;
+        // period view → the counts recomputed from daily_logs for that window.
+        const c = periodSelected
+          ? (countsByEmployee.get(r.employee_id) ?? { present: 0, absent: 0, late: 0, leave: 0 })
+          : {
+              present: r.total_present ?? 0,
+              absent: r.total_absent ?? 0,
+              late: r.total_late ?? 0,
+              leave: r.total_leave ?? 0,
+            };
+        // A late arrival still counts as attendance — the employee showed up.
+        // Attendance % = (present + late) / tracked days, where tracked days
+        // are present + late + absent (approved leave is excluded, not
+        // penalised).
         const totalTracked = c.present + c.absent + c.late;
+        const attended = c.present + c.late;
         const attendancePercentage =
-          totalTracked > 0 ? `${((c.present / totalTracked) * 100).toFixed(2)}%` : "0.00%";
+          totalTracked > 0 ? `${((attended / totalTracked) * 100).toFixed(2)}%` : "0.00%";
         return {
           employeeId: r.employee_id,
           employeeName: r.employee_name,

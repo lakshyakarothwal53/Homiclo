@@ -26,14 +26,14 @@ function like(value: string) {
 }
 
 export function usePosProducts(search?: string, branch?: string) {
-  const allBranches = !branch || branch === "all";
   return useQuery({
     queryKey: ["pos", "products", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<PosProduct[]> => {
-      let query = (
-        allBranches ? supabase.from("pos_products") : supabase.from("pos_products_branches")
-      ).select("sku, name, category, price, stock");
-      if (!allBranches) query = query.eq("branch", branch);
+      // Product catalogue reads from the canonical products table (single source
+      // of truth) instead of the standalone pos_products cache, which had drifted
+      // (stale stock/price/name). products has no branch dimension, so the list
+      // is global regardless of the selected branch.
+      let query = supabase.from("products").select("sku, name, category, price, stock");
       if (search) query = query.or(`name.ilike.${like(search)},sku.ilike.${like(search)}`);
       const { data, error } = await query;
       if (error) throw error;
@@ -45,7 +45,10 @@ export function usePosProducts(search?: string, branch?: string) {
 }
 
 const BASE_TXN_COLS = "time, invoice, items, amount, payment, cashier, status";
-const FULL_TXN_COLS = `${BASE_TXN_COLS}, subtotal, discount, gst, total, upiRef:upi_ref`;
+const FULL_TXN_COLS =
+  `${BASE_TXN_COLS}, subtotal, discount, gst, total, upiRef:upi_ref, ` +
+  "customerName:customer_name, customerMobile:customer_mobile, customerDob:customer_dob, " +
+  "customerGstin:customer_gstin, invoiceDate:invoice_date, couponCode:coupon_code";
 
 export function usePosTransactions(search?: string, branch?: string) {
   const allBranches = !branch || branch === "all";
@@ -58,8 +61,10 @@ export function usePosTransactions(search?: string, branch?: string) {
             ? supabase.from("pos_transactions")
             : supabase.from("pos_transactions_branches")
         ).select(cols);
+        // Latest transaction first. The global table has created_at; the branch
+        // table doesn't, so fall back to the (monotonic) invoice number there.
         if (allBranches) q = q.order("created_at", { ascending: false });
-        if (!allBranches) q = q.eq("branch", branch);
+        else q = q.eq("branch", branch).order("invoice", { ascending: false });
         if (search) q = q.or(`invoice.ilike.${like(search)},cashier.ilike.${like(search)}`);
         return q;
       }
@@ -129,6 +134,12 @@ export function useCreatePosTransaction() {
         gst: input.gst ?? null,
         total: input.total ?? null,
         upi_ref: input.upiRef ?? null,
+        customer_name: input.customerName ?? null,
+        customer_mobile: input.customerMobile ?? null,
+        customer_dob: input.customerDob ?? null,
+        customer_gstin: input.customerGstin ?? null,
+        invoice_date: input.invoiceDate ?? null,
+        coupon_code: input.couponCode ?? null,
       });
       if (error) {
         const { error: fallbackError } = await supabase

@@ -1,25 +1,30 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Minus, Plus, ScanLine, Search, Trash2 } from "lucide-react";
+import { Minus, Plus, Tag, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { FilterBar } from "@/components/billing/FilterBar";
+import { DataTable, type Column } from "@/components/billing/DataTable";
+import { EntriesFooter } from "@/components/billing/EntriesFooter";
 import { formatINR } from "@/components/pos/products";
 import { useCart } from "@/components/pos/CartProvider";
 import { PaymentDialog } from "@/components/pos/PaymentDialog";
-import { CameraScanDialog } from "@/components/pos/CameraScanDialog";
 import { useBarcodeScanner } from "@/hooks/use-barcode-scanner";
+import { usePagination } from "@/hooks/use-pagination";
 import {
   useCreatePosTransaction,
   useNextPosInvoiceNumber,
+  usePosBranches,
   usePosProducts,
   usePosSettings,
 } from "@/hooks/use-pos";
+import { fetchCouponByCode } from "@/hooks/use-discounts";
 import { printReceipt } from "@/lib/receipt-utils";
 import { useAuth } from "@/components/auth/AuthProvider";
-import type { PosProduct } from "@/types/pos";
+import type { PaymentResult, PosProduct } from "@/types/pos";
 
 export const Route = createFileRoute("/_app/pos/")({
   head: () => ({
@@ -55,14 +60,29 @@ function beep() {
 function Page() {
   const { user } = useAuth();
   const { settings } = usePosSettings();
-  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
+  const [branch, setBranch] = useState("all");
   const [payOpen, setPayOpen] = useState(false);
-  const [scanOpen, setScanOpen] = useState(false);
+  const [couponInput, setCouponInput] = useState("");
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
 
-  const { lines, addToCart, setQty, removeLine, clear, totals, asLineItems } = useCart();
+  const {
+    lines,
+    addToCart,
+    setQty,
+    removeLine,
+    clear,
+    totals,
+    asLineItems,
+    coupon,
+    applyCoupon,
+    removeCoupon,
+  } = useCart();
 
-  const { data: visible = [] } = usePosProducts(query.trim() || undefined);
+  const { data: rows = [] } = usePosProducts(search, branch);
   const { data: allProducts = [] } = usePosProducts();
+  const { data: branches = [] } = usePosBranches();
+  const { page, setPage, totalPages, pageItems } = usePagination(rows);
   const { data: nextInvoice } = useNextPosInvoiceNumber();
   const createTransaction = useCreatePosTransaction();
 
@@ -87,16 +107,83 @@ function Page() {
   useBarcodeScanner({
     onScan: (code) => {
       lookupAndAdd(code);
-      setQuery("");
+      setSearch("");
     },
-    enabled: !payOpen && !scanOpen,
+    enabled: !payOpen,
   });
 
-  function onProductClick(product: PosProduct) {
+  // The cart is shared across all POS pages (CartProvider on the /pos layout).
+  function addProduct(product: PosProduct) {
     addToCart(product);
+    toast.success(`${product.name} added to cart.`);
   }
 
-  function handlePaid({ paymentMode, upiRef }: { paymentMode: string; upiRef?: string }) {
+  const columns: Column<PosProduct>[] = [
+    {
+      key: "sku",
+      header: "SKU",
+      render: (r) => <span className="font-mono text-xs">{r.sku}</span>,
+    },
+    {
+      key: "name",
+      header: "Product",
+      render: (r) => <span className="font-medium">{r.name}</span>,
+    },
+    {
+      key: "category",
+      header: "Category",
+      render: (r) => <span className="text-muted-foreground">{r.category}</span>,
+    },
+    { key: "price", header: "Price", render: (r) => formatINR(r.price) },
+    {
+      key: "stock",
+      header: "Stock",
+      render: (r) => (
+        <span className={r.stock <= 10 ? "font-medium text-brand" : "text-foreground"}>
+          {r.stock}
+        </span>
+      ),
+    },
+    {
+      key: "action",
+      header: "Action",
+      render: (r) => (
+        <Button
+          size="sm"
+          className="bg-brand text-brand-foreground hover:bg-brand/90"
+          onClick={() => addProduct(r)}
+        >
+          Add to Cart
+        </Button>
+      ),
+    },
+  ];
+
+  async function handleApplyCoupon() {
+    const code = couponInput.trim();
+    if (!code) return;
+    setApplyingCoupon(true);
+    try {
+      const found = await fetchCouponByCode(code);
+      if (!found) {
+        toast.error(`No active discount found for "${code}".`);
+        return;
+      }
+      applyCoupon(found);
+      toast.success(`Coupon ${found.code} applied.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not apply coupon.");
+    } finally {
+      setApplyingCoupon(false);
+    }
+  }
+
+  function handleRemoveCoupon() {
+    removeCoupon();
+    setCouponInput("");
+  }
+
+  function handlePaid({ paymentMode, upiRef, customer }: PaymentResult) {
     if (!nextInvoice) {
       toast.error("Still loading invoice number, try again.");
       return;
@@ -120,6 +207,12 @@ function Page() {
         gst: snapshot.gst,
         total: snapshot.total,
         upiRef,
+        customerName: customer.name,
+        customerMobile: customer.mobile,
+        customerDob: customer.dob,
+        customerGstin: customer.gstin || undefined,
+        invoiceDate: customer.invoiceDate,
+        couponCode: coupon?.code,
         lines: receiptLines,
       },
       {
@@ -138,11 +231,17 @@ function Page() {
                 discount: snapshot.discount,
                 gst: snapshot.gst,
                 total: snapshot.total,
+                customerName: customer.name,
+                customerMobile: customer.mobile,
+                customerDob: customer.dob,
+                customerGstin: customer.gstin || undefined,
+                invoiceDate: customer.invoiceDate,
               },
               settings,
             );
           }
           clear();
+          setCouponInput("");
           setPayOpen(false);
         },
         onError: (e) => toast.error(e instanceof Error ? e.message : "Payment failed."),
@@ -159,53 +258,24 @@ function Page() {
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        {/* Catalogue */}
+        {/* Catalogue — same product-search table, scan an item with the barcode gun to add it */}
         <div className="min-w-0">
-          <div className="mb-4 flex items-center gap-2">
-            <form
-              className="relative flex-1"
-              onSubmit={(e) => {
-                e.preventDefault();
-                lookupAndAdd(query);
-                setQuery("");
-              }}
-            >
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Scan barcode or search product..."
-                className="pl-9"
-              />
-            </form>
-            <Button variant="outline" className="gap-2" onClick={() => setScanOpen(true)}>
-              <ScanLine className="h-4 w-4" /> Scan
-            </Button>
-          </div>
-
-          <Card className="border-border p-4">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-              {visible.map((p) => (
-                <button
-                  key={p.sku}
-                  onClick={() => onProductClick(p)}
-                  className="group rounded-lg border border-border p-3 text-left transition hover:border-brand/40 hover:shadow-sm"
-                >
-                  <div className="aspect-[4/3] rounded-md bg-gradient-to-br from-secondary to-[color-mix(in_oklab,var(--brand)_8%,var(--secondary))]" />
-                  <div className="mt-2.5 truncate text-sm font-medium text-foreground">
-                    {p.name}
-                  </div>
-                  <div className="mt-0.5 text-sm font-semibold text-brand">
-                    {formatINR(p.price)}
-                  </div>
-                </button>
-              ))}
-              {visible.length === 0 && (
-                <p className="col-span-full py-10 text-center text-sm text-muted-foreground">
-                  No products match “{query}”.
-                </p>
-              )}
-            </div>
+          <FilterBar
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Scan barcode or search by name / SKU..."
+            branches={branches}
+            branch={branch}
+            onBranchChange={setBranch}
+          />
+          <Card className="overflow-hidden border-border">
+            <DataTable columns={columns} rows={pageItems} rowKey={(r) => r.sku} />
+            <EntriesFooter
+              total={rows.length}
+              currentPage={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
+            />
           </Card>
         </div>
 
@@ -216,7 +286,10 @@ function Page() {
               Cart ({totals.itemCount} {totals.itemCount === 1 ? "item" : "items"})
             </h2>
             <button
-              onClick={clear}
+              onClick={() => {
+                clear();
+                setCouponInput("");
+              }}
               className="text-sm font-medium text-muted-foreground transition hover:text-brand"
             >
               Clear
@@ -275,13 +348,64 @@ function Page() {
 
           {lines.length > 0 && (
             <>
+              {/* Coupon code — discount is pulled from discount settings. */}
+              <div className="mt-4 border-t border-border pt-4">
+                <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <Tag className="h-3.5 w-3.5" /> Coupon Code
+                </label>
+                {coupon ? (
+                  <div className="flex items-center justify-between rounded-md border border-[color:var(--success)]/40 bg-[color:var(--success)]/5 px-3 py-2 text-sm">
+                    <span className="font-medium text-foreground">
+                      {coupon.code}
+                      <span className="ml-1 text-muted-foreground">
+                        (
+                        {coupon.valueType === "percentage"
+                          ? `${coupon.value}% off`
+                          : `${formatINR(coupon.value)} off`}
+                        )
+                      </span>
+                    </span>
+                    <button
+                      onClick={handleRemoveCoupon}
+                      className="text-muted-foreground transition hover:text-brand"
+                      aria-label="Remove coupon"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={couponInput}
+                      onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                      placeholder="Enter code"
+                      className="h-9"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void handleApplyCoupon();
+                        }
+                      }}
+                    />
+                    <Button
+                      variant="outline"
+                      className="h-9 shrink-0"
+                      disabled={applyingCoupon || !couponInput.trim()}
+                      onClick={() => void handleApplyCoupon()}
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                )}
+              </div>
+
               <dl className="mt-4 space-y-2 border-t border-border pt-4 text-sm">
                 <div className="flex justify-between text-muted-foreground">
                   <dt>Subtotal</dt>
                   <dd className="font-medium text-foreground">{formatINR(totals.subtotal)}</dd>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
-                  <dt>Discount ({settings.discountRate}%)</dt>
+                  <dt>Discount{coupon ? ` (${coupon.code})` : ""}</dt>
                   <dd className="font-medium text-[color:var(--success)]">
                     -{formatINR(totals.discount)}
                   </dd>
@@ -318,8 +442,6 @@ function Page() {
           onPaid={handlePaid}
         />
       )}
-
-      <CameraScanDialog open={scanOpen} onOpenChange={setScanOpen} onDetect={lookupAndAdd} />
     </>
   );
 }

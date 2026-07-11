@@ -20,6 +20,29 @@ export type PosTransaction = {
   gst?: number;
   total?: number;
   upiRef?: string;
+  customerName?: string;
+  customerMobile?: string;
+  customerDob?: string;
+  customerGstin?: string;
+  invoiceDate?: string;
+  couponCode?: string;
+};
+
+// Buyer details captured on the "Collect Payment" step. Name, mobile, dob and
+// invoiceDate are mandatory in the UI; gstin is optional.
+export type PosCustomer = {
+  name: string;
+  mobile: string;
+  dob: string;
+  invoiceDate: string;
+  gstin?: string;
+};
+
+// A coupon resolved from discount settings and applied to the cart total.
+export type AppliedCoupon = {
+  code: string;
+  valueType: "percentage" | "flat";
+  value: number;
 };
 
 export type PosLineItem = {
@@ -38,6 +61,12 @@ export type PosTransactionInput = PosTransaction & {
   total?: number;
   upiRef?: string;
   lines?: PosLineItem[];
+};
+
+export type PaymentResult = {
+  paymentMode: string;
+  upiRef?: string;
+  customer: PosCustomer;
 };
 
 export type PosSettings = {

@@ -104,6 +104,15 @@ export function viewSalesBillInvoice(bill: BillingSalesBill) {
   };
   const statusStyle = statusColors[bill.status] ?? "background: #f1f5f9; color: #475569;";
 
+  const esc = (s: string) =>
+    s.replace(/[&<>]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"));
+  const detailRow = (label: string, value?: string) =>
+    value ? `<tr><td class="label">${label}</td><td class="value">${esc(value)}</td></tr>` : "";
+  const customerRows =
+    detailRow("Mobile", bill.customerMobile) +
+    detailRow("Date of Birth", bill.customerDob) +
+    detailRow("Customer GST", bill.customerGstin);
+
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -136,6 +145,7 @@ export function viewSalesBillInvoice(bill: BillingSalesBill) {
     <tr><td class="label">Invoice No.</td><td class="value">${bill.invoice}</td></tr>
     <tr><td class="label">Date</td><td class="value">${bill.date}</td></tr>
     <tr><td class="label">Customer</td><td class="value">${bill.customer}</td></tr>
+    ${customerRows}
     <tr><td class="label">Payment Mode</td><td class="value">${bill.payment}</td></tr>
     <tr><td class="label">Amount</td><td class="value">${bill.amount}</td></tr>
   </table>

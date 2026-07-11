@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { fetchLowStockAlerts } from "@/lib/inventory-utils";
 import type {
   Category,
   InventoryDashboard,
@@ -37,14 +38,15 @@ export function useInventoryDashboard() {
 }
 
 export function useProducts(search?: string, branch?: string) {
-  const allBranches = !branch || branch === "all";
   return useQuery({
     queryKey: ["inventory", "products", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<Product[]> => {
-      let query = (
-        allBranches ? supabase.from("products") : supabase.from("products_branches")
-      ).select("sku, name, category, price, stock, minStock:min_stock, status");
-      if (!allBranches) query = query.eq("branch", branch);
+      // The products table is the single source of truth for the catalogue and
+      // has no branch dimension, so every branch sees the same list (the old
+      // products_branches twin was empty and is being retired).
+      let query = supabase
+        .from("products")
+        .select("sku, name, category, price, stock, minStock:min_stock, status");
       if (search) query = query.or(`name.ilike.${like(search)},sku.ilike.${like(search)}`);
       const { data, error } = await query;
       if (error) {
@@ -192,22 +194,19 @@ export function useStockHistory(search?: string, branch?: string) {
 }
 
 export function useLowStockAlerts(search?: string, branch?: string) {
-  const allBranches = !branch || branch === "all";
   return useQuery({
     queryKey: ["inventory", "low-stock-alerts", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<LowStockAlert[]> => {
-      let query = (
-        allBranches ? supabase.from("low_stock_alerts") : supabase.from("low_stock_alerts_branches")
-      ).select("sku, product, currentStock:current_stock, minLevel:min_level, status");
-      if (!allBranches) query = query.eq("branch", branch);
-      if (search) query = query.or(`product.ilike.${like(search)},sku.ilike.${like(search)}`);
-      const { data, error } = await query;
-      if (error) {
-        console.error("Error fetching low stock alerts from Supabase:", error);
-        throw error;
-      }
-      console.log("Low Stock Alerts loaded from Supabase:", data);
-      return data as unknown as LowStockAlert[];
+      // Derived live from the products table (single source of truth) instead of
+      // the standalone low_stock_alerts table, so an alert can never disagree
+      // with the product it is about. products has no branch dimension, so the
+      // list is global regardless of the selected branch.
+      const alerts = await fetchLowStockAlerts();
+      if (!search) return alerts;
+      const q = search.toLowerCase();
+      return alerts.filter(
+        (a) => a.product.toLowerCase().includes(q) || a.sku.toLowerCase().includes(q),
+      );
     },
   });
 }
@@ -312,7 +311,6 @@ export function useDeleteCategory() {
 export type ProductInput = Product;
 export type StockInwardInput = StockInwardEntry;
 export type StockOutwardInput = StockOutwardEntry;
-export type LowStockAlertInput = LowStockAlert;
 
 export function useCreateProduct() {
   const queryClient = useQueryClient();
@@ -457,54 +455,9 @@ export function useDeleteStockOutward() {
   });
 }
 
-function alertRow(input: LowStockAlertInput) {
-  return {
-    sku: input.sku,
-    product: input.product,
-    current_stock: input.currentStock,
-    min_level: input.minLevel,
-    status: input.status,
-  };
-}
-
-export function useCreateLowStockAlert() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: LowStockAlertInput) => {
-      const { error } = await supabase.from("low_stock_alerts").insert(alertRow(input));
-      if (error) throw error;
-      return input;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory"] }),
-  });
-}
-
-export function useUpdateLowStockAlert() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: LowStockAlertInput & { originalSku: string }) => {
-      const { error } = await supabase
-        .from("low_stock_alerts")
-        .update(alertRow(input))
-        .eq("sku", input.originalSku);
-      if (error) throw error;
-      return input;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory"] }),
-  });
-}
-
-export function useDeleteLowStockAlert() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (sku: string) => {
-      const { error } = await supabase.from("low_stock_alerts").delete().eq("sku", sku);
-      if (error) throw error;
-      return sku;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory"] }),
-  });
-}
+// Low-stock alerts are now derived from products (see useLowStockAlerts /
+// fetchLowStockAlerts), so there is nothing to create/update/delete — an alert
+// appears and clears automatically as a product's stock crosses min_stock.
 
 export function useSubmitStockAdjustment() {
   const queryClient = useQueryClient();

@@ -74,18 +74,6 @@ function Page() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="discount">Default Discount (%)</Label>
-              <Input
-                id="discount"
-                type="number"
-                value={form.discountRate}
-                min={0}
-                max={100}
-                onChange={(e) => set("discountRate", Number(e.target.value) || 0)}
-              />
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="store">Store Name (on receipt)</Label>
               <Input
                 id="store"

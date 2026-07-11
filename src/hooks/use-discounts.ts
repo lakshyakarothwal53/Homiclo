@@ -18,6 +18,27 @@ import type {
   DiscountUsageRow,
   DiscountUsageInput,
 } from "@/types/discounts";
+import type { AppliedCoupon } from "@/types/pos";
+
+// Resolve a coupon code against active promos in discount settings. Returns the
+// applicable discount (percentage or flat) or null when no active promo matches.
+export async function fetchCouponByCode(code: string): Promise<AppliedCoupon | null> {
+  const clean = code.trim();
+  if (!clean) return null;
+  const { data, error } = await supabase
+    .from("discount_promos")
+    .select("code, value_type, value, status")
+    .ilike("code", clean)
+    .limit(1);
+  if (error) throw error;
+  const row = data?.[0];
+  if (!row || row.status !== "Active") return null;
+  return {
+    code: row.code as string,
+    valueType: row.value_type === "percentage" ? "percentage" : "flat",
+    value: Number(row.value) || 0,
+  };
+}
 
 // A promo plus the discount_type bucket it belongs to (product/category/flat/percentage).
 export type PromoInput = PromoRow & { discountType: string };

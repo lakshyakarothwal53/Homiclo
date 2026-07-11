@@ -120,52 +120,156 @@ export function useBillingRevenueTrend() {
   });
 }
 
+type PosTxnBillRow = {
+  invoice: string;
+  amount: string;
+  payment: string;
+  status: string;
+  time?: string;
+  total?: number;
+  created_at?: string;
+  customer_name?: string;
+  customer_mobile?: string;
+  customer_dob?: string;
+  customer_gstin?: string;
+  invoice_date?: string;
+};
+
+function posTxnToBill(r: PosTxnBillRow): BillingSalesBill {
+  const billDate = r.invoice_date || (r.created_at ? String(r.created_at).slice(0, 10) : "");
+  return {
+    invoice: r.invoice,
+    date: billDate || r.time || "",
+    customer: r.customer_name || "Walk-in",
+    amount: r.amount,
+    payment: r.payment,
+    status: r.status,
+    bill_date: billDate || undefined,
+    amount_num: typeof r.total === "number" ? r.total : parseAmountNum(r.amount),
+    customerMobile: r.customer_mobile || undefined,
+    customerDob: r.customer_dob || undefined,
+    customerGstin: r.customer_gstin || undefined,
+    invoiceDate: r.invoice_date || undefined,
+  };
+}
+
+// Sales bills are now sourced directly from POS transactions (each completed
+// sale is a bill) rather than the standalone billing_sales_bills table, so bills
+// appear automatically the moment a sale is rung up. Latest sale shows first.
 export function useBillingSalesBills(search?: string, branch?: string) {
   const allBranches = !branch || branch === "all";
   return useQuery({
     queryKey: ["billing", "sales-bills", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<BillingSalesBill[]> => {
-      // billing_sales_bills_branches predates 04_computed.sql and has no
-      // bill_date column — select it only for the global table; the branch
-      // path falls back to the `date` text field (handled by callers via
-      // matchesDate(date, b.bill_date, b.date)).
-      let query = allBranches
-        ? supabase
-            .from("billing_sales_bills")
-            .select("invoice, date, customer, amount, payment, status, bill_date")
-            .order("invoice", { ascending: false })
-        : supabase
-            .from("billing_sales_bills_branches")
-            .select("invoice, date, customer, amount, payment, status")
-            .order("invoice", { ascending: false });
-      if (!allBranches) query = query.eq("branch", branch);
-      if (search) query = query.or(`invoice.ilike.${like(search)},customer.ilike.${like(search)}`);
-      const { data, error } = await query;
+      if (allBranches) {
+        // Full shape includes the customer/invoice-date columns from
+        // supabase/pos/07_customer_details.sql; fall back to the base columns
+        // if that migration hasn't been run yet.
+        const FULL =
+          "invoice, amount, payment, status, total, created_at, customer_name, " +
+          "customer_mobile, customer_dob, customer_gstin, invoice_date";
+        const buildGlobal = (cols: string, withCustomerSearch: boolean) => {
+          let q = supabase
+            .from("pos_transactions")
+            .select(cols)
+            .order("created_at", { ascending: false });
+          if (search)
+            q = q.or(
+              withCustomerSearch
+                ? `invoice.ilike.${like(search)},customer_name.ilike.${like(search)}`
+                : `invoice.ilike.${like(search)}`,
+            );
+          return q;
+        };
+
+        const full = await buildGlobal(FULL, true);
+        if (!full.error) return (full.data as unknown as PosTxnBillRow[]).map(posTxnToBill);
+
+        const base = await buildGlobal("invoice, time, amount, payment, status, created_at", false);
+        if (base.error) throw base.error;
+        return (base.data as unknown as PosTxnBillRow[]).map(posTxnToBill);
+      }
+
+      // Branch view reads the seeded per-branch snapshot (no customer columns).
+      let q = supabase
+        .from("pos_transactions_branches")
+        .select("invoice, time, amount, payment, status")
+        .eq("branch", branch)
+        .order("invoice", { ascending: false });
+      if (search) q = q.or(`invoice.ilike.${like(search)},cashier.ilike.${like(search)}`);
+      const { data, error } = await q;
       if (error) throw error;
-      return data as BillingSalesBill[];
+      return (data as unknown as PosTxnBillRow[]).map(posTxnToBill);
     },
   });
 }
 
+// "2026-11-12" -> "12 Nov" (falls back to the raw string if it isn't ISO).
+function isoToDisplayDate(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (Number.isNaN(d.getTime())) return iso;
+  return `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })}`;
+}
+
+function posTxnToPayment(r: PosTxnBillRow): BillingPayment {
+  const billDate = r.invoice_date || (r.created_at ? String(r.created_at).slice(0, 10) : "");
+  const digits = r.invoice.replace(/\D/g, "");
+  return {
+    date: billDate ? isoToDisplayDate(billDate) : r.time || "",
+    receipt: digits ? `REC-${digits}` : r.invoice,
+    customer: r.customer_name || "Walk-in",
+    invoice: r.invoice,
+    amount: r.amount,
+    mode: r.payment,
+    // A completed sale is a received payment; keep other statuses (Refunded/Pending) as-is.
+    status: r.status === "Completed" ? "Received" : r.status,
+    pay_date: billDate || undefined,
+  };
+}
+
+// Payments are the money side of POS sales, so they're sourced straight from
+// pos_transactions (every completed sale is a received payment). Latest first.
 export function useBillingPayments(search?: string, branch?: string) {
   const allBranches = !branch || branch === "all";
   return useQuery({
     queryKey: ["billing", "payments", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<BillingPayment[]> => {
-      // billing_payments_branches has no pay_date column — see the
-      // billing_sales_bills_branches comment in useBillingSalesBills above.
-      let query = allBranches
-        ? supabase
-            .from("billing_payments")
-            .select("receipt, date, customer, invoice, amount, mode, status, pay_date")
-        : supabase
-            .from("billing_payments_branches")
-            .select("receipt, date, customer, invoice, amount, mode, status");
-      if (!allBranches) query = query.eq("branch", branch);
-      if (search) query = query.or(`receipt.ilike.${like(search)},customer.ilike.${like(search)}`);
-      const { data, error } = await query;
+      if (allBranches) {
+        const FULL =
+          "invoice, amount, payment, status, time, created_at, customer_name, invoice_date";
+        const buildGlobal = (cols: string, withCustomerSearch: boolean) => {
+          let q = supabase
+            .from("pos_transactions")
+            .select(cols)
+            .order("created_at", { ascending: false });
+          if (search)
+            q = q.or(
+              withCustomerSearch
+                ? `invoice.ilike.${like(search)},customer_name.ilike.${like(search)}`
+                : `invoice.ilike.${like(search)}`,
+            );
+          return q;
+        };
+
+        const full = await buildGlobal(FULL, true);
+        if (!full.error) return (full.data as unknown as PosTxnBillRow[]).map(posTxnToPayment);
+
+        const base = await buildGlobal("invoice, time, amount, payment, status, created_at", false);
+        if (base.error) throw base.error;
+        return (base.data as unknown as PosTxnBillRow[]).map(posTxnToPayment);
+      }
+
+      let q = supabase
+        .from("pos_transactions_branches")
+        .select("invoice, time, amount, payment, status")
+        .eq("branch", branch)
+        .order("invoice", { ascending: false });
+      if (search) q = q.or(`invoice.ilike.${like(search)},cashier.ilike.${like(search)}`);
+      const { data, error } = await q;
       if (error) throw error;
-      return data as BillingPayment[];
+      return (data as unknown as PosTxnBillRow[]).map(posTxnToPayment);
     },
   });
 }

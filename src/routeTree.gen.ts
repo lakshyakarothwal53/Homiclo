@@ -42,7 +42,6 @@ import { Route as AppReportsDiscountRouteImport } from './routes/_app/reports/di
 import { Route as AppReportsAttendanceRouteImport } from './routes/_app/reports/attendance'
 import { Route as AppPosTransactionsRouteImport } from './routes/_app/pos/transactions'
 import { Route as AppPosSettingsRouteImport } from './routes/_app/pos/settings'
-import { Route as AppPosSearchRouteImport } from './routes/_app/pos/search'
 import { Route as AppPosScannerRouteImport } from './routes/_app/pos/scanner'
 import { Route as AppPosQrRouteImport } from './routes/_app/pos/qr'
 import { Route as AppPosBarcodeRouteImport } from './routes/_app/pos/barcode'
@@ -252,11 +251,6 @@ const AppPosTransactionsRoute = AppPosTransactionsRouteImport.update({
 const AppPosSettingsRoute = AppPosSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => AppPosRoute,
-} as any)
-const AppPosSearchRoute = AppPosSearchRouteImport.update({
-  id: '/search',
-  path: '/search',
   getParentRoute: () => AppPosRoute,
 } as any)
 const AppPosScannerRoute = AppPosScannerRouteImport.update({
@@ -542,7 +536,6 @@ export interface FileRoutesByFullPath {
   '/pos/barcode': typeof AppPosBarcodeRoute
   '/pos/qr': typeof AppPosQrRoute
   '/pos/scanner': typeof AppPosScannerRoute
-  '/pos/search': typeof AppPosSearchRoute
   '/pos/settings': typeof AppPosSettingsRoute
   '/pos/transactions': typeof AppPosTransactionsRoute
   '/reports/attendance': typeof AppReportsAttendanceRoute
@@ -614,7 +607,6 @@ export interface FileRoutesByTo {
   '/pos/barcode': typeof AppPosBarcodeRoute
   '/pos/qr': typeof AppPosQrRoute
   '/pos/scanner': typeof AppPosScannerRoute
-  '/pos/search': typeof AppPosSearchRoute
   '/pos/settings': typeof AppPosSettingsRoute
   '/pos/transactions': typeof AppPosTransactionsRoute
   '/reports/attendance': typeof AppReportsAttendanceRoute
@@ -695,7 +687,6 @@ export interface FileRoutesById {
   '/_app/pos/barcode': typeof AppPosBarcodeRoute
   '/_app/pos/qr': typeof AppPosQrRoute
   '/_app/pos/scanner': typeof AppPosScannerRoute
-  '/_app/pos/search': typeof AppPosSearchRoute
   '/_app/pos/settings': typeof AppPosSettingsRoute
   '/_app/pos/transactions': typeof AppPosTransactionsRoute
   '/_app/reports/attendance': typeof AppReportsAttendanceRoute
@@ -776,7 +767,6 @@ export interface FileRouteTypes {
     | '/pos/barcode'
     | '/pos/qr'
     | '/pos/scanner'
-    | '/pos/search'
     | '/pos/settings'
     | '/pos/transactions'
     | '/reports/attendance'
@@ -848,7 +838,6 @@ export interface FileRouteTypes {
     | '/pos/barcode'
     | '/pos/qr'
     | '/pos/scanner'
-    | '/pos/search'
     | '/pos/settings'
     | '/pos/transactions'
     | '/reports/attendance'
@@ -928,7 +917,6 @@ export interface FileRouteTypes {
     | '/_app/pos/barcode'
     | '/_app/pos/qr'
     | '/_app/pos/scanner'
-    | '/_app/pos/search'
     | '/_app/pos/settings'
     | '/_app/pos/transactions'
     | '/_app/reports/attendance'
@@ -1190,13 +1178,6 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/pos/settings'
       preLoaderRoute: typeof AppPosSettingsRouteImport
-      parentRoute: typeof AppPosRoute
-    }
-    '/_app/pos/search': {
-      id: '/_app/pos/search'
-      path: '/search'
-      fullPath: '/pos/search'
-      preLoaderRoute: typeof AppPosSearchRouteImport
       parentRoute: typeof AppPosRoute
     }
     '/_app/pos/scanner': {
@@ -1667,7 +1648,6 @@ interface AppPosRouteChildren {
   AppPosBarcodeRoute: typeof AppPosBarcodeRoute
   AppPosQrRoute: typeof AppPosQrRoute
   AppPosScannerRoute: typeof AppPosScannerRoute
-  AppPosSearchRoute: typeof AppPosSearchRoute
   AppPosSettingsRoute: typeof AppPosSettingsRoute
   AppPosTransactionsRoute: typeof AppPosTransactionsRoute
   AppPosIndexRoute: typeof AppPosIndexRoute
@@ -1677,7 +1657,6 @@ const AppPosRouteChildren: AppPosRouteChildren = {
   AppPosBarcodeRoute: AppPosBarcodeRoute,
   AppPosQrRoute: AppPosQrRoute,
   AppPosScannerRoute: AppPosScannerRoute,
-  AppPosSearchRoute: AppPosSearchRoute,
   AppPosSettingsRoute: AppPosSettingsRoute,
   AppPosTransactionsRoute: AppPosTransactionsRoute,
   AppPosIndexRoute: AppPosIndexRoute,

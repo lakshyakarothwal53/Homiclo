@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -71,6 +71,22 @@ const CSV_HEADERS = [
   "Attendance %",
 ];
 
+interface BranchSummaryRow {
+  branch: string;
+  employees: number;
+  present: number;
+  absent: number;
+  late: number;
+  leave: number;
+}
+
+// Late arrivals still attended, so attendance % = (present + late) / tracked,
+// where tracked = present + late + absent (approved leave excluded).
+function attendancePct(present: number, late: number, absent: number): string {
+  const tracked = present + late + absent;
+  return tracked > 0 ? `${(((present + late) / tracked) * 100).toFixed(2)}%` : "0.00%";
+}
+
 const toCsvRow = (emp: EmployeeAttendance): (string | number)[] => [
   emp.employeeName,
   emp.designation,
@@ -90,6 +106,39 @@ function Page() {
     isLoading,
     refetch,
   } = useEmployeeAttendance(search, { from: period.from, to: period.to });
+
+  const { branchRows, branchTotal } = useMemo(() => {
+    const map = new Map<string, BranchSummaryRow>();
+    employees.forEach((e) => {
+      const cur = map.get(e.branch) ?? {
+        branch: e.branch,
+        employees: 0,
+        present: 0,
+        absent: 0,
+        late: 0,
+        leave: 0,
+      };
+      cur.employees += 1;
+      cur.present += e.totalPresent;
+      cur.absent += e.totalAbsent;
+      cur.late += e.totalLate;
+      cur.leave += e.totalLeave;
+      map.set(e.branch, cur);
+    });
+    const rows = [...map.values()].sort((a, b) => a.branch.localeCompare(b.branch));
+    const total = rows.reduce<BranchSummaryRow>(
+      (t, r) => ({
+        branch: "All Branches",
+        employees: t.employees + r.employees,
+        present: t.present + r.present,
+        absent: t.absent + r.absent,
+        late: t.late + r.late,
+        leave: t.leave + r.leave,
+      }),
+      { branch: "All Branches", employees: 0, present: 0, absent: 0, late: 0, leave: 0 },
+    );
+    return { branchRows: rows, branchTotal: total };
+  }, [employees]);
 
   const getAttendanceColor = (percentage: string) => {
     const num = parseInt(percentage);
@@ -143,6 +192,105 @@ function Page() {
           </div>
         }
       />
+
+      <Card className="border-border mb-6">
+        <CardHeader>
+          <CardTitle className="text-base">Branch Attendance Summary</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg border border-border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  <TableHead className="h-12 font-semibold">Branch</TableHead>
+                  <TableHead className="h-12 font-semibold text-center">Employees</TableHead>
+                  <TableHead className="h-12 font-semibold text-center">Present</TableHead>
+                  <TableHead className="h-12 font-semibold text-center">Absent</TableHead>
+                  <TableHead className="h-12 font-semibold text-center">Late</TableHead>
+                  <TableHead className="h-12 font-semibold text-center">Leave</TableHead>
+                  <TableHead className="h-12 font-semibold text-right">Attendance %</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                      Loading...
+                    </TableCell>
+                  </TableRow>
+                ) : branchRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                      No attendance data.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  <>
+                    {branchRows.map((b) => (
+                      <TableRow key={b.branch} className="hover:bg-muted/50 border-b">
+                        <TableCell className="py-4 text-sm font-medium">{b.branch}</TableCell>
+                        <TableCell className="py-4 text-center text-sm">{b.employees}</TableCell>
+                        <TableCell className="py-4 text-center text-sm font-semibold text-green-700">
+                          {b.present}
+                        </TableCell>
+                        <TableCell className="py-4 text-center text-sm font-semibold text-red-700">
+                          {b.absent}
+                        </TableCell>
+                        <TableCell className="py-4 text-center text-sm font-semibold text-orange-700">
+                          {b.late}
+                        </TableCell>
+                        <TableCell className="py-4 text-center text-sm font-semibold text-blue-700">
+                          {b.leave}
+                        </TableCell>
+                        <TableCell className="py-4 text-right">
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-xs font-bold ${getAttendanceColor(
+                              attendancePct(b.present, b.late, b.absent),
+                            )}`}
+                          >
+                            {attendancePct(b.present, b.late, b.absent)}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow className="border-t-2 border-border bg-muted/40 font-semibold">
+                      <TableCell className="py-4 text-sm font-bold">{branchTotal.branch}</TableCell>
+                      <TableCell className="py-4 text-center text-sm font-bold">
+                        {branchTotal.employees}
+                      </TableCell>
+                      <TableCell className="py-4 text-center text-sm font-bold text-green-700">
+                        {branchTotal.present}
+                      </TableCell>
+                      <TableCell className="py-4 text-center text-sm font-bold text-red-700">
+                        {branchTotal.absent}
+                      </TableCell>
+                      <TableCell className="py-4 text-center text-sm font-bold text-orange-700">
+                        {branchTotal.late}
+                      </TableCell>
+                      <TableCell className="py-4 text-center text-sm font-bold text-blue-700">
+                        {branchTotal.leave}
+                      </TableCell>
+                      <TableCell className="py-4 text-right">
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-xs font-bold ${getAttendanceColor(
+                            attendancePct(
+                              branchTotal.present,
+                              branchTotal.late,
+                              branchTotal.absent,
+                            ),
+                          )}`}
+                        >
+                          {attendancePct(branchTotal.present, branchTotal.late, branchTotal.absent)}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  </>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="border-border">
         <CardHeader>

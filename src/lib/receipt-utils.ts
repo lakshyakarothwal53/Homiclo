@@ -12,6 +12,11 @@ export type ReceiptData = {
   discount: number;
   gst: number;
   total: number;
+  customerName?: string;
+  customerMobile?: string;
+  customerDob?: string;
+  customerGstin?: string;
+  invoiceDate?: string;
 };
 
 // Browser rasterises the print job, so the ₹ glyph renders fine on the thermal roll.
@@ -51,6 +56,17 @@ export function printReceipt(data: ReceiptData, settings: PosSettings) {
     : "";
   const upi = data.upiRef ? `<div class="muted">UPI Ref: ${esc(data.upiRef)}</div>` : "";
 
+  // Customer block — only rendered when at least a name is present.
+  const customerRows = [
+    data.customerName ? `<div class="muted">Customer: ${esc(data.customerName)}</div>` : "",
+    data.customerMobile ? `<div class="muted">Mobile: ${esc(data.customerMobile)}</div>` : "",
+    data.customerDob ? `<div class="muted">DOB: ${esc(data.customerDob)}</div>` : "",
+    data.customerGstin ? `<div class="muted">Customer GST: ${esc(data.customerGstin)}</div>` : "",
+  ]
+    .filter(Boolean)
+    .join("");
+  const customer = customerRows ? `<hr />${customerRows}` : "";
+
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -85,14 +101,16 @@ export function printReceipt(data: ReceiptData, settings: PosSettings) {
   </div>
   <hr />
   <div class="muted">Invoice: ${esc(data.invoice)}</div>
+  ${data.invoiceDate ? `<div class="muted">Invoice Date: ${esc(data.invoiceDate)}</div>` : ""}
   <div class="muted">${esc(data.dateTime)}</div>
   <div class="muted">Cashier: ${esc(data.cashier)}</div>
+  ${customer}
   <hr />
   <table>${rows}</table>
   <hr />
   <table class="totals">
     <tr><td>Subtotal</td><td class="amt">${rupee(data.subtotal)}</td></tr>
-    <tr><td>Discount (${settings.discountRate}%)</td><td class="amt">-${rupee(data.discount)}</td></tr>
+    <tr><td>Discount</td><td class="amt">-${rupee(data.discount)}</td></tr>
     <tr><td>GST (${settings.gstRate}%)</td><td class="amt">${rupee(data.gst)}</td></tr>
     <tr class="grand"><td>TOTAL</td><td class="amt">${rupee(data.total)}</td></tr>
   </table>
