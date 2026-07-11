@@ -32,39 +32,47 @@ export function usePosProducts(search?: string, branch?: string) {
     queryFn: async (): Promise<PosProduct[]> => {
       let query = (
         allBranches ? supabase.from("pos_products") : supabase.from("pos_products_branches")
-      ).select("sku, barcode, name, category, price, stock");
+      ).select("sku, name, category, price, stock");
       if (!allBranches) query = query.eq("branch", branch);
-      if (search)
-        query = query.or(
-          `name.ilike.${like(search)},sku.ilike.${like(search)},barcode.ilike.${like(search)}`,
-        );
+      if (search) query = query.or(`name.ilike.${like(search)},sku.ilike.${like(search)}`);
       const { data, error } = await query;
       if (error) throw error;
-      return data as PosProduct[];
+      // The SKU IS the barcode (one identifier, no separate column/migration
+      // needed) — see generateSku() in @/lib/inventory-utils.
+      return (data as Omit<PosProduct, "barcode">[]).map((p) => ({ ...p, barcode: p.sku }));
     },
   });
 }
+
+const BASE_TXN_COLS = "time, invoice, items, amount, payment, cashier, status";
+const FULL_TXN_COLS = `${BASE_TXN_COLS}, subtotal, discount, gst, total, upiRef:upi_ref`;
 
 export function usePosTransactions(search?: string, branch?: string) {
   const allBranches = !branch || branch === "all";
   return useQuery({
     queryKey: ["pos", "transactions", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<PosTransaction[]> => {
-      let query = allBranches
-        ? supabase
-            .from("pos_transactions")
-            .select(
-              "time, invoice, items, amount, payment, cashier, status, subtotal, discount, gst, total, upiRef:upi_ref",
-            )
-        : supabase
-            .from("pos_transactions_branches")
-            .select("time, invoice, items, amount, payment, cashier, status");
-      if (allBranches) query = query.order("created_at", { ascending: false });
-      if (!allBranches) query = query.eq("branch", branch);
-      if (search) query = query.or(`invoice.ilike.${like(search)},cashier.ilike.${like(search)}`);
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as PosTransaction[];
+      function buildQuery(cols: string) {
+        let q = (
+          allBranches
+            ? supabase.from("pos_transactions")
+            : supabase.from("pos_transactions_branches")
+        ).select(cols);
+        if (allBranches) q = q.order("created_at", { ascending: false });
+        if (!allBranches) q = q.eq("branch", branch);
+        if (search) q = q.or(`invoice.ilike.${like(search)},cashier.ilike.${like(search)}`);
+        return q;
+      }
+
+      // The money-breakdown columns (added for itemized receipts) may not
+      // exist yet if supabase/pos/06_transaction_items.sql hasn't been run —
+      // fall back to the base columns so the page still loads.
+      const { data, error } = await buildQuery(allBranches ? FULL_TXN_COLS : BASE_TXN_COLS);
+      if (!error) return data as unknown as PosTransaction[];
+
+      const { data: fallbackData, error: fallbackError } = await buildQuery(BASE_TXN_COLS);
+      if (fallbackError) throw fallbackError;
+      return fallbackData as unknown as PosTransaction[];
     },
   });
 }
@@ -96,28 +104,42 @@ export function useNextPosInvoiceNumber() {
   });
 }
 
+const BASE_TXN_ROW = (input: PosTransactionInput) => ({
+  invoice: input.invoice,
+  time: input.time,
+  items: input.items,
+  amount: input.amount,
+  payment: input.payment,
+  cashier: input.cashier,
+  status: input.status,
+});
+
 export function useCreatePosTransaction() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: PosTransactionInput): Promise<PosTransaction> => {
+      // Try the full shape (money breakdown columns) first; if
+      // supabase/pos/06_transaction_items.sql hasn't been run yet, those
+      // columns won't exist — fall back to the base row so checkout still
+      // completes instead of failing outright.
       const { error } = await supabase.from("pos_transactions").insert({
-        invoice: input.invoice,
-        time: input.time,
-        items: input.items,
-        amount: input.amount,
-        payment: input.payment,
-        cashier: input.cashier,
-        status: input.status,
+        ...BASE_TXN_ROW(input),
         subtotal: input.subtotal ?? null,
         discount: input.discount ?? null,
         gst: input.gst ?? null,
         total: input.total ?? null,
         upi_ref: input.upiRef ?? null,
       });
-      if (error) throw error;
+      if (error) {
+        const { error: fallbackError } = await supabase
+          .from("pos_transactions")
+          .insert(BASE_TXN_ROW(input));
+        if (fallbackError) throw fallbackError;
+      }
 
       if (input.lines && input.lines.length > 0) {
-        const { error: itemsError } = await supabase.from("pos_transaction_items").insert(
+        // Same story for the line-items table — best-effort, never blocks checkout.
+        await supabase.from("pos_transaction_items").insert(
           input.lines.map((l) => ({
             invoice: input.invoice,
             barcode: l.barcode,
@@ -128,7 +150,6 @@ export function useCreatePosTransaction() {
             line_total: l.lineTotal,
           })),
         );
-        if (itemsError) throw itemsError;
       }
       return input;
     },

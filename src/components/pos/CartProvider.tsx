@@ -54,9 +54,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setLines((prev) => {
       const existing = prev.find((l) => l.product.sku === product.sku);
       if (existing) {
-        return prev.map((l) =>
-          l.product.sku === product.sku ? { ...l, qty: l.qty + qty } : l,
-        );
+        return prev.map((l) => (l.product.sku === product.sku ? { ...l, qty: l.qty + qty } : l));
       }
       return [...prev, { product, qty }];
     });

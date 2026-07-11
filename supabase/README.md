@@ -17,7 +17,7 @@ Run these in the Supabase dashboard **SQL Editor**, in order:
 | 11    | `11_add_minimum_stock.sql`      | Adds `min_stock` to products                              |
 | 12    | `12_branch_authority.sql`       | Branch authority infra                                    |
 | 13    | `13_completion_pack.sql`        | `app_settings` + remaining CRUD policies                 |
-| 14    | `14_product_barcode.sql`        | Auto-generated unique EAN-13 `barcode` on products        |
+| 14    | `14_product_barcode.sql`        | **Optional, not required** — see the file header          |
 
 ## Steps
 

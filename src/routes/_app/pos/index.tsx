@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { formatINR } from "@/components/pos/products";
 import { useCart } from "@/components/pos/CartProvider";
 import { PaymentDialog } from "@/components/pos/PaymentDialog";
+import { CameraScanDialog } from "@/components/pos/CameraScanDialog";
 import { useBarcodeScanner } from "@/hooks/use-barcode-scanner";
 import {
   useCreatePosTransaction,
@@ -33,7 +34,9 @@ export const Route = createFileRoute("/_app/pos/")({
 // Short confirmation beep on a successful scan.
 function beep() {
   try {
-    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     const ctx = new Ctx();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -54,6 +57,7 @@ function Page() {
   const { settings } = usePosSettings();
   const [query, setQuery] = useState("");
   const [payOpen, setPayOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
 
   const { lines, addToCart, setQty, removeLine, clear, totals, asLineItems } = useCart();
 
@@ -85,7 +89,7 @@ function Page() {
       lookupAndAdd(code);
       setQuery("");
     },
-    enabled: !payOpen,
+    enabled: !payOpen && !scanOpen,
   });
 
   function onProductClick(product: PosProduct) {
@@ -174,9 +178,9 @@ function Page() {
                 className="pl-9"
               />
             </form>
-            <div className="flex items-center gap-1.5 rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">
-              <ScanLine className="h-4 w-4 text-brand" /> Scanner ready
-            </div>
+            <Button variant="outline" className="gap-2" onClick={() => setScanOpen(true)}>
+              <ScanLine className="h-4 w-4" /> Scan
+            </Button>
           </div>
 
           <Card className="border-border p-4">
@@ -290,9 +294,7 @@ function Page() {
 
               <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
                 <span className="text-base font-bold text-foreground">Total</span>
-                <span className="text-xl font-bold text-foreground">
-                  {formatINR(totals.total)}
-                </span>
+                <span className="text-xl font-bold text-foreground">{formatINR(totals.total)}</span>
               </div>
 
               <Button
@@ -316,6 +318,8 @@ function Page() {
           onPaid={handlePaid}
         />
       )}
+
+      <CameraScanDialog open={scanOpen} onOpenChange={setScanOpen} onDetect={lookupAndAdd} />
     </>
   );
 }

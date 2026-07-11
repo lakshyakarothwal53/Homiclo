@@ -1,10 +1,9 @@
 -- HOMIQLO — POS: barcode column on the POS catalogue
--- Run this FIFTH (after 04_branches.sql) AND after supabase/14_product_barcode.sql
--- (which defines generate_product_barcode() and stamps products.barcode).
 --
--- The POS dashboard/scanner reads pos_products, so the barcode the USB gun scans
--- must live here too. We reuse the SAME barcode as the inventory `products` row for
--- a matching SKU, so a label printed from Inventory scans to the right POS product.
+-- ⚠️ OPTIONAL / NOT REQUIRED — see supabase/14_product_barcode.sql. The app uses
+-- the product's `sku` directly as its scannable barcode (single identifier),
+-- selected from pos_products without a `barcode` column. Running or skipping
+-- this file has no effect on current app behavior.
 --
 -- Safe to re-run.
 

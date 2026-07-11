@@ -1,12 +1,13 @@
 -- HOMIQLO — auto-generated unique product barcodes
--- Run this FOURTEENTH (after 13_completion_pack.sql), in the Supabase SQL editor.
 --
--- Why: the app printed CODE128 labels from the free-text `sku`, which is typed by
--- hand and only unique per-branch — two branches could share a SKU and a typo could
--- collide. This adds a dedicated, immutable, GLOBALLY-unique `barcode` column that is
--- generated entirely DB-side (no app change needed to create it). We emit a valid
--- EAN-13 (prefix 890 = GS1 India range + a 9-digit sequence + check digit) so any
--- 1D scanner — including the Impact IHS310X — reads it.
+-- ⚠️ OPTIONAL / NOT REQUIRED — the app no longer depends on this file. The SKU
+-- itself is now generated client-side (generateSku() in src/lib/inventory-utils.ts)
+-- and used directly as the scannable barcode, so a product has exactly ONE
+-- identifier instead of two different numbers. The hooks in src/hooks/use-pos.ts
+-- and src/hooks/use-inventory.ts do NOT select a `barcode` column — running or
+-- skipping this file has no effect on app behavior. Kept only in case a future
+-- integration (e.g. a real GS1/EAN-13 registration) needs a separate DB-generated
+-- code; do not run it expecting the app to start using it.
 --
 -- Safe to re-run.
 

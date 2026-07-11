@@ -9,28 +9,9 @@ import { cn } from "@/lib/utils";
 import { usePosProducts } from "@/hooks/use-pos";
 import { useCart } from "@/components/pos/CartProvider";
 import { printBarcodes } from "@/lib/barcode-utils";
+import { getBarcodeDetector, SCAN_FORMATS } from "@/lib/barcode-detector";
 import { formatINR } from "@/components/pos/products";
 import type { PosProduct } from "@/types/pos";
-
-// Minimal typing for the native BarcodeDetector API (Chrome/Edge/Android).
-type DetectedBarcode = { rawValue: string };
-type BarcodeDetectorInstance = { detect(source: CanvasImageSource): Promise<DetectedBarcode[]> };
-type BarcodeDetectorCtor = new (options?: { formats?: string[] }) => BarcodeDetectorInstance;
-
-function getBarcodeDetector(formats: string[]): BarcodeDetectorInstance | null {
-  const Ctor = (globalThis as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector;
-  if (!Ctor) return null;
-  try {
-    return new Ctor({ formats });
-  } catch {
-    return null;
-  }
-}
-
-const FORMATS: Record<"barcode" | "qr", string[]> = {
-  barcode: ["code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e"],
-  qr: ["qr_code"],
-};
 
 export function ScannerView({
   icon: Icon,
@@ -84,7 +65,7 @@ export function ScannerView({
   }
 
   async function startScanning() {
-    const detector = getBarcodeDetector(FORMATS[format]);
+    const detector = getBarcodeDetector(SCAN_FORMATS[format]);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },

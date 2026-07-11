@@ -1,6 +1,5 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { generateSku } from "@/lib/inventory-utils";
 import type { Product } from "@/types/inventory";
 
 export type ProductFormValues = {
@@ -66,42 +66,12 @@ export function ProductFormDialog({
   const isControlled = open !== undefined;
   const [internalOpen, setInternalOpen] = useState(false);
   const actualOpen = isControlled ? open : internalOpen;
-  const [skuLookupLoading, setSkuLookupLoading] = useState(false);
   const [isAddingToStock, setIsAddingToStock] = useState(false);
   const [existingProduct, setExistingProduct] = useState<Product | null>(null);
 
-  const [values, setValues] = useState<ProductFormValues>({
-    sku: initial?.sku ?? "",
-    name: initial?.name ?? "",
-    category: initial?.category ?? "",
-    price: initial?.price ?? 0,
-    stock: initial?.stock ?? 0,
-    minStock: initial?.minStock ?? 10,
-    status: initial?.status ?? "In Stock",
-  });
-
-  useEffect(() => {
-    if (actualOpen) {
-      setValues({
-        sku: initial?.sku ?? "",
-        name: initial?.name ?? "",
-        category: initial?.category ?? "",
-        price: initial?.price ?? 0,
-        stock: initial?.stock ?? 0,
-        minStock: initial?.minStock ?? 10,
-        status: initial?.status ?? "In Stock",
-      });
-    }
-  }, [actualOpen, initial]);
-
-  function setOpen(next: boolean) {
-    if (isControlled) onOpenChange?.(next);
-    else setInternalOpen(next);
-  }
-
   function buildInitialValues(): ProductFormValues {
     return {
-      sku: initial?.sku ?? "",
+      sku: initial?.sku ?? (mode === "add" ? generateSku() : ""),
       name: initial?.name ?? "",
       category: initial?.category ?? "",
       price: initial?.price ?? 0,
@@ -111,28 +81,17 @@ export function ProductFormDialog({
     };
   }
 
-  async function handleSkuLookup(sku: string) {
-    if (!sku.trim()) return;
+  const [values, setValues] = useState<ProductFormValues>(buildInitialValues);
 
-    setSkuLookupLoading(true);
-    try {
-      const product = allProducts.find((p) => p.sku === sku.toUpperCase());
-      if (product) {
-        setValues((prev) => ({
-          ...prev,
-          sku: product.sku,
-          name: product.name,
-          category: product.category,
-          price: product.price,
-          stock: product.stock,
-          minStock: product.minStock,
-          status: product.status,
-        }));
-        toast.success(`Product "${product.name}" loaded from existing inventory.`);
-      }
-    } finally {
-      setSkuLookupLoading(false);
-    }
+  useEffect(() => {
+    // Re-seed on every open so "add" always starts from a fresh auto SKU.
+    if (actualOpen) setValues(buildInitialValues());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actualOpen, initial]);
+
+  function setOpen(next: boolean) {
+    if (isControlled) onOpenChange?.(next);
+    else setInternalOpen(next);
   }
 
   function submit() {
@@ -153,11 +112,12 @@ export function ProductFormDialog({
       return;
     }
 
-    // Check if product already exists (for add mode)
+    // Extremely unlikely (same-millisecond auto SKU), but guard anyway: if it
+    // somehow collides with an existing product, offer "add to stock" instead
+    // of a failed insert on the sku primary key.
     if (mode === "add") {
       const existing = allProducts.find((p) => p.sku === values.sku.trim());
       if (existing) {
-        // Product exists - switch to "add to stock" mode
         setIsAddingToStock(true);
         setExistingProduct(existing);
         return;
@@ -248,50 +208,28 @@ export function ProductFormDialog({
           </div>
         ) : (
           <div className="grid gap-4 py-2 sm:grid-cols-2">
-            {/* SKU with Lookup */}
+            {/* SKU — auto-generated; this same value is the product's scannable barcode. */}
             <div className="grid gap-1.5 sm:col-span-2">
               <div className="flex items-end gap-2">
                 <div className="flex-1 grid gap-1.5">
-                  <Label htmlFor="product-sku">SKU</Label>
-                  <Input
-                    id="product-sku"
-                    type="text"
-                    value={values.sku}
-                    placeholder="SKU-1001"
-                    onChange={(e) => setValues((s) => ({ ...s, sku: e.target.value }))}
-                    onBlur={(e) => {
-                      if (mode === "add" && e.target.value.trim()) {
-                        handleSkuLookup(e.target.value);
-                      }
-                    }}
-                    disabled={mode === "edit"}
-                  />
+                  <Label htmlFor="product-sku">SKU / Barcode</Label>
+                  <Input id="product-sku" type="text" value={values.sku} disabled readOnly />
                 </div>
                 {mode === "add" && (
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => handleSkuLookup(values.sku)}
-                    disabled={skuLookupLoading || !values.sku.trim()}
+                    onClick={() => setValues((s) => ({ ...s, sku: generateSku() }))}
                     className="mb-0"
                   >
-                    {skuLookupLoading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                        Loading…
-                      </>
-                    ) : (
-                      "Lookup"
-                    )}
+                    Regenerate
                   </Button>
                 )}
               </div>
-              {mode === "add" && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Enter SKU and click Lookup or press Tab to auto-fill existing product details
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground mt-1">
+                Auto-generated — this is the exact code printed and scanned at checkout.
+              </p>
             </div>
 
             {/* Product Name */}

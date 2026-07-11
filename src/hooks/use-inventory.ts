@@ -41,13 +41,9 @@ export function useProducts(search?: string, branch?: string) {
   return useQuery({
     queryKey: ["inventory", "products", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<Product[]> => {
-      let query = allBranches
-        ? supabase
-            .from("products")
-            .select("sku, barcode, name, category, price, stock, minStock:min_stock, status")
-        : supabase
-            .from("products_branches")
-            .select("sku, name, category, price, stock, minStock:min_stock, status");
+      let query = (
+        allBranches ? supabase.from("products") : supabase.from("products_branches")
+      ).select("sku, name, category, price, stock, minStock:min_stock, status");
       if (!allBranches) query = query.eq("branch", branch);
       if (search) query = query.or(`name.ilike.${like(search)},sku.ilike.${like(search)}`);
       const { data, error } = await query;
@@ -55,8 +51,9 @@ export function useProducts(search?: string, branch?: string) {
         console.error("Error fetching products from Supabase:", error);
         throw error;
       }
-      console.log("Products loaded from Supabase:", data);
-      return data as Product[];
+      // The SKU IS the barcode (one identifier) — see generateSku() in
+      // @/lib/inventory-utils, called when a product is created.
+      return (data as Omit<Product, "barcode">[]).map((p) => ({ ...p, barcode: p.sku }));
     },
   });
 }
