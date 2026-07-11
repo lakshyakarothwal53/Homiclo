@@ -172,17 +172,36 @@ export function useCreatePosTransaction() {
 
 export type UpiQr = { qrId: string; imageUrl: string };
 
+// supabase-js only parses the response body into `data` on a 2xx reply — on a
+// non-2xx it leaves `data` null and puts the raw Response on `error.context`,
+// so the actual { error: "..." } body from the function has to be read from there.
+async function functionErrorMessage(error: unknown, fallback: string): Promise<string> {
+  const context = (error as { context?: Response } | null)?.context;
+  if (context && typeof context.json === "function") {
+    try {
+      const body = await context.json();
+      if (body?.error) return body.error;
+    } catch {
+      // body wasn't JSON — fall through to the generic message below
+    }
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
 /** Create a dynamic UPI QR for a bill amount (calls the pos-upi-qr Edge Function). */
 export async function createUpiQr(amount: number, invoice: string): Promise<UpiQr> {
   const { data, error } = await supabase.functions.invoke("pos-upi-qr", {
     body: { action: "create", amount, invoice },
   });
-  if (error || data?.error) {
+  if (error) {
     throw new Error(
-      data?.error ??
+      await functionErrorMessage(
+        error,
         "UPI QR function not reachable. Deploy supabase/functions/pos-upi-qr (see its README) and set Razorpay secrets.",
+      ),
     );
   }
+  if (data?.error) throw new Error(data.error);
   return { qrId: data.qrId, imageUrl: data.imageUrl };
 }
 
@@ -193,7 +212,10 @@ export async function checkUpiStatus(
   const { data, error } = await supabase.functions.invoke("pos-upi-qr", {
     body: { action: "status", qrId },
   });
-  if (error || data?.error) throw new Error(data?.error ?? "Could not check payment status.");
+  if (error) {
+    throw new Error(await functionErrorMessage(error, "Could not check payment status."));
+  }
+  if (data?.error) throw new Error(data.error);
   return { paid: !!data.paid, paymentRef: data.paymentRef };
 }
 
