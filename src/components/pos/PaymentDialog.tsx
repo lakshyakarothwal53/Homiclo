@@ -227,7 +227,7 @@ export function PaymentDialog({
                     <img
                       src={qr.imageUrl}
                       alt="UPI QR"
-                      className="h-52 w-52 rounded-lg border border-border"
+                      className="h-80 w-80 max-w-full rounded-lg border border-border bg-white object-contain p-2"
                     />
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" /> Waiting for payment…

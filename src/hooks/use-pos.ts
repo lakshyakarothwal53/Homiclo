@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { applyStockMovement } from "@/lib/inventory-utils";
 import { useAppSetting, useSaveAppSetting } from "@/hooks/use-settings";
 import {
   DEFAULT_POS_SETTINGS,
@@ -161,11 +162,26 @@ export function useCreatePosTransaction() {
             line_total: l.lineTotal,
           })),
         );
+
+        // A completed, paid sale ships goods, so draw the sold quantities down
+        // from products (the single source of truth for stock). Best-effort:
+        // the payment has already been collected and the sale recorded, so a
+        // stock hiccup must not surface as "Payment failed" — log and move on.
+        if (input.status === "Completed") {
+          try {
+            await applyStockMovement(input.lines, "out");
+          } catch (stockError) {
+            console.error("Failed to decrement stock after sale:", stockError);
+          }
+        }
       }
       return input;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["pos"] });
+      // Stock moved, so refresh inventory-derived views (products list, low-stock
+      // alerts, dashboard) too.
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
     },
   });
 }

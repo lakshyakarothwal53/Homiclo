@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
+import { applyStockMovement } from "@/lib/inventory-utils";
 import { loadTallyConfig, pushToTally, salesVoucherXml } from "@/lib/tally";
 import type {
   BillingDashboard,
@@ -594,6 +595,17 @@ export function useCreateRefund() {
   return useMutation({
     mutationFn: async (input: BillingRefund & { amount_num?: number }): Promise<BillingRefund> => {
       const amountNum = input.amount_num ?? (parseFloat(input.amount.replace(/[₹,\s]/g, "")) || 0);
+
+      // Is this the first refund against the invoice? Only the first one restores
+      // stock — the bill is marked fully "Refunded", so a second refund row on the
+      // same invoice must not put the goods back a second time.
+      const { data: priorRefunds } = await supabase
+        .from("billing_refunds")
+        .select("refund")
+        .eq("invoice", input.invoice)
+        .limit(1);
+      const firstRefund = !priorRefunds || priorRefunds.length === 0;
+
       const { error } = await supabase.from("billing_refunds").insert({
         refund: input.refund,
         invoice: input.invoice,
@@ -611,10 +623,34 @@ export function useCreateRefund() {
         .eq("invoice", input.invoice);
       if (updateError) throw updateError;
 
+      // Refunding a bill returns its goods to the shelf: put each sold line back
+      // into products (the stock source of truth) using the sale's saved line
+      // items. Best-effort — the refund is already recorded, so a stock hiccup
+      // shouldn't read back as "Could not create refund". A manually-created
+      // invoice with no POS line items simply has nothing to restore.
+      if (firstRefund) {
+        try {
+          const { data: items } = await supabase
+            .from("pos_transaction_items")
+            .select("sku, qty")
+            .eq("invoice", input.invoice);
+          if (items && items.length > 0) {
+            await applyStockMovement(
+              items.map((i) => ({ sku: i.sku as string, qty: i.qty as number })),
+              "in",
+            );
+          }
+        } catch (stockError) {
+          console.error("Failed to restore stock after refund:", stockError);
+        }
+      }
+
       return input;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["billing"] });
+      // Stock returned to the shelf — refresh inventory-derived views too.
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
     },
   });
 }

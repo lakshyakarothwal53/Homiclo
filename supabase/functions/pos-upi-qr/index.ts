@@ -21,6 +21,20 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// Razorpay may reply with a non-JSON body (e.g. an HTML error page), so parse
+// defensively rather than letting res.json() throw.
+async function readRazorpay(res: Response): Promise<{ ok: boolean; status: number; data: any; message: string }> {
+  const text = await res.text();
+  let data: any = {};
+  try {
+    data = JSON.parse(text);
+  } catch {
+    // leave data empty; fall back to the raw text for the message
+  }
+  const message = data.error?.description ?? (res.ok ? "" : `Razorpay ${res.status}: ${text.slice(0, 200)}`);
+  return { ok: res.ok, status: res.status, data, message };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
 
@@ -49,11 +63,8 @@ Deno.serve(async (req) => {
           close_by: Math.floor(Date.now() / 1000) + 30 * 60,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        console.error("Razorpay qr_codes create failed:", res.status, JSON.stringify(data));
-        return json({ error: data.error?.description ?? "Razorpay error", data }, res.status);
-      }
+      const { ok, data, message } = await readRazorpay(res);
+      if (!ok) return json({ error: message }, 400);
       return json({ qrId: data.id, imageUrl: data.image_url, status: "created" });
     }
 
@@ -62,8 +73,8 @@ Deno.serve(async (req) => {
       const res = await fetch(`https://api.razorpay.com/v1/payments/qr_codes/${qrId}`, {
         headers: { Authorization: auth },
       });
-      const data = await res.json();
-      if (!res.ok) return json({ error: data.error?.description ?? "Razorpay error", data }, res.status);
+      const { ok, data, message } = await readRazorpay(res);
+      if (!ok) return json({ error: message }, 400);
       const paid = (data.payments_amount_received ?? 0) > 0 || data.status === "closed";
       // Fetch the payment id (UPI ref) once something has been received.
       let paymentRef: string | undefined;

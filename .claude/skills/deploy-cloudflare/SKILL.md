@@ -50,15 +50,20 @@ redirects a plain `wrangler deploy` to that generated file. This means:
    truncated build. This step also regenerates `.output/server/wrangler.json`
    and `.wrangler/deploy/config.json`, which the deploy step depends on.
 
-4. **Stop and confirm with the user before deploying.** This pushes straight
-   to the live, publicly-reachable Worker — there's no staging environment in
-   this setup, and the previous live version is overwritten with no built-in
-   rollback UI (only `wrangler deployments list` / `wrangler rollback` after
-   the fact). State plainly: which branch, which commit, and that this will
-   replace what's currently live at the Worker URL. Only proceed once the user
-   says go — do not skip this even if they said "deploy it to cloudflare"
-   directly, since that phrase names the destination but doesn't itself waive
-   the "are you sure" check for a production push.
+4. **Deploy automatically — no confirmation prompt.** The user has
+   pre-authorized this: any request to deploy runs build + `wrangler deploy`
+   straight through without pausing to ask "are you sure." Still **stop and
+   flag the issue instead of deploying** if any of the following are true —
+   these are correctness gates, not a confirmation ritual:
+   - The build failed or didn't finish (no `[nitro] ✔ You can deploy this
+     build` line).
+   - `git status` shows a dirty working tree — report what's uncommitted and
+     ask whether to deploy it as-is, commit first, or stash.
+   - The current branch isn't the one the user meant to ship (e.g. they
+     mentioned a different branch, or you're not on `rohit-clone` without an
+     explicit reason).
+   When none of those apply, proceed straight to step 5 and report the result
+   afterward rather than asking beforehand.
 
 5. **Deploy**: `npx wrangler deploy`, run from the project root. Confirm the
    output shows `Using redirected Wrangler configuration` pointing at
