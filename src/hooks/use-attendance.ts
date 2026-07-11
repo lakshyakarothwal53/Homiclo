@@ -46,7 +46,7 @@ export function useAttendanceDashboard() {
       weekAgo.setDate(weekAgo.getDate() - 6);
       const { data: checkins, error: chkError } = await supabase
         .from("employee_checkins")
-        .select("employee_id, check_date, check_type")
+        .select("employee_id, check_date, check_type, check_time, status")
         .eq("check_type", "check-in")
         .gte("check_date", weekAgo.toISOString().slice(0, 10));
       if (chkError) throw chkError;
@@ -60,7 +60,23 @@ export function useAttendanceDashboard() {
         .select(
           "id, date, employee_id, employee_name, check_in_time, lateness_minutes, branch, status",
         );
-      const lateToday = (lateRows ?? []).filter((l) => l.date === todayLabel).length;
+      // Late Arrivals today = the seeded rows dated today PLUS real self-service
+      // check-ins whose first check-in of the day is past the grace cutoff — the
+      // same derivation the Late Arrivals page uses, so this KPI matches it.
+      const firstCheckinToday = new Map<string, number>();
+      (checkins ?? [])
+        .filter((c) => c.check_date === todayIso && (!c.status || c.status === "success"))
+        .forEach((c) => {
+          const mins = parseTimeToMinutes(c.check_time);
+          if (mins === null) return;
+          const prev = firstCheckinToday.get(c.employee_id);
+          if (prev === undefined || mins < prev) firstCheckinToday.set(c.employee_id, mins);
+        });
+      const derivedLateToday = [...firstCheckinToday.values()].filter(
+        (m) => m > LATE_CUTOFF_MINUTES,
+      ).length;
+      const seedLateToday = (lateRows ?? []).filter((l) => l.date === todayLabel).length;
+      const lateToday = derivedLateToday + seedLateToday;
 
       const { data: absentRows } = await supabase
         .from("absent_records")
@@ -68,21 +84,11 @@ export function useAttendanceDashboard() {
         .eq("date", todayLabel);
       const onLeave = absentRows?.length ?? 0;
 
-      // Average attendance over the last 7 days of check-ins.
-      const byDay = new Map<string, Set<string>>();
-      (checkins ?? []).forEach((c) => {
-        if (!byDay.has(c.check_date)) byDay.set(c.check_date, new Set());
-        byDay.get(c.check_date)!.add(c.employee_id);
-      });
-      const daysWithData = [...byDay.values()];
+      // Attendance % for today only: how much of the roster is actually
+      // present today (presentToday over the full headcount), not a trailing
+      // multi-day average.
       const averageAttendance =
-        totalEmployees > 0 && daysWithData.length > 0
-          ? `${Math.round(
-              (daysWithData.reduce((s, day) => s + day.size, 0) /
-                (daysWithData.length * totalEmployees)) *
-                100,
-            )}%`
-          : "0%";
+        totalEmployees > 0 ? `${Math.round((presentToday / totalEmployees) * 100)}%` : "0%";
 
       // Department breakdown: % of each designation's headcount that checked
       // in at least once in the last 7 days. This must stay inside the
@@ -145,6 +151,15 @@ export function useAttendanceDashboard() {
 }
 
 const LATE_CUTOFF_MINUTES = 9 * 60 + 15; // 09:15 AM shift start + grace
+const SHIFT_START_MINUTES = 9 * 60; // 09:00 AM shift start — lateness measured from here
+
+// ISO "2026-07-11" → "11 Jul 2026", matching the display shape of the seeded
+// late_arrivals/absent_records rows so both sources render identically.
+function isoToDisplayDate(iso: string): string {
+  const d = new Date(iso + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
 
 // "09:31 AM" → minutes since midnight, or null when unparseable.
 function parseTimeToMinutes(raw: unknown): number | null {
@@ -178,11 +193,15 @@ export function useAttendanceTrend() {
   return useQuery({
     queryKey: ["attendance", "trend"],
     queryFn: async (): Promise<AttendanceTrendPoint[]> => {
+      // Use the real employee headcount as the roster denominator — the same
+      // total the Attendance Overview "Absent" KPI divides against — so the
+      // chart's Absent count matches the card instead of diverging (the old
+      // daily_logs-derived roster was a different, smaller seed dataset).
       const { data: rosterRows, error: rosterError } = await supabase
-        .from("daily_logs")
-        .select("employee_id");
+        .from("employees")
+        .select("id");
       if (rosterError) throw rosterError;
-      const totalRoster = new Set((rosterRows ?? []).map((r) => r.employee_id)).size;
+      const totalRoster = rosterRows?.length ?? 0;
 
       const last7Dates: string[] = [];
       for (let i = 6; i >= 0; i--) {
@@ -234,24 +253,104 @@ export function useAttendanceTrend() {
   });
 }
 
+// Daily logs = the seeded `daily_logs` back-office rows PLUS every real
+// self-service check-in from `employee_checkins`, so the log reflects live
+// attendance (on-time and late) instead of only the demo rows. Each employee's
+// check-ins for a day roll up into one row: earliest check-in, latest
+// check-out, and Present/Late decided by the grace cutoff. Search is applied
+// client-side over the merged set.
 export function useDailyLogs(search?: string) {
   return useQuery({
     queryKey: ["attendance", "daily-logs", search ?? ""],
     queryFn: async (): Promise<DailyLog[]> => {
-      let query = supabase
+      const { data: seedRows, error } = await supabase
         .from("daily_logs")
         .select(
           "id, date, employeeId:employee_id, employeeName:employee_name, checkInTime:check_in_time, checkOutTime:check_out_time, status, branch, location, notes",
         );
-      if (search)
-        query = query.or(`employee_name.ilike.${like(search)},employee_id.ilike.${like(search)}`);
-      const { data, error } = await query;
       if (error) {
         console.error("Error fetching daily logs from Supabase:", error);
         throw error;
       }
-      console.log("Daily logs loaded from Supabase:", data);
-      return data as unknown as DailyLog[];
+
+      const { data: checkins, error: chkError } = await supabase
+        .from("employee_checkins")
+        .select("employee_id, employee_name, branch, check_date, check_type, check_time, status");
+      if (chkError) throw chkError;
+
+      type Agg = {
+        employeeId: string;
+        employeeName: string;
+        branch: string;
+        date: string;
+        inMin: number | null;
+        outMin: number | null;
+        checkIn: string;
+        checkOut: string;
+      };
+      const byKey = new Map<string, Agg>();
+      (checkins ?? []).forEach((c) => {
+        if (c.status && c.status !== "success") return;
+        const mins = parseTimeToMinutes(c.check_time);
+        const key = `${c.employee_id}|${c.check_date}`;
+        const cur =
+          byKey.get(key) ??
+          ({
+            employeeId: c.employee_id,
+            employeeName: c.employee_name,
+            branch: c.branch,
+            date: c.check_date,
+            inMin: null,
+            outMin: null,
+            checkIn: "",
+            checkOut: "",
+          } satisfies Agg);
+        if (c.check_type === "check-in") {
+          if (mins !== null && (cur.inMin === null || mins < cur.inMin)) {
+            cur.inMin = mins;
+            cur.checkIn = c.check_time;
+          }
+        } else if (c.check_type === "check-out") {
+          if (mins !== null && (cur.outMin === null || mins > cur.outMin)) {
+            cur.outMin = mins;
+            cur.checkOut = c.check_time;
+          }
+        }
+        byKey.set(key, cur);
+      });
+
+      const derived = [...byKey.values()].map(
+        (a): DailyLog => ({
+          id: `chk-${a.employeeId}-${a.date}`,
+          date: isoToDisplayDate(a.date),
+          employeeId: a.employeeId,
+          employeeName: a.employeeName,
+          checkInTime: a.checkIn,
+          checkOutTime: a.checkOut,
+          status: a.inMin !== null && a.inMin > LATE_CUTOFF_MINUTES ? "Late" : "Present",
+          branch: a.branch,
+        }),
+      );
+
+      const all = [...derived, ...((seedRows ?? []) as unknown as DailyLog[])];
+      const q = search?.trim().toLowerCase();
+      const filtered = q
+        ? all.filter(
+            (r) =>
+              r.employeeName.toLowerCase().includes(q) || r.employeeId.toLowerCase().includes(q),
+          )
+        : all;
+
+      // Newest first, and within a day the latest check-out (falling back to
+      // check-in) rises to the top so the most recent activity leads.
+      const latestMinutes = (l: DailyLog) =>
+        parseTimeToMinutes(l.checkOutTime) ?? parseTimeToMinutes(l.checkInTime) ?? -1;
+      return filtered.sort((a, b) => {
+        const da = parseRowDate(a.date)?.getTime() ?? 0;
+        const db = parseRowDate(b.date)?.getTime() ?? 0;
+        if (db !== da) return db - da;
+        return latestMinutes(b) - latestMinutes(a);
+      });
     },
   });
 }
@@ -351,24 +450,94 @@ export function useEmployeeAttendance(search?: string, opts: AttendancePeriodOpt
   });
 }
 
+// Late arrivals come from two sources merged into one list:
+//   1. the seeded `late_arrivals` table (demo/back-office records), and
+//   2. real self-service check-ins in `employee_checkins` whose first check-in
+//      of the day is past the grace cutoff — these carry the *actual* check-in
+//      date, so the listing reflects live attendance instead of only stale seed
+//      rows. Search + date filtering happen client-side over the merged set.
 export function useLateArrivals(search?: string) {
   return useQuery({
     queryKey: ["attendance", "late-arrivals", search ?? ""],
     queryFn: async (): Promise<LateArrival[]> => {
-      let query = supabase
+      const { data: seedRows, error } = await supabase
         .from("late_arrivals")
         .select(
           "id, date, employeeId:employee_id, employeeName:employee_name, checkInTime:check_in_time, latenessMinutes:lateness_minutes, branch, status",
         );
-      if (search)
-        query = query.or(`employee_name.ilike.${like(search)},branch.ilike.${like(search)}`);
-      const { data, error } = await query;
       if (error) {
         console.error("Error fetching late arrivals from Supabase:", error);
         throw error;
       }
-      console.log("Late arrivals loaded from Supabase:", data);
-      return data as unknown as LateArrival[];
+
+      const { data: checkins, error: chkError } = await supabase
+        .from("employee_checkins")
+        .select("employee_id, employee_name, branch, check_date, check_type, check_time, status")
+        .eq("check_type", "check-in");
+      if (chkError) throw chkError;
+
+      // Keep only each employee's earliest check-in per day, then flag the ones
+      // past the grace cutoff as late (lateness measured from the 09:00 start).
+      const firstByKey = new Map<
+        string,
+        {
+          employeeId: string;
+          employeeName: string;
+          branch: string;
+          date: string;
+          minutes: number;
+          checkTime: string;
+        }
+      >();
+      (checkins ?? []).forEach((c) => {
+        if (c.status && c.status !== "success") return;
+        const mins = parseTimeToMinutes(c.check_time);
+        if (mins === null) return;
+        const key = `${c.employee_id}|${c.check_date}`;
+        const prev = firstByKey.get(key);
+        if (!prev || mins < prev.minutes) {
+          firstByKey.set(key, {
+            employeeId: c.employee_id,
+            employeeName: c.employee_name,
+            branch: c.branch,
+            date: c.check_date,
+            minutes: mins,
+            checkTime: c.check_time,
+          });
+        }
+      });
+
+      const derived: LateArrival[] = [...firstByKey.values()]
+        .filter((r) => r.minutes > LATE_CUTOFF_MINUTES)
+        .map((r) => ({
+          id: `chk-${r.employeeId}-${r.date}`,
+          date: isoToDisplayDate(r.date),
+          employeeId: r.employeeId,
+          employeeName: r.employeeName,
+          checkInTime: r.checkTime,
+          latenessMinutes: r.minutes - SHIFT_START_MINUTES,
+          branch: r.branch,
+          status: "Late",
+        }));
+
+      const all = [...derived, ...((seedRows ?? []) as unknown as LateArrival[])];
+      const q = search?.trim().toLowerCase();
+      const filtered = q
+        ? all.filter(
+            (r) => r.employeeName.toLowerCase().includes(q) || r.branch.toLowerCase().includes(q),
+          )
+        : all;
+
+      // Newest date first, and within a day the latest check-in rises to the
+      // top so the most recent late arrival leads the list.
+      return filtered.sort((a, b) => {
+        const da = parseRowDate(a.date)?.getTime() ?? 0;
+        const db = parseRowDate(b.date)?.getTime() ?? 0;
+        if (db !== da) return db - da;
+        return (
+          (parseTimeToMinutes(b.checkInTime) ?? -1) - (parseTimeToMinutes(a.checkInTime) ?? -1)
+        );
+      });
     },
   });
 }
@@ -390,7 +559,10 @@ export function useAbsentRecords(search?: string) {
         throw error;
       }
       console.log("Absent records loaded from Supabase:", data);
-      return data as unknown as AbsentRecord[];
+      // Newest date first so the most recent absence leads the list.
+      return (data as unknown as AbsentRecord[]).sort(
+        (a, b) => (parseRowDate(b.date)?.getTime() ?? 0) - (parseRowDate(a.date)?.getTime() ?? 0),
+      );
     },
   });
 }
@@ -418,6 +590,42 @@ export function useCreateAbsentRecord() {
         leave_type: input.leaveType,
         reason: input.reason,
         status: "Absent",
+      });
+      if (error) throw error;
+      return input;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["attendance"] });
+    },
+  });
+}
+
+export type LeaveRequestInput = {
+  date: string;
+  employeeId: string;
+  employeeName: string;
+  designation: string;
+  branch: string;
+  leaveType: string;
+  reason: string;
+};
+
+// Employee self-service leave application (from their own dashboard). Lands in
+// absent_records with status "Pending" so it shows up as an approval request in
+// the Absent Report, distinct from admin-entered "Absent" rows.
+export function useApplyLeaveRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: LeaveRequestInput): Promise<LeaveRequestInput> => {
+      const { error } = await supabase.from("absent_records").insert({
+        date: input.date,
+        employee_id: input.employeeId,
+        employee_name: input.employeeName,
+        designation: input.designation,
+        branch: input.branch,
+        leave_type: input.leaveType,
+        reason: input.reason,
+        status: "Pending",
       });
       if (error) throw error;
       return input;

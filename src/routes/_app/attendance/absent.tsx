@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,10 +28,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Download, UserX, RefreshCw, Plus } from "lucide-react";
+import { CalendarClock, Download, UserX, RefreshCw, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAbsentRecords, useCreateAbsentRecord } from "@/hooks/use-attendance";
 import { useEmployees } from "@/hooks/use-employees";
+import { usePagination } from "@/hooks/use-pagination";
+import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { matchesDate, parseRowDate, todayIso } from "@/lib/report-data";
 
 export const Route = createFileRoute("/_app/attendance/absent")({
   head: () => ({
@@ -77,13 +80,43 @@ function EmployeeAvatar({ name, size = "sm" }: { name: string; size?: "sm" | "md
   );
 }
 
+const MONTH_KEY_FORMAT: Intl.DateTimeFormatOptions = { month: "long", year: "numeric" };
+
+function monthKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function Page() {
   const [search, setSearch] = useState("");
+  const [date, setDate] = useState(todayIso());
+  const [month, setMonth] = useState("all");
   const [openDialog, setOpenDialog] = useState(false);
   const [formData, setFormData] = useState({ employee: "", date: "", type: "", reason: "" });
-  const { data: absentRecords = [], isLoading, refetch } = useAbsentRecords(search);
+  const { data: allAbsentRecords = [], isLoading, refetch } = useAbsentRecords(search);
   const { data: employees = [] } = useEmployees();
   const createAbsent = useCreateAbsentRecord();
+
+  const monthOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    allAbsentRecords.forEach((absent) => {
+      const d = parseRowDate(absent.date);
+      if (!d) return;
+      const key = monthKey(d);
+      if (!seen.has(key)) seen.set(key, d.toLocaleDateString("en-US", MONTH_KEY_FORMAT));
+    });
+    return [...seen.entries()].sort(([a], [b]) => b.localeCompare(a));
+  }, [allAbsentRecords]);
+
+  const absentRecords = useMemo(() => {
+    return allAbsentRecords.filter((absent) => {
+      if (!matchesDate(date, absent.date)) return false;
+      if (month === "all") return true;
+      const d = parseRowDate(absent.date);
+      return d ? monthKey(d) === month : false;
+    });
+  }, [allAbsentRecords, date, month]);
+
+  const { page, setPage, totalPages, pageItems } = usePagination(absentRecords);
 
   const getLeaveTypeColor = (type?: string) => {
     switch (type) {
@@ -97,6 +130,17 @@ function Page() {
         return "text-green-600 bg-green-50";
       default:
         return "text-gray-600 bg-gray-50";
+    }
+  };
+
+  const getStatusColor = (status?: string) => {
+    switch (status) {
+      case "Approved":
+        return "text-green-700 bg-green-100";
+      case "Pending":
+        return "text-amber-700 bg-amber-100";
+      default:
+        return "text-red-700 bg-red-100";
     }
   };
 
@@ -114,6 +158,7 @@ function Page() {
       "Leave Type",
       "Reason",
       "Branch",
+      "Status",
     ];
     const csvContent = [
       headers.join(","),
@@ -126,6 +171,7 @@ function Page() {
           absent.leaveType || "",
           absent.reason || "",
           absent.branch,
+          absent.status || "",
         ].join(","),
       ),
     ].join("\n");
@@ -312,12 +358,47 @@ function Page() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Input
-            placeholder="Search by employee name or branch..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-10"
-          />
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Input
+              placeholder="Search by employee name or branch..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-10 sm:flex-1"
+            />
+            <div className="flex items-center gap-1">
+              <Input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="h-10 w-full sm:w-44"
+              />
+              {!!date && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10 shrink-0"
+                  aria-label="Clear date filter"
+                  onClick={() => setDate("")}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            <Select value={month} onValueChange={setMonth}>
+              <SelectTrigger className="h-10 w-full sm:w-52">
+                <CalendarClock className="h-4 w-4 text-muted-foreground" />
+                <SelectValue placeholder="All months" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All months</SelectItem>
+                {monthOptions.map(([key, label]) => (
+                  <SelectItem key={key} value={key}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           <div className="rounded-lg border border-border overflow-x-auto">
             <Table>
@@ -329,23 +410,24 @@ function Page() {
                   <TableHead className="h-12 font-semibold">Leave Type</TableHead>
                   <TableHead className="h-12 font-semibold">Reason</TableHead>
                   <TableHead className="h-12 font-semibold">Branch</TableHead>
+                  <TableHead className="h-12 font-semibold">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                       Loading...
                     </TableCell>
                   </TableRow>
                 ) : absentRecords.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                       No absent records found.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  absentRecords.map((absent) => (
+                  pageItems.map((absent) => (
                     <TableRow key={absent.id} className="hover:bg-muted/50 border-b">
                       <TableCell className="py-4 text-sm font-medium">{absent.date}</TableCell>
                       <TableCell className="py-4">
@@ -368,15 +450,25 @@ function Page() {
                         {absent.reason || "—"}
                       </TableCell>
                       <TableCell className="py-4 text-sm font-medium">{absent.branch}</TableCell>
+                      <TableCell className="py-4">
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(absent.status)}`}
+                        >
+                          {absent.status}
+                        </span>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
             </Table>
           </div>
-          <div className="text-sm text-muted-foreground">
-            Showing {absentRecords.length} records
-          </div>
+          <EntriesFooter
+            total={absentRecords.length}
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
         </CardContent>
       </Card>
     </>

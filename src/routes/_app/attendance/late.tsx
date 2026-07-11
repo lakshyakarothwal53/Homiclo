@@ -22,7 +22,9 @@ import {
 import { CalendarClock, Download, RefreshCw, Clock, X } from "lucide-react";
 import { toast } from "sonner";
 import { useLateArrivals } from "@/hooks/use-attendance";
-import { matchesDate, parseRowDate } from "@/lib/report-data";
+import { usePagination } from "@/hooks/use-pagination";
+import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { matchesDate, parseRowDate, todayIso } from "@/lib/report-data";
 
 export const Route = createFileRoute("/_app/attendance/late")({
   head: () => ({
@@ -76,7 +78,7 @@ function monthKey(d: Date): string {
 
 function Page() {
   const [search, setSearch] = useState("");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(todayIso());
   const [month, setMonth] = useState("all");
   const { data: allLateArrivals = [], isLoading, refetch } = useLateArrivals(search);
 
@@ -99,6 +101,8 @@ function Page() {
       return d ? monthKey(d) === month : false;
     });
   }, [allLateArrivals, date, month]);
+
+  const { page, setPage, totalPages, pageItems } = usePagination(lateArrivals);
 
   const getLatenessColor = (minutes: number) => {
     if (minutes <= 15) return "text-yellow-600 bg-yellow-50";
@@ -270,7 +274,7 @@ function Page() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  lateArrivals.map((late) => (
+                  pageItems.map((late) => (
                     <TableRow key={late.id} className="hover:bg-muted/50 border-b">
                       <TableCell className="py-4 text-sm font-medium">{late.date}</TableCell>
                       <TableCell className="py-4">
@@ -299,7 +303,12 @@ function Page() {
               </TableBody>
             </Table>
           </div>
-          <div className="text-sm text-muted-foreground">Showing {lateArrivals.length} records</div>
+          <EntriesFooter
+            total={lateArrivals.length}
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
         </CardContent>
       </Card>
     </>

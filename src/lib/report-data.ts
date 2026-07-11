@@ -60,6 +60,14 @@ export function matchesDate(filterIso: string, ...candidates: unknown[]): boolea
   return false;
 }
 
+/** Today's date as a local ISO string (YYYY-MM-DD), matching the timezone the
+ * user sees — unlike `new Date().toISOString()` which is UTC and can roll to
+ * the previous/next day for IST users. */
+export function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function inRange(d: Date | null, from?: string, to?: string): boolean {
   if (!d) return !from && !to;
   const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;

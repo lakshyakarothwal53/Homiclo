@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { usePosProducts } from "@/hooks/use-pos";
 import { useCart } from "@/components/pos/CartProvider";
 import { printBarcodes } from "@/lib/barcode-utils";
-import { getBarcodeDetector, SCAN_FORMATS } from "@/lib/barcode-detector";
+import { SCAN_FORMATS, startBarcodeScan } from "@/lib/barcode-detector";
 import { formatINR } from "@/components/pos/products";
 import type { PosProduct } from "@/types/pos";
 
@@ -30,7 +30,7 @@ export function ScannerView({
   const [lastCode, setLastCode] = useState("");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const rafRef = useRef<number | null>(null);
+  const scanRef = useRef<{ stop: () => void } | null>(null);
 
   const { data: products = [] } = usePosProducts();
   const { addToCart } = useCart();
@@ -57,15 +57,14 @@ export function ScannerView({
   }
 
   function stopScanning() {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    rafRef.current = null;
+    scanRef.current?.stop();
+    scanRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     setScanning(false);
   }
 
   async function startScanning() {
-    const detector = getBarcodeDetector(SCAN_FORMATS[format]);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
@@ -79,28 +78,15 @@ export function ScannerView({
         video.srcObject = stream;
         video.play().catch(() => undefined);
 
-        if (!detector) {
-          toast.info("Live decoding isn't supported in this browser — type the code below.");
-          return;
-        }
-        const tick = async () => {
-          if (!streamRef.current || !videoRef.current) return;
-          try {
-            const codes = await detector.detect(videoRef.current);
-            if (codes.length > 0 && codes[0].rawValue) {
-              lookup(codes[0].rawValue);
-              stopScanning();
-              return;
-            }
-          } catch {
-            /* frame not ready yet */
-          }
-          rafRef.current = requestAnimationFrame(tick);
-        };
-        rafRef.current = requestAnimationFrame(tick);
+        scanRef.current = startBarcodeScan(video, stream, SCAN_FORMATS[format], (code) => {
+          lookup(code);
+          stopScanning();
+        });
       });
-    } catch {
-      toast.error("Camera unavailable — type the code below instead.");
+    } catch (err) {
+      const name = err instanceof DOMException ? err.name : "UnknownError";
+      console.error("[ScannerView] getUserMedia failed:", name, err);
+      toast.error(`Camera unavailable (${name}) — type the code below instead.`);
     }
   }
 

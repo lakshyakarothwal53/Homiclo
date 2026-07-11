@@ -1,24 +1,66 @@
-// Minimal typing + accessor for the native BarcodeDetector API
-// (Chrome/Edge/Android). Shared by ScannerView and CameraScanDialog so both
-// camera-based scan surfaces use the same detection logic.
+// Pure JS/WASM barcode decoding (zxing-js) shared by ScannerView and
+// CameraScanDialog. Unlike the native `BarcodeDetector` API, this works in
+// every browser/platform (including desktop Chrome on Windows and Cloudflare-
+// deployed builds), since it decodes frames in-browser rather than relying on
+// an OS-level detection backend.
+import { BarcodeFormat, DecodeHintType } from "@zxing/library";
+import { BrowserMultiFormatReader } from "@zxing/browser";
+import type { IScannerControls } from "@zxing/browser";
 
-export type DetectedBarcode = { rawValue: string };
-export type BarcodeDetectorInstance = {
-  detect(source: CanvasImageSource): Promise<DetectedBarcode[]>;
+export const SCAN_FORMATS: Record<"barcode" | "qr", BarcodeFormat[]> = {
+  barcode: [
+    BarcodeFormat.CODE_128,
+    BarcodeFormat.CODE_39,
+    BarcodeFormat.EAN_13,
+    BarcodeFormat.EAN_8,
+    BarcodeFormat.UPC_A,
+    BarcodeFormat.UPC_E,
+  ],
+  qr: [BarcodeFormat.QR_CODE],
 };
-export type BarcodeDetectorCtor = new (options?: { formats?: string[] }) => BarcodeDetectorInstance;
 
-export const SCAN_FORMATS: Record<"barcode" | "qr", string[]> = {
-  barcode: ["code_128", "code_39", "ean_13", "ean_8", "upc_a", "upc_e"],
-  qr: ["qr_code"],
-};
+function createReader(formats: BarcodeFormat[]): BrowserMultiFormatReader {
+  const hints = new Map<DecodeHintType, unknown>();
+  hints.set(DecodeHintType.POSSIBLE_FORMATS, formats);
+  hints.set(DecodeHintType.TRY_HARDER, true);
+  return new BrowserMultiFormatReader(hints);
+}
 
-export function getBarcodeDetector(formats: string[]): BarcodeDetectorInstance | null {
-  const Ctor = (globalThis as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector;
-  if (!Ctor) return null;
-  try {
-    return new Ctor({ formats });
-  } catch {
-    return null;
-  }
+// Starts continuous decoding against an already-playing <video> element fed
+// by `stream`. Calls `onDetect` once with the first successfully decoded
+// value, then stops itself. Returns a stop() to cancel early (e.g. dialog
+// closed before anything was scanned).
+export function startBarcodeScan(
+  video: HTMLVideoElement,
+  stream: MediaStream,
+  formats: BarcodeFormat[],
+  onDetect: (code: string) => void,
+): { stop: () => void } {
+  const reader = createReader(formats);
+  let controls: IScannerControls | null = null;
+  let stopped = false;
+
+  reader
+    .decodeFromStream(stream, video, (result) => {
+      if (stopped || !result) return;
+      const text = result.getText();
+      if (!text) return;
+      stopped = true;
+      controls?.stop();
+      onDetect(text);
+    })
+    .then((c) => {
+      controls = c;
+      if (stopped) controls.stop();
+    })
+    .catch(() => {
+      /* stream ended / decode setup failed — caller handles via getUserMedia rejection */
+    });
+
+  return {
+    stop: () => {
+      stopped = true;
+      controls?.stop();
+    },
+  };
 }

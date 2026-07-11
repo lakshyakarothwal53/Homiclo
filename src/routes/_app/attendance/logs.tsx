@@ -27,11 +27,14 @@ import {
   CheckCircle,
   Clock,
   XCircle,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useDailyLogs } from "@/hooks/use-attendance";
+import { usePagination } from "@/hooks/use-pagination";
+import { EntriesFooter } from "@/components/billing/EntriesFooter";
 import { buildTablePdf, downloadPdf } from "@/lib/pdf-utils";
-import { parseRowDate } from "@/lib/report-data";
+import { matchesDate, parseRowDate } from "@/lib/report-data";
 
 export const Route = createFileRoute("/_app/attendance/logs")({
   head: () => ({
@@ -85,6 +88,7 @@ function monthKey(d: Date): string {
 
 function Page() {
   const [search, setSearch] = useState("");
+  const [date, setDate] = useState("");
   const [month, setMonth] = useState("all");
   const { data: allLogs = [], isLoading, refetch } = useDailyLogs(search);
 
@@ -100,12 +104,15 @@ function Page() {
   }, [allLogs]);
 
   const logs = useMemo(() => {
-    if (month === "all") return allLogs;
     return allLogs.filter((log) => {
+      if (!matchesDate(date, log.date)) return false;
+      if (month === "all") return true;
       const d = parseRowDate(log.date);
       return d ? monthKey(d) === month : false;
     });
-  }, [allLogs, month]);
+  }, [allLogs, date, month]);
+
+  const { page, setPage, totalPages, pageItems } = usePagination(logs);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -246,6 +253,25 @@ function Page() {
               onChange={(e) => setSearch(e.target.value)}
               className="h-10 sm:flex-1"
             />
+            <div className="flex items-center gap-1">
+              <Input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="h-10 w-full sm:w-44"
+              />
+              {!!date && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10 shrink-0"
+                  aria-label="Clear date filter"
+                  onClick={() => setDate("")}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
             <Select value={month} onValueChange={setMonth}>
               <SelectTrigger className="h-10 w-full sm:w-52">
                 <CalendarClock className="h-4 w-4 text-muted-foreground" />
@@ -289,7 +315,7 @@ function Page() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  logs.map((log) => (
+                  pageItems.map((log) => (
                     <TableRow key={log.id} className="hover:bg-muted/50 border-b">
                       <TableCell className="py-4">
                         <div className="flex items-center gap-3">
@@ -325,9 +351,12 @@ function Page() {
               </TableBody>
             </Table>
           </div>
-          <div className="text-sm text-muted-foreground">
-            Showing {logs.length} of {allLogs.length} entries
-          </div>
+          <EntriesFooter
+            total={logs.length}
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
         </CardContent>
       </Card>
     </>

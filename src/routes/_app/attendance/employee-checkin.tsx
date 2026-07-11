@@ -4,7 +4,24 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -21,9 +38,11 @@ import {
   Calendar,
   Loader2,
   Navigation,
+  CalendarPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
+  useApplyLeaveRequest,
   useEmployeeCheckins,
   useEmployeeMonthlySummary,
   useOfficeLocations,
@@ -62,6 +81,42 @@ function Page() {
   const { data: employeeCheckins = [] } = useEmployeeCheckins(user?.id || "", checkDate);
   const { data: monthlySummary } = useEmployeeMonthlySummary(user?.id || "");
   const submitCheckin = useSubmitEmployeeCheckin();
+
+  const applyLeave = useApplyLeaveRequest();
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leaveForm, setLeaveForm] = useState({ date: checkDate, type: "", reason: "" });
+
+  const handleApplyLeave = () => {
+    if (!leaveForm.date || !leaveForm.type) {
+      toast.error("Please select a date and leave type");
+      return;
+    }
+    const dateLabel = new Date(leaveForm.date + "T00:00:00").toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    applyLeave.mutate(
+      {
+        date: dateLabel,
+        employeeId: user?.id || "",
+        employeeName: user?.name || "",
+        designation: user?.role || "Employee",
+        branch: user?.branch || "",
+        leaveType: leaveForm.type,
+        reason: leaveForm.reason,
+      },
+      {
+        onSuccess: () => {
+          toast.success("Leave request submitted for approval.");
+          setLeaveOpen(false);
+          setLeaveForm({ date: checkDate, type: "", reason: "" });
+        },
+        onError: (e) =>
+          toast.error(e instanceof Error ? e.message : "Could not submit leave request."),
+      },
+    );
+  };
 
   // Set default office location to user's branch
   useEffect(() => {
@@ -465,6 +520,88 @@ function Page() {
                   <p className="text-sm">No attendance data available for this month</p>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <CalendarPlus className="h-5 w-5 text-brand" />
+                Leave / Absence Request
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Can't make it in? Apply for leave — your request goes to your manager for approval.
+              </p>
+              <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
+                <DialogTrigger asChild>
+                  <Button className="w-full gap-2 bg-brand text-brand-foreground hover:bg-brand/90">
+                    <CalendarPlus className="h-4 w-4" />
+                    Apply for Leave
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Apply for Leave</DialogTitle>
+                    <DialogDescription>
+                      Submit a leave request for approval. It appears in the absent report as
+                      pending until reviewed.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium">Date *</Label>
+                      <Input
+                        type="date"
+                        value={leaveForm.date}
+                        onChange={(e) => setLeaveForm({ ...leaveForm, date: e.target.value })}
+                        className="mt-1 h-10"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Leave Type *</Label>
+                      <Select
+                        value={leaveForm.type}
+                        onValueChange={(v) => setLeaveForm({ ...leaveForm, type: v })}
+                      >
+                        <SelectTrigger className="mt-1 h-10">
+                          <SelectValue placeholder="Select leave type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Sick">Sick Leave</SelectItem>
+                          <SelectItem value="Personal">Personal Leave</SelectItem>
+                          <SelectItem value="Casual">Casual Leave</SelectItem>
+                          <SelectItem value="Paid">Paid Leave</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Reason</Label>
+                      <Input
+                        placeholder="Optional reason for leave"
+                        value={leaveForm.reason}
+                        onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
+                        className="mt-1 h-10"
+                      />
+                    </div>
+                    <Button
+                      onClick={handleApplyLeave}
+                      disabled={applyLeave.isPending}
+                      className="w-full bg-brand text-brand-foreground hover:bg-brand/90"
+                    >
+                      {applyLeave.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Submitting...
+                        </>
+                      ) : (
+                        "Submit Request"
+                      )}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </CardContent>
           </Card>
 
