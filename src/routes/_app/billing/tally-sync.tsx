@@ -5,8 +5,10 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/billing/DataTable";
+import { EntriesFooter } from "@/components/billing/EntriesFooter";
 import { StatusBadge } from "@/components/billing/StatusBadge";
 import { cn } from "@/lib/utils";
+import { usePagination } from "@/hooks/use-pagination";
 import { useBillingTallyLog, useTallyStats, useTallySync } from "@/hooks/use-billing";
 import type { BillingTallyRow } from "@/types/billing";
 
@@ -84,6 +86,7 @@ function Page() {
   const { data: log = [] } = useBillingTallyLog();
   const tallySync = useTallySync();
   const syncing = tallySync.isPending;
+  const { page, setPage, totalPages, pageItems } = usePagination(log);
 
   const syncNow = () => {
     toast.loading("Syncing with Tally...", { id: "tally" });
@@ -157,7 +160,13 @@ function Page() {
           </Button>
         </CardHeader>
         <CardContent className="p-0">
-          <DataTable columns={columns} rows={log} rowKey={(r) => r.time + r.reference} />
+          <DataTable columns={columns} rows={pageItems} rowKey={(r) => r.time + r.reference} />
+          <EntriesFooter
+            total={log.length}
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
         </CardContent>
       </Card>
     </>
