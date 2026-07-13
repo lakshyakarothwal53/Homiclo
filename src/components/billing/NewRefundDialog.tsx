@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useCreateRefund, useNextRefundNumber } from "@/hooks/use-billing";
+import { useCreateRefund, useNextRefundNumber, useRefundedQtyByInvoice } from "@/hooks/use-billing";
 import { fetchPosTransactionByInvoice, fetchPosTransactionItems } from "@/hooks/use-pos";
 import type { PosLineItem } from "@/types/pos";
 
@@ -37,11 +37,12 @@ const REFUND_REASONS = [
   "Other",
 ] as const;
 
-const STATUS_OPTIONS = ["Processing", "Completed", "Rejected"] as const;
+export const REFUND_STATUSES = ["Processing", "Completed", "On Hold", "Rejected"] as const;
+const STATUS_OPTIONS = REFUND_STATUSES;
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
 
-type SelectableItem = PosLineItem & { selected: boolean; refundQty: number };
+type SelectableItem = PosLineItem & { selected: boolean; refundQty: number; remainingQty: number };
 
 /**
  * "New Refund" dialog — enter an invoice number and the customer + the sale's
@@ -87,13 +88,22 @@ export function NewRefundDialog({
     enabled: debouncedInvoice.length > 0,
   });
 
-  // Seed the selectable rows whenever a new invoice resolves — default to
-  // fully selected (a whole-order refund is the common case; the cashier
-  // unchecks items that aren't being returned, or trims a qty for a partial
-  // return of a single line).
+  const { data: refundedQty } = useRefundedQtyByInvoice(debouncedInvoice);
+
+  // Seed the selectable rows whenever a new invoice (or its already-refunded
+  // quantities) resolves — default to fully selected (a whole-order refund is
+  // the common case; the cashier unchecks items that aren't being returned,
+  // or trims a qty for a partial return of a single line). Units already
+  // covered by a prior refund on this invoice are excluded up front so the
+  // same product can't be refunded twice.
   useEffect(() => {
-    setItems((lineItems ?? []).map((l) => ({ ...l, selected: true, refundQty: l.qty })));
-  }, [lineItems]);
+    setItems(
+      (lineItems ?? []).map((l) => {
+        const remaining = Math.max(0, l.qty - (refundedQty?.[l.sku] ?? 0));
+        return { ...l, selected: remaining > 0, refundQty: remaining || l.qty, remainingQty: remaining };
+      }),
+    );
+  }, [lineItems, refundedQty]);
 
   function reset() {
     setInvoiceInput("");
@@ -153,7 +163,9 @@ export function NewRefundDialog({
 
   function setQty(sku: string, qty: number) {
     setItems((rows) =>
-      rows.map((r) => (r.sku === sku ? { ...r, refundQty: Math.max(1, Math.min(qty, r.qty)) } : r)),
+      rows.map((r) =>
+        r.sku === sku ? { ...r, refundQty: Math.max(1, Math.min(qty, r.remainingQty)) } : r,
+      ),
     );
   }
 
@@ -270,10 +282,13 @@ export function NewRefundDialog({
               <div className="max-h-56 space-y-2 overflow-y-auto rounded-md border border-border p-2">
                 {items.map((item) => {
                   const b = lineBreakdown(item.unitPrice, item.refundQty);
+                  const alreadyReturned = item.remainingQty <= 0;
+                  const partiallyReturned = !alreadyReturned && item.remainingQty < item.qty;
                   return (
                     <div key={item.sku} className="flex items-center gap-2 text-sm">
                       <Checkbox
                         checked={item.selected}
+                        disabled={alreadyReturned}
                         onCheckedChange={(c) => toggleItem(item.sku, c === true)}
                       />
                       <div className="min-w-0 flex-1">
@@ -282,13 +297,21 @@ export function NewRefundDialog({
                           Subtotal {inr(b.lineSubtotal)} + GST {inr(b.lineGst)} · purchased{" "}
                           {item.qty}
                         </div>
+                        {alreadyReturned && (
+                          <div className="text-xs font-medium text-brand">Already returned</div>
+                        )}
+                        {partiallyReturned && (
+                          <div className="text-xs text-brand">
+                            {item.qty - item.remainingQty} of {item.qty} already returned
+                          </div>
+                        )}
                       </div>
                       <Input
                         type="number"
                         min={1}
-                        max={item.qty}
+                        max={item.remainingQty}
                         value={item.refundQty}
-                        disabled={!item.selected}
+                        disabled={!item.selected || alreadyReturned}
                         className="h-8 w-16"
                         onChange={(e) => setQty(item.sku, Number(e.target.value) || 1)}
                       />

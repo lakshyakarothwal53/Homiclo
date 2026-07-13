@@ -1,16 +1,50 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { Download, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
 import { usePagination } from "@/hooks/use-pagination";
 import { useBillingBranches, useBillingTaxInvoices } from "@/hooks/use-billing";
-import { downloadCsv } from "@/lib/pdf-utils";
+import { fetchPosTransactionItems } from "@/hooks/use-pos";
+import { buildTaxInvoicePdf, downloadCsv, downloadPdf, openPdf } from "@/lib/pdf-utils";
 import { matchesDate } from "@/lib/report-data";
 import type { BillingTaxInvoice } from "@/types/billing";
+
+// Line items are only ever linked for invoices sourced live from
+// pos_transactions ("All Branches") — a branch-filtered row reads the seeded
+// billing_tax_invoices_branches snapshot instead, which has no matching
+// pos_transaction_items to look up. Either way the PDF still renders, just
+// without the itemized table.
+async function buildPdf(invoice: BillingTaxInvoice) {
+  let lines: Awaited<ReturnType<typeof fetchPosTransactionItems>> = [];
+  try {
+    lines = await fetchPosTransactionItems(invoice.invoice);
+  } catch {
+    lines = [];
+  }
+  return buildTaxInvoicePdf(invoice, lines);
+}
+
+async function handleView(invoice: BillingTaxInvoice) {
+  try {
+    openPdf(await buildPdf(invoice));
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : "Could not open invoice.");
+  }
+}
+
+async function handleDownload(invoice: BillingTaxInvoice) {
+  try {
+    downloadPdf(await buildPdf(invoice), `${invoice.invoice}-tax-invoice.pdf`);
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : "Could not download invoice.");
+  }
+}
 
 export const Route = createFileRoute("/_app/billing/tax-invoices")({
   head: () => ({
@@ -50,6 +84,20 @@ const columns: Column<BillingTaxInvoice>[] = [
     render: (r) => <span className="text-muted-foreground">{r.sgst}</span>,
   },
   { key: "total", header: "Total", render: (r) => <span className="font-medium">{r.total}</span> },
+  {
+    key: "action",
+    header: "",
+    render: (r) => (
+      <div className="flex items-center justify-end gap-2">
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleView(r)}>
+          <Eye className="h-3.5 w-3.5" /> View
+        </Button>
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleDownload(r)}>
+          <Download className="h-3.5 w-3.5" /> Download
+        </Button>
+      </div>
+    ),
+  },
 ];
 
 function Page() {

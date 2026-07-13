@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-type Tone = "success" | "warning" | "danger" | "info" | "muted";
+export type Tone = "success" | "warning" | "danger" | "info" | "muted";
 
 const TONE_BY_STATUS: Record<string, Tone> = {
   // positive / settled
@@ -14,14 +14,16 @@ const TONE_BY_STATUS: Record<string, Tone> = {
   pending: "warning",
   processing: "warning",
   partial: "warning",
+  "on hold": "warning",
   // negative
   refunded: "danger",
   failed: "danger",
   overdue: "danger",
   cancelled: "danger",
+  rejected: "danger",
 };
 
-const TONE_CLASS: Record<Tone, string> = {
+export const TONE_CLASS: Record<Tone, string> = {
   success: "bg-[color-mix(in_oklab,var(--success)_14%,transparent)] text-[color:var(--success)]",
   warning: "bg-[color-mix(in_oklab,var(--warning)_18%,transparent)] text-[color:var(--warning)]",
   danger: "bg-[color-mix(in_oklab,var(--brand)_12%,transparent)] text-brand",
@@ -29,7 +31,7 @@ const TONE_CLASS: Record<Tone, string> = {
   muted: "bg-secondary text-muted-foreground",
 };
 
-const DOT_CLASS: Record<Tone, string> = {
+export const DOT_CLASS: Record<Tone, string> = {
   success: "bg-[color:var(--success)]",
   warning: "bg-[color:var(--warning)]",
   danger: "bg-brand",
@@ -37,8 +39,12 @@ const DOT_CLASS: Record<Tone, string> = {
   muted: "bg-muted-foreground/50",
 };
 
+export function statusTone(status: string): Tone {
+  return TONE_BY_STATUS[status.toLowerCase()] ?? "muted";
+}
+
 export function StatusBadge({ status }: { status: string }) {
-  const tone = TONE_BY_STATUS[status.toLowerCase()] ?? "muted";
+  const tone = statusTone(status);
   return (
     <span
       className={cn(

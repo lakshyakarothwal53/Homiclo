@@ -85,16 +85,45 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Discount is driven entirely by an applied coupon (fetched from discount
-  // settings); with no coupon there is no discount.
+  // settings); with no coupon there is no discount. A coupon restricted to
+  // specific products/categories (appliesToType) only discounts the cart
+  // lines that match — not the whole cart — so e.g. a "Basmati Rice, Bluetooth
+  // Speaker" promo can't knock 10% off a T-shirt just because the code matched.
   const totals = useMemo<CartTotals>(() => {
     const itemCount = lines.reduce((n, l) => n + l.qty, 0);
     const subtotal = lines.reduce((s, l) => s + l.product.price * l.qty, 0);
     let discount = 0;
     if (coupon) {
-      discount =
-        coupon.valueType === "percentage"
-          ? Math.round(subtotal * (coupon.value / 100))
-          : Math.min(coupon.value, subtotal);
+      const eligibleLines =
+        !coupon.appliesToType || coupon.appliesTo.length === 0
+          ? lines
+          : lines.filter((l) =>
+              coupon.appliesToType === "product"
+                ? coupon.appliesTo.includes(l.product.sku)
+                : coupon.appliesToType === "category"
+                  ? coupon.appliesTo.includes(l.product.category)
+                  : false,
+            );
+      if (coupon.valueType === "bogo" && coupon.buyQty && coupon.getQty) {
+        // "Buy X get Y free": flatten eligible lines into one entry per unit,
+        // sort cheapest-first, and give away the cheapest Y of every complete
+        // (X+Y)-unit bundle — the standard BOGO convention (the discount
+        // always favors the customer, same spirit as the flat-coupon
+        // Math.min below).
+        const unitPrices = eligibleLines.flatMap((l) => Array(l.qty).fill(l.product.price));
+        const bundleSize = coupon.buyQty + coupon.getQty;
+        const freeUnits = Math.floor(unitPrices.length / bundleSize) * coupon.getQty;
+        discount = unitPrices
+          .sort((a, b) => a - b)
+          .slice(0, freeUnits)
+          .reduce((s, p) => s + p, 0);
+      } else {
+        const eligibleSubtotal = eligibleLines.reduce((s, l) => s + l.product.price * l.qty, 0);
+        discount =
+          coupon.valueType === "percentage"
+            ? Math.round(eligibleSubtotal * (coupon.value / 100))
+            : Math.min(coupon.value, eligibleSubtotal);
+      }
     }
     const gst = Math.round((subtotal - discount) * (settings.gstRate / 100));
     const total = subtotal - discount + gst;

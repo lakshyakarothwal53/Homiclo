@@ -67,8 +67,6 @@ import { Route as AppEmployeesActivityRouteImport } from './routes/_app/employee
 import { Route as AppDiscountsUsageReportsRouteImport } from './routes/_app/discounts/usage-reports'
 import { Route as AppDiscountsSeasonalRouteImport } from './routes/_app/discounts/seasonal'
 import { Route as AppDiscountsProductsRouteImport } from './routes/_app/discounts/products'
-import { Route as AppDiscountsPercentageRouteImport } from './routes/_app/discounts/percentage'
-import { Route as AppDiscountsFlatRouteImport } from './routes/_app/discounts/flat'
 import { Route as AppDiscountsCategoriesRouteImport } from './routes/_app/discounts/categories'
 import { Route as AppDiscountsCampaignsRouteImport } from './routes/_app/discounts/campaigns'
 import { Route as AppBillingTaxInvoicesRouteImport } from './routes/_app/billing/tax-invoices'
@@ -385,16 +383,6 @@ const AppDiscountsProductsRoute = AppDiscountsProductsRouteImport.update({
   path: '/products',
   getParentRoute: () => AppDiscountsRoute,
 } as any)
-const AppDiscountsPercentageRoute = AppDiscountsPercentageRouteImport.update({
-  id: '/percentage',
-  path: '/percentage',
-  getParentRoute: () => AppDiscountsRoute,
-} as any)
-const AppDiscountsFlatRoute = AppDiscountsFlatRouteImport.update({
-  id: '/flat',
-  path: '/flat',
-  getParentRoute: () => AppDiscountsRoute,
-} as any)
 const AppDiscountsCategoriesRoute = AppDiscountsCategoriesRouteImport.update({
   id: '/categories',
   path: '/categories',
@@ -509,8 +497,6 @@ export interface FileRoutesByFullPath {
   '/billing/tax-invoices': typeof AppBillingTaxInvoicesRoute
   '/discounts/campaigns': typeof AppDiscountsCampaignsRoute
   '/discounts/categories': typeof AppDiscountsCategoriesRoute
-  '/discounts/flat': typeof AppDiscountsFlatRoute
-  '/discounts/percentage': typeof AppDiscountsPercentageRoute
   '/discounts/products': typeof AppDiscountsProductsRoute
   '/discounts/seasonal': typeof AppDiscountsSeasonalRoute
   '/discounts/usage-reports': typeof AppDiscountsUsageReportsRoute
@@ -580,8 +566,6 @@ export interface FileRoutesByTo {
   '/billing/tax-invoices': typeof AppBillingTaxInvoicesRoute
   '/discounts/campaigns': typeof AppDiscountsCampaignsRoute
   '/discounts/categories': typeof AppDiscountsCategoriesRoute
-  '/discounts/flat': typeof AppDiscountsFlatRoute
-  '/discounts/percentage': typeof AppDiscountsPercentageRoute
   '/discounts/products': typeof AppDiscountsProductsRoute
   '/discounts/seasonal': typeof AppDiscountsSeasonalRoute
   '/discounts/usage-reports': typeof AppDiscountsUsageReportsRoute
@@ -660,8 +644,6 @@ export interface FileRoutesById {
   '/_app/billing/tax-invoices': typeof AppBillingTaxInvoicesRoute
   '/_app/discounts/campaigns': typeof AppDiscountsCampaignsRoute
   '/_app/discounts/categories': typeof AppDiscountsCategoriesRoute
-  '/_app/discounts/flat': typeof AppDiscountsFlatRoute
-  '/_app/discounts/percentage': typeof AppDiscountsPercentageRoute
   '/_app/discounts/products': typeof AppDiscountsProductsRoute
   '/_app/discounts/seasonal': typeof AppDiscountsSeasonalRoute
   '/_app/discounts/usage-reports': typeof AppDiscountsUsageReportsRoute
@@ -740,8 +722,6 @@ export interface FileRouteTypes {
     | '/billing/tax-invoices'
     | '/discounts/campaigns'
     | '/discounts/categories'
-    | '/discounts/flat'
-    | '/discounts/percentage'
     | '/discounts/products'
     | '/discounts/seasonal'
     | '/discounts/usage-reports'
@@ -811,8 +791,6 @@ export interface FileRouteTypes {
     | '/billing/tax-invoices'
     | '/discounts/campaigns'
     | '/discounts/categories'
-    | '/discounts/flat'
-    | '/discounts/percentage'
     | '/discounts/products'
     | '/discounts/seasonal'
     | '/discounts/usage-reports'
@@ -890,8 +868,6 @@ export interface FileRouteTypes {
     | '/_app/billing/tax-invoices'
     | '/_app/discounts/campaigns'
     | '/_app/discounts/categories'
-    | '/_app/discounts/flat'
-    | '/_app/discounts/percentage'
     | '/_app/discounts/products'
     | '/_app/discounts/seasonal'
     | '/_app/discounts/usage-reports'
@@ -1355,20 +1331,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDiscountsProductsRouteImport
       parentRoute: typeof AppDiscountsRoute
     }
-    '/_app/discounts/percentage': {
-      id: '/_app/discounts/percentage'
-      path: '/percentage'
-      fullPath: '/discounts/percentage'
-      preLoaderRoute: typeof AppDiscountsPercentageRouteImport
-      parentRoute: typeof AppDiscountsRoute
-    }
-    '/_app/discounts/flat': {
-      id: '/_app/discounts/flat'
-      path: '/flat'
-      fullPath: '/discounts/flat'
-      preLoaderRoute: typeof AppDiscountsFlatRouteImport
-      parentRoute: typeof AppDiscountsRoute
-    }
     '/_app/discounts/categories': {
       id: '/_app/discounts/categories'
       path: '/categories'
@@ -1548,8 +1510,6 @@ const AppBillingRouteWithChildren = AppBillingRoute._addFileChildren(
 interface AppDiscountsRouteChildren {
   AppDiscountsCampaignsRoute: typeof AppDiscountsCampaignsRoute
   AppDiscountsCategoriesRoute: typeof AppDiscountsCategoriesRoute
-  AppDiscountsFlatRoute: typeof AppDiscountsFlatRoute
-  AppDiscountsPercentageRoute: typeof AppDiscountsPercentageRoute
   AppDiscountsProductsRoute: typeof AppDiscountsProductsRoute
   AppDiscountsSeasonalRoute: typeof AppDiscountsSeasonalRoute
   AppDiscountsUsageReportsRoute: typeof AppDiscountsUsageReportsRoute
@@ -1559,8 +1519,6 @@ interface AppDiscountsRouteChildren {
 const AppDiscountsRouteChildren: AppDiscountsRouteChildren = {
   AppDiscountsCampaignsRoute: AppDiscountsCampaignsRoute,
   AppDiscountsCategoriesRoute: AppDiscountsCategoriesRoute,
-  AppDiscountsFlatRoute: AppDiscountsFlatRoute,
-  AppDiscountsPercentageRoute: AppDiscountsPercentageRoute,
   AppDiscountsProductsRoute: AppDiscountsProductsRoute,
   AppDiscountsSeasonalRoute: AppDiscountsSeasonalRoute,
   AppDiscountsUsageReportsRoute: AppDiscountsUsageReportsRoute,

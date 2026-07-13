@@ -11,6 +11,7 @@ import {
 import type {
   DiscountCampaign,
   DiscountCampaignInput,
+  DiscountRedemption,
   DiscountSeasonRow,
   DiscountSeasonInput,
   DiscountsDashboard,
@@ -20,24 +21,180 @@ import type {
 } from "@/types/discounts";
 import type { AppliedCoupon } from "@/types/pos";
 
-// Resolve a coupon code against active promos in discount settings. Returns the
-// applicable discount (percentage or flat) or null when no active promo matches.
-export async function fetchCouponByCode(code: string): Promise<AppliedCoupon | null> {
-  const clean = code.trim();
-  if (!clean) return null;
+function toAppliedCoupon(row: {
+  code: unknown;
+  value_type: unknown;
+  value: unknown;
+  min_order: unknown;
+  valid_from: unknown;
+  valid_to: unknown;
+  used: unknown;
+  cap: unknown;
+  applies_to_type: unknown;
+  applies_to: unknown;
+  buy_qty?: unknown;
+  get_qty?: unknown;
+}): AppliedCoupon {
+  const appliesTo = ((row.applies_to as { id: string; label: string }[] | null) ?? []).map(
+    (t) => t.id,
+  );
+  const valueType =
+    row.value_type === "percentage" ? "percentage" : row.value_type === "bogo" ? "bogo" : "flat";
+  return {
+    code: row.code as string,
+    valueType,
+    value: Number(row.value) || 0,
+    buyQty: row.buy_qty != null ? Number(row.buy_qty) : undefined,
+    getQty: row.get_qty != null ? Number(row.get_qty) : undefined,
+    minOrder: Number(row.min_order) || 0,
+    validFrom: (row.valid_from as string) ?? "",
+    validTo: (row.valid_to as string) ?? "",
+    cap: row.cap === null || row.cap === undefined ? null : Number(row.cap),
+    used: Number(row.used) || 0,
+    appliesToType: (row.applies_to_type as AppliedCoupon["appliesToType"]) ?? null,
+    appliesTo,
+  };
+}
+
+// discount_promos lookup — Product/Category/Flat/Percentage Discounts.
+async function fetchPromoCoupon(clean: string): Promise<AppliedCoupon | null> {
   const { data, error } = await supabase
     .from("discount_promos")
-    .select("code, value_type, value, status")
+    .select(
+      "code, value_type, value, status, min_order, valid_from, valid_to, used, cap, applies_to_type, applies_to",
+    )
     .ilike("code", clean)
     .limit(1);
   if (error) throw error;
   const row = data?.[0];
   if (!row || row.status !== "Active") return null;
-  return {
-    code: row.code as string,
-    valueType: row.value_type === "percentage" ? "percentage" : "flat",
-    value: Number(row.value) || 0,
-  };
+  return toAppliedCoupon(row);
+}
+
+// discount_campaigns lookup — only rows an admin has explicitly made
+// redeemable (code + value_type + value all set via the "Make this
+// redeemable at checkout" section) resolve as a coupon; display-only
+// campaigns (code IS NULL) are never matched here.
+async function fetchCampaignCoupon(clean: string): Promise<AppliedCoupon | null> {
+  const { data, error } = await supabase
+    .from("discount_campaigns")
+    .select(
+      "code, value_type, value, status, min_order, redeem_valid_from, redeem_valid_to, redeem_used, cap, applies_to_type, applies_to, buy_qty, get_qty",
+    )
+    .ilike("code", clean)
+    .not("code", "is", null)
+    .limit(1);
+  if (error) throw error;
+  const row = data?.[0];
+  if (!row || row.status !== "Active") return null;
+  const isBogo = row.value_type === "bogo";
+  if (isBogo ? row.buy_qty === null || row.get_qty === null : row.value === null) {
+    return null;
+  }
+  return toAppliedCoupon({
+    ...row,
+    valid_from: row.redeem_valid_from,
+    valid_to: row.redeem_valid_to,
+    used: row.redeem_used,
+  });
+}
+
+// discount_seasonal lookup — same "must be explicitly made redeemable" rule
+// as campaigns. Reads redeem_valid_from/redeem_valid_to (real ISO dates), not
+// the existing free-text valid_from/valid_to display columns (e.g. "01 Nov",
+// no year — not reliable for an expiry comparison).
+async function fetchSeasonalCoupon(clean: string): Promise<AppliedCoupon | null> {
+  const { data, error } = await supabase
+    .from("discount_seasonal")
+    .select(
+      "code, value_type, value, status, min_order, redeem_valid_from, redeem_valid_to, redeem_used, cap, applies_to_type, applies_to",
+    )
+    .ilike("code", clean)
+    .not("code", "is", null)
+    .limit(1);
+  if (error) throw error;
+  const row = data?.[0];
+  if (!row || row.status !== "Active" || row.value_type === null || row.value === null) {
+    return null;
+  }
+  return toAppliedCoupon({
+    ...row,
+    valid_from: row.redeem_valid_from,
+    valid_to: row.redeem_valid_to,
+    used: row.redeem_used,
+  });
+}
+
+// Resolve a coupon code against active promos in discount settings. Returns the
+// applicable discount (percentage or flat), the guardrails around it (min
+// order, validity window, usage cap, product/category restriction) or null
+// when no active promo matches — the caller (POS "Apply" button) is
+// responsible for checking those guardrails against the current cart.
+// Tries Product/Category/Flat/Percentage Discounts first, then falls back to
+// any Campaign or Seasonal Offer an admin has made redeemable.
+export async function fetchCouponByCode(code: string): Promise<AppliedCoupon | null> {
+  const clean = code.trim();
+  if (!clean) return null;
+  return (
+    (await fetchPromoCoupon(clean)) ??
+    (await fetchCampaignCoupon(clean)) ??
+    (await fetchSeasonalCoupon(clean))
+  );
+}
+
+// Case-insensitive coupon code collision check across all three redeemable
+// sources (discount_promos, discount_campaigns, discount_seasonal) — codes
+// must be unique store-wide so a POS lookup is never ambiguous. Best-effort
+// (not race-proof), matching the demo-grade RLS used elsewhere in this module.
+export async function isCodeTaken(
+  code: string,
+  exclude?: { table: "discount_promos" | "discount_campaigns" | "discount_seasonal"; key: string },
+): Promise<boolean> {
+  const clean = code.trim();
+  if (!clean) return false;
+
+  async function checkPromo() {
+    const { data, error } = await supabase
+      .from("discount_promos")
+      .select("id")
+      .ilike("code", clean)
+      .limit(5);
+    if (error) throw error;
+    const rows = data ?? [];
+    if (exclude?.table === "discount_promos") return rows.some((r) => r.id !== exclude.key);
+    return rows.length > 0;
+  }
+
+  async function checkCampaign() {
+    const { data, error } = await supabase
+      .from("discount_campaigns")
+      .select("name")
+      .ilike("code", clean)
+      .limit(5);
+    if (error) throw error;
+    const rows = data ?? [];
+    if (exclude?.table === "discount_campaigns") return rows.some((r) => r.name !== exclude.key);
+    return rows.length > 0;
+  }
+
+  async function checkSeasonal() {
+    const { data, error } = await supabase
+      .from("discount_seasonal")
+      .select("season")
+      .ilike("code", clean)
+      .limit(5);
+    if (error) throw error;
+    const rows = data ?? [];
+    if (exclude?.table === "discount_seasonal") return rows.some((r) => r.season !== exclude.key);
+    return rows.length > 0;
+  }
+
+  const [promo, campaign, seasonal] = await Promise.all([
+    checkPromo(),
+    checkCampaign(),
+    checkSeasonal(),
+  ]);
+  return promo || campaign || seasonal;
 }
 
 // A promo plus the discount_type bucket it belongs to (product/category/flat/percentage).
@@ -174,13 +331,30 @@ export function useCategoryOptions(search: string) {
   });
 }
 
+// Redemption fields as they don't exist on the *_branches snapshot tables
+// (see useDiscountSeasonal) — a branch-filtered row is always display-only.
+const NOT_REDEEMABLE: DiscountRedemption = {
+  code: null,
+  valueType: null,
+  value: null,
+  minOrder: 0,
+  cap: null,
+  redeemUsed: 0,
+  redeemValidFrom: null,
+  redeemValidTo: null,
+  appliesToType: null,
+  appliesTo: [],
+};
+
 export function useDiscountCampaigns() {
   return useQuery({
     queryKey: ["discounts", "campaigns"],
     queryFn: async (): Promise<DiscountCampaign[]> => {
       const { data, error } = await supabase
         .from("discount_campaigns")
-        .select("name, blurb, validTill:valid_till, used, status");
+        .select(
+          "name, blurb, validTill:valid_till, used, status, code, valueType:value_type, value, buyQty:buy_qty, getQty:get_qty, minOrder:min_order, cap, redeemUsed:redeem_used, redeemValidFrom:redeem_valid_from, redeemValidTo:redeem_valid_to, appliesToType:applies_to_type, appliesTo:applies_to",
+        );
       if (error) throw error;
       return data as unknown as DiscountCampaign[];
     },
@@ -192,13 +366,19 @@ export function useDiscountSeasonal(branch?: string) {
   return useQuery({
     queryKey: ["discounts", "seasonal", branch ?? "All Branches"],
     queryFn: async (): Promise<DiscountSeasonRow[]> => {
-      let query = (
-        allBranches
-          ? supabase.from("discount_seasonal")
-          : supabase.from("discount_seasonal_branches")
-      ).select("season, offer, discount, validFrom:valid_from, validTo:valid_to, status");
-      if (!allBranches) query = query.eq("branch", branch);
-      const { data, error } = await query;
+      if (!allBranches) {
+        const { data, error } = await supabase
+          .from("discount_seasonal_branches")
+          .select("season, offer, discount, validFrom:valid_from, validTo:valid_to, status")
+          .eq("branch", branch);
+        if (error) throw error;
+        return (data ?? []).map((r) => ({ ...r, ...NOT_REDEEMABLE })) as unknown as DiscountSeasonRow[];
+      }
+      const { data, error } = await supabase
+        .from("discount_seasonal")
+        .select(
+          "season, offer, discount, validFrom:valid_from, validTo:valid_to, status, code, valueType:value_type, value, minOrder:min_order, cap, redeemUsed:redeem_used, redeemValidFrom:redeem_valid_from, redeemValidTo:redeem_valid_to, appliesToType:applies_to_type, appliesTo:applies_to",
+        );
       if (error) throw error;
       return data as unknown as DiscountSeasonRow[];
     },
@@ -284,18 +464,51 @@ export function useDeleteDiscountPromo() {
   });
 }
 
+// Shared insert/update payload for the optional "make this redeemable at
+// checkout" block on campaigns/seasonal — code null means the row stays
+// display-only, matching DiscountRedemption's default.
+function redemptionPayload(r: DiscountRedemption) {
+  return {
+    code: r.code || null,
+    value_type: r.code ? r.valueType : null,
+    value: r.code ? r.value : null,
+    min_order: r.code ? r.minOrder || 0 : 0,
+    cap: r.code ? r.cap : null,
+    redeem_valid_from: r.code ? r.redeemValidFrom : null,
+    redeem_valid_to: r.code ? r.redeemValidTo : null,
+    applies_to_type: r.code ? r.appliesToType : null,
+    applies_to: r.code ? r.appliesTo : [],
+  };
+}
+
+// buy_qty/get_qty ("Buy X Get Y Free") only exist on discount_campaigns —
+// discount_seasonal has no such columns, so this is kept out of the shared
+// redemptionPayload() and applied to campaign writes only.
+function campaignBogoPayload(input: DiscountCampaignInput) {
+  const isBogo = !!input.code && input.valueType === "bogo";
+  return {
+    buy_qty: isBogo ? input.buyQty : null,
+    get_qty: isBogo ? input.getQty : null,
+  };
+}
+
 // --- CRUD: campaigns (identity = name) ---
 
 export function useCreateCampaign() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: DiscountCampaignInput): Promise<DiscountCampaignInput> => {
+      if (input.code && (await isCodeTaken(input.code))) {
+        throw new Error(`Code "${input.code}" is already in use by another discount.`);
+      }
       const { error } = await supabase.from("discount_campaigns").insert({
         name: input.name,
         blurb: input.blurb,
         valid_till: input.validTill,
         used: input.used,
         status: input.status,
+        ...redemptionPayload(input),
+        ...campaignBogoPayload(input),
       });
       if (error) throw error;
       return input;
@@ -310,6 +523,12 @@ export function useUpdateCampaign() {
     mutationFn: async (
       input: DiscountCampaignInput & { originalName: string },
     ): Promise<DiscountCampaignInput> => {
+      if (
+        input.code &&
+        (await isCodeTaken(input.code, { table: "discount_campaigns", key: input.originalName }))
+      ) {
+        throw new Error(`Code "${input.code}" is already in use by another discount.`);
+      }
       const { error } = await supabase
         .from("discount_campaigns")
         .update({
@@ -318,6 +537,8 @@ export function useUpdateCampaign() {
           valid_till: input.validTill,
           used: input.used,
           status: input.status,
+          ...redemptionPayload(input),
+          ...campaignBogoPayload(input),
         })
         .eq("name", input.originalName);
       if (error) throw error;
@@ -345,6 +566,9 @@ export function useCreateSeasonal() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: DiscountSeasonInput): Promise<DiscountSeasonInput> => {
+      if (input.code && (await isCodeTaken(input.code))) {
+        throw new Error(`Code "${input.code}" is already in use by another discount.`);
+      }
       const { error } = await supabase.from("discount_seasonal").insert({
         season: input.season,
         offer: input.offer,
@@ -352,6 +576,7 @@ export function useCreateSeasonal() {
         valid_from: input.validFrom,
         valid_to: input.validTo,
         status: input.status,
+        ...redemptionPayload(input),
       });
       if (error) throw error;
       return input;
@@ -366,6 +591,12 @@ export function useUpdateSeasonal() {
     mutationFn: async (
       input: DiscountSeasonInput & { originalSeason: string },
     ): Promise<DiscountSeasonInput> => {
+      if (
+        input.code &&
+        (await isCodeTaken(input.code, { table: "discount_seasonal", key: input.originalSeason }))
+      ) {
+        throw new Error(`Code "${input.code}" is already in use by another discount.`);
+      }
       const { error } = await supabase
         .from("discount_seasonal")
         .update({
@@ -375,6 +606,7 @@ export function useUpdateSeasonal() {
           valid_from: input.validFrom,
           valid_to: input.validTo,
           status: input.status,
+          ...redemptionPayload(input),
         })
         .eq("season", input.originalSeason);
       if (error) throw error;

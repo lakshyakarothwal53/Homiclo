@@ -279,7 +279,7 @@ function DashboardPage() {
               { icon: UserPlus, label: "Add Employee", route: "/employees/add" },
               { icon: Box, label: "Add Product", route: "/inventory/products" },
               { icon: Receipt, label: "New Invoice", route: "/billing/create-invoice" },
-              { icon: BadgePercent, label: "New Discount", route: "/discounts/flat" },
+              { icon: BadgePercent, label: "New Discount", route: "/discounts" },
               { icon: ShoppingCart, label: "Open POS", route: "/pos" },
               { icon: ShieldCheck, label: "Audit Log", route: "/settings/roles" },
             ].map(({ icon: Icon, label, route }) => (

@@ -104,8 +104,6 @@ export const NAV: NavGroup[] = [
       { label: "Overview", to: "/discounts" },
       { label: "Product Discounts", to: "/discounts/products" },
       { label: "Category Discounts", to: "/discounts/categories" },
-      { label: "Flat Discounts", to: "/discounts/flat" },
-      { label: "Percentage Discounts", to: "/discounts/percentage" },
       { label: "Campaigns", to: "/discounts/campaigns" },
       { label: "Seasonal Offers", to: "/discounts/seasonal" },
       { label: "Usage Reports", to: "/discounts/usage-reports" },

@@ -22,7 +22,9 @@ import {
   usePosSettings,
 } from "@/hooks/use-pos";
 import { fetchCouponByCode } from "@/hooks/use-discounts";
+import { useUpsertCustomer } from "@/hooks/use-customers";
 import { printReceipt } from "@/lib/receipt-utils";
+import { localDateIso } from "@/lib/utils";
 import { useAuth } from "@/components/auth/AuthProvider";
 import type { PaymentResult, PosProduct } from "@/types/pos";
 
@@ -85,6 +87,7 @@ function Page() {
   const { page, setPage, totalPages, pageItems } = usePagination(rows);
   const { data: nextInvoice } = useNextPosInvoiceNumber();
   const createTransaction = useCreatePosTransaction();
+  const upsertCustomer = useUpsertCustomer();
 
   function lookupAndAdd(code: string) {
     const clean = code.trim();
@@ -169,6 +172,47 @@ function Page() {
         toast.error(`No active discount found for "${code}".`);
         return;
       }
+      const today = localDateIso();
+      if (found.validFrom && today < found.validFrom) {
+        toast.error(`Coupon ${found.code} isn't valid yet.`);
+        return;
+      }
+      if (found.validTo && today > found.validTo) {
+        toast.error(`Coupon ${found.code} has expired.`);
+        return;
+      }
+      if (found.cap !== null && found.used >= found.cap) {
+        toast.error(`Coupon ${found.code} has reached its usage limit.`);
+        return;
+      }
+      if (totals.subtotal < found.minOrder) {
+        toast.error(`Coupon ${found.code} requires a minimum order of ${formatINR(found.minOrder)}.`);
+        return;
+      }
+      const eligibleLines =
+        !found.appliesToType || found.appliesTo.length === 0
+          ? lines
+          : lines.filter((l) =>
+              found.appliesToType === "product"
+                ? found.appliesTo.includes(l.product.sku)
+                : found.appliesToType === "category"
+                  ? found.appliesTo.includes(l.product.category)
+                  : false,
+            );
+      if (found.appliesToType && found.appliesTo.length > 0 && eligibleLines.length === 0) {
+        toast.error(`Coupon ${found.code} doesn't apply to any product in your cart.`);
+        return;
+      }
+      if (found.valueType === "bogo" && found.buyQty && found.getQty) {
+        const eligibleUnits = eligibleLines.reduce((n, l) => n + l.qty, 0);
+        const bundleSize = found.buyQty + found.getQty;
+        if (eligibleUnits < bundleSize) {
+          toast.error(
+            `Coupon ${found.code} needs at least ${bundleSize} qualifying items in the cart (buy ${found.buyQty} get ${found.getQty} free) — only ${eligibleUnits} in cart now.`,
+          );
+          return;
+        }
+      }
       applyCoupon(found);
       toast.success(`Coupon ${found.code} applied.`);
     } catch (e) {
@@ -192,6 +236,19 @@ function Page() {
     const time = now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
     const receiptLines = asLineItems();
     const snapshot = { ...totals };
+
+    // Save/update the customer master so this mobile number auto-fills next
+    // time (PaymentDialog's lookup) instead of being asked for again — a POS
+    // sale used to complete without ever writing to `customers`, so a repeat
+    // customer never actually got found. Best-effort like create-invoice.tsx:
+    // the customers table is optional infrastructure and must never block
+    // checkout.
+    upsertCustomer.mutate({
+      mobile: customer.mobile.trim(),
+      name: customer.name,
+      gst: customer.gstin || null,
+      dob: customer.dob || null,
+    });
 
     createTransaction.mutate(
       {

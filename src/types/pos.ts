@@ -41,8 +41,22 @@ export type PosCustomer = {
 // A coupon resolved from discount settings and applied to the cart total.
 export type AppliedCoupon = {
   code: string;
-  valueType: "percentage" | "flat";
+  valueType: "percentage" | "flat" | "bogo";
   value: number;
+  // Only set (and only meaningful) when valueType === "bogo": "buy X get Y
+  // free" — value is unused for bogo coupons.
+  buyQty?: number;
+  getQty?: number;
+  minOrder: number;
+  validFrom: string;
+  validTo: string;
+  cap: number | null;
+  used: number;
+  // null/empty appliesTo = store-wide; otherwise the coupon only discounts
+  // cart lines whose SKU (appliesToType "product") or category
+  // (appliesToType "category") is in appliesTo.
+  appliesToType: "product" | "category" | "brand" | null;
+  appliesTo: string[];
 };
 
 export type PosLineItem = {
