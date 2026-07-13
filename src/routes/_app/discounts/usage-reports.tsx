@@ -1,34 +1,18 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { CheckCircle2, IndianRupee, TrendingUp } from "lucide-react";
+import { CheckCircle2, Download, Eye, IndianRupee, Tag } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { StatCard } from "@/components/common/StatCard";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { DiscountToolbar } from "@/components/discounts/DiscountToolbar";
-import { UsageDialog } from "@/components/discounts/UsageDialog";
 import { downloadCsv, formatCurrency } from "@/components/discounts/types";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
 import { usePagination } from "@/hooks/use-pagination";
-import {
-  useDiscountBranches,
-  useDiscountUsage,
-  useCreateUsage,
-  useUpdateUsage,
-  useDeleteUsage,
-} from "@/hooks/use-discounts";
-import type { DiscountUsageInput } from "@/types/discounts";
+import { useDiscountBranches, useDiscountUsage } from "@/hooks/use-discounts";
+import { buildUsageReportPdf, downloadPdf, openPdf } from "@/lib/pdf-utils";
+import type { DiscountUsageRow } from "@/types/discounts";
 
 export const Route = createFileRoute("/_app/discounts/usage-reports")({
   head: () => ({
@@ -40,40 +24,20 @@ export const Route = createFileRoute("/_app/discounts/usage-reports")({
   component: Page,
 });
 
+function handleView(row: DiscountUsageRow) {
+  openPdf(buildUsageReportPdf(row, row.transactions));
+}
+
+function handleDownload(row: DiscountUsageRow) {
+  downloadPdf(buildUsageReportPdf(row, row.transactions), `${row.code}-usage-report.pdf`);
+}
+
 function Page() {
   const [query, setQuery] = useState("");
   const [branch, setBranch] = useState("All Branches");
 
   const { data: usage = [], isLoading } = useDiscountUsage(branch);
   const { data: branches = [] } = useDiscountBranches();
-
-  const createUsage = useCreateUsage();
-  const updateUsage = useUpdateUsage();
-  const deleteUsage = useDeleteUsage();
-
-  function handleCreate(values: DiscountUsageInput) {
-    createUsage.mutate(values, {
-      onSuccess: () => toast.success(`${values.discount} added.`),
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Could not add usage record."),
-    });
-  }
-
-  function handleUpdate(originalCode: string, values: DiscountUsageInput) {
-    updateUsage.mutate(
-      { ...values, originalCode },
-      {
-        onSuccess: () => toast.success(`${values.discount} updated.`),
-        onError: (e) => toast.error(e instanceof Error ? e.message : "Could not update record."),
-      },
-    );
-  }
-
-  function handleDelete(code: string, discount: string) {
-    deleteUsage.mutate(code, {
-      onSuccess: () => toast.success(`${discount} deleted.`),
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Could not delete record."),
-    });
-  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -88,21 +52,23 @@ function Page() {
   const totals = useMemo(() => {
     const used = usage.reduce((s, r) => s + r.timesUsed, 0);
     const given = usage.reduce((s, r) => s + r.discountGiven, 0);
-    const conv = usage.length ? usage.reduce((s, r) => s + r.conversion, 0) / usage.length : 0;
-    return { used, given, conv: Math.round(conv) };
+    return { used, given, codes: usage.length };
   }, [usage]);
 
   function handleExport() {
+    if (filtered.length === 0) {
+      toast.error("Nothing to export.");
+      return;
+    }
     downloadCsv(
       "discount-usage-reports.csv",
-      ["Discount", "Code", "Times Used", "Discount Given", "Avg. Order", "Conversion"],
+      ["Discount", "Code", "Times Used", "Discount Given", "Avg. Order"],
       filtered.map((r) => [
         r.discount,
         r.code,
         r.timesUsed,
         formatCurrency(r.discountGiven),
         formatCurrency(r.avgOrder),
-        `${r.conversion}%`,
       ]),
     );
   }
@@ -125,15 +91,10 @@ function Page() {
         <StatCard
           label="Discount Given"
           value={formatCurrency(totals.given)}
-          hint="This month"
+          hint="Across all redemptions"
           icon={IndianRupee}
         />
-        <StatCard
-          label="Avg. Conversion"
-          value={`${totals.conv}%`}
-          hint="Promo → checkout"
-          icon={TrendingUp}
-        />
+        <StatCard label="Codes Used" value={String(totals.codes)} hint="Distinct codes redeemed" icon={Tag} />
       </div>
 
       <DiscountToolbar
@@ -143,7 +104,7 @@ function Page() {
         onBranch={setBranch}
         branches={branches}
         onExport={handleExport}
-        addSlot={<UsageDialog mode="add" onSave={handleCreate} />}
+        showAdd={false}
       />
 
       <Card className="border-border">
@@ -157,7 +118,6 @@ function Page() {
                   <th className="px-5 py-3 text-left font-medium">Times Used</th>
                   <th className="px-5 py-3 text-left font-medium">Discount Given</th>
                   <th className="px-5 py-3 text-left font-medium">Avg. Order</th>
-                  <th className="px-5 py-3 text-left font-medium">Conversion</th>
                   <th className="px-5 py-3 text-right font-medium"></th>
                 </tr>
               </thead>
@@ -171,54 +131,24 @@ function Page() {
                     <td className="px-5 py-3.5">{r.timesUsed}</td>
                     <td className="px-5 py-3.5">{formatCurrency(r.discountGiven)}</td>
                     <td className="px-5 py-3.5">{formatCurrency(r.avgOrder)}</td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 w-20 overflow-hidden rounded-full bg-secondary">
-                          <div
-                            className="h-full rounded-full bg-[color:var(--success)]"
-                            style={{ width: `${r.conversion}%` }}
-                          />
-                        </div>
-                        <span className="text-xs font-medium">{r.conversion}%</span>
-                      </div>
-                    </td>
                     <td className="px-5 py-3.5 text-right">
-                      <div className="flex items-center justify-end gap-4">
-                        <UsageDialog
-                          mode="edit"
-                          initial={r}
-                          onSave={(values) => handleUpdate(r.code, values)}
-                          trigger={
-                            <button className="text-sm font-medium text-brand hover:underline">
-                              Edit
-                            </button>
-                          }
-                        />
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <button className="text-sm font-medium text-muted-foreground hover:text-destructive hover:underline">
-                              Delete
-                            </button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete “{r.discount}”?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This permanently removes the usage record. This action cannot be
-                                undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                className="bg-destructive text-white hover:bg-destructive/90"
-                                onClick={() => handleDelete(r.code, r.discount)}
-                              >
-                                Delete
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5"
+                          onClick={() => handleView(r)}
+                        >
+                          <Eye className="h-3.5 w-3.5" /> View
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5"
+                          onClick={() => handleDownload(r)}
+                        >
+                          <Download className="h-3.5 w-3.5" /> Download
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -226,7 +156,7 @@ function Page() {
                 {isLoading && filtered.length === 0 && (
                   <tr className="border-t border-border">
                     <td
-                      colSpan={7}
+                      colSpan={6}
                       className="px-5 py-12 text-center text-sm text-muted-foreground"
                     >
                       Loading usage data…
@@ -236,7 +166,7 @@ function Page() {
                 {!isLoading && filtered.length === 0 && (
                   <tr className="border-t border-border">
                     <td
-                      colSpan={7}
+                      colSpan={6}
                       className="px-5 py-12 text-center text-sm text-muted-foreground"
                     >
                       No usage data matches your search.

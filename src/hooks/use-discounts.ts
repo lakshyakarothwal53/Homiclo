@@ -17,7 +17,6 @@ import type {
   DiscountsDashboard,
   DiscountsActiveRow,
   DiscountUsageRow,
-  DiscountUsageInput,
 } from "@/types/discounts";
 import type { AppliedCoupon } from "@/types/pos";
 
@@ -201,32 +200,54 @@ export async function isCodeTaken(
 export type PromoInput = PromoRow & { discountType: string };
 
 // Dashboard stat cards, computed live from campaigns + promos + usage (no static snapshot).
+// A "redemption" here is any completed POS sale that had a coupon code
+// applied — pos_transactions.coupon_code/discount/subtotal are written by
+// handlePaid() in routes/_app/pos/index.tsx on every checkout, and cover a
+// code from any of the three redeemable sources (Product/Category/Flat/
+// Percentage Discounts, Campaigns, Seasonal Offers — they all resolve
+// through the same fetchCouponByCode()). discount_usage, by contrast, is a
+// separate hand-edited log (see Usage Reports' full CRUD) seeded with demo
+// numbers that nothing keeps in sync with real sales — using it here made
+// every dashboard stat static regardless of what actually happened at POS.
+async function fetchRedemptions() {
+  const { data, error } = await supabase
+    .from("pos_transactions")
+    .select("coupon_code, discount, subtotal, created_at")
+    .not("coupon_code", "is", null);
+  if (error) throw error;
+  return (data ?? []) as { coupon_code: string; discount: number | null; subtotal: number | null; created_at: string }[];
+}
+
 export function useDiscountsDashboard() {
   return useQuery({
     queryKey: ["discounts", "dashboard"],
     queryFn: async (): Promise<DiscountsDashboard> => {
-      const [campaigns, promos, usage] = await Promise.all([
+      const now = new Date();
+      const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+
+      const [campaigns, promos, redemptions] = await Promise.all([
         supabase.from("discount_campaigns").select("status"),
-        supabase.from("discount_promos").select("value, value_type, status"),
-        supabase.from("discount_usage").select("times_used, discount_given"),
+        supabase.from("discount_promos").select("status"),
+        fetchRedemptions(),
       ]);
       if (campaigns.error) throw campaigns.error;
       if (promos.error) throw promos.error;
-      if (usage.error) throw usage.error;
 
       const activeCampaigns = (campaigns.data ?? []).filter((c) => c.status === "Active").length;
       const livePromos = (promos.data ?? []).filter((p) => p.status === "Active").length;
-      const timesUsed = (usage.data ?? []).reduce((s, r) => s + (r.times_used ?? 0), 0);
-      const discountGiven = (usage.data ?? []).reduce((s, r) => s + (r.discount_given ?? 0), 0);
-      const pct = (promos.data ?? []).filter((p) => p.value_type === "percentage");
-      const avgDiscount = pct.length
-        ? Math.round(pct.reduce((s, p) => s + (p.value ?? 0), 0) / pct.length)
-        : 0;
+
+      const timesUsed = redemptions.length;
+      const discountGivenThisMonth = redemptions
+        .filter((r) => r.created_at >= monthStart)
+        .reduce((s, r) => s + (r.discount ?? 0), 0);
+      const totalDiscount = redemptions.reduce((s, r) => s + (r.discount ?? 0), 0);
+      const totalSubtotal = redemptions.reduce((s, r) => s + (r.subtotal ?? 0), 0);
+      const avgDiscount = totalSubtotal > 0 ? Math.round((totalDiscount / totalSubtotal) * 100) : 0;
 
       return {
         activeCampaigns: String(activeCampaigns),
         activeCampaignsHint: `${livePromos} discounts live`,
-        discountGiven: formatCurrency(discountGiven),
+        discountGiven: formatCurrency(discountGivenThisMonth),
         discountGivenHint: "This month",
         timesUsed: String(timesUsed),
         timesUsedHint: "Across all promos",
@@ -237,34 +258,48 @@ export function useDiscountsDashboard() {
   });
 }
 
-// Active Discounts table — derived from real active promos so it reflects CRUD.
+// Active Discounts table — real active promos, with a live redemption count
+// (see fetchRedemptions above) instead of discount_promos.used, which is
+// only ever set at creation and never incremented by an actual POS sale.
 export function useDiscountsActive() {
   return useQuery({
     queryKey: ["discounts", "active"],
     queryFn: async (): Promise<DiscountsActiveRow[]> => {
-      const { data, error } = await supabase
-        .from("discount_promos")
-        .select("name, discount_type, value_type, value, min_order, valid_to, used, cap, status")
-        .eq("status", "Active")
-        .order("used", { ascending: false });
-      if (error) throw error;
-      return (data ?? []).map((r) => ({
-        name: r.name as string,
-        type:
-          r.discount_type === "category"
-            ? "Category"
-            : r.value_type === "flat"
-              ? "Flat"
-              : "Percentage",
-        value: r.value_type === "percentage" ? `${r.value}%` : formatCurrency(r.value as number),
-        appliesTo:
-          (r.min_order as number) > 0
-            ? `Orders > ${formatCurrency(r.min_order as number)}`
-            : "All Products",
-        validTill: formatDate(r.valid_to as string, true),
-        used: `${r.used} / ${r.cap ?? "—"}`,
-        status: r.status as DiscountStatus,
-      }));
+      const [promos, redemptions] = await Promise.all([
+        supabase
+          .from("discount_promos")
+          .select("name, code, discount_type, value_type, value, min_order, valid_to, cap, status")
+          .eq("status", "Active"),
+        fetchRedemptions(),
+      ]);
+      if (promos.error) throw promos.error;
+
+      const usedByCode = new Map<string, number>();
+      for (const r of redemptions) {
+        const code = r.coupon_code.toUpperCase();
+        usedByCode.set(code, (usedByCode.get(code) ?? 0) + 1);
+      }
+
+      return (promos.data ?? [])
+        .map((r) => ({ r, used: usedByCode.get(((r.code as string) ?? "").toUpperCase()) ?? 0 }))
+        .sort((a, b) => b.used - a.used)
+        .map(({ r, used }) => ({
+          name: r.name as string,
+          type:
+            r.discount_type === "category"
+              ? "Category"
+              : r.value_type === "flat"
+                ? "Flat"
+                : "Percentage",
+          value: r.value_type === "percentage" ? `${r.value}%` : formatCurrency(r.value as number),
+          appliesTo:
+            (r.min_order as number) > 0
+              ? `Orders > ${formatCurrency(r.min_order as number)}`
+              : "All Products",
+          validTill: formatDate(r.valid_to as string, true),
+          used: `${used} / ${r.cap ?? "—"}`,
+          status: r.status as DiscountStatus,
+        }));
     },
   });
 }
@@ -385,20 +420,75 @@ export function useDiscountSeasonal(branch?: string) {
   });
 }
 
+// Every row is a real redemption computed from pos_transactions (see
+// fetchRedemptions above), grouped by code, with each code's display name
+// resolved against whichever of the three redeemable sources owns it —
+// discount_usage (the old hand-edited log this replaced) is no longer read
+// anywhere in the app.
 export function useDiscountUsage(branch?: string) {
   const allBranches = !branch || branch === "All Branches";
   return useQuery({
     queryKey: ["discounts", "usage", branch ?? "All Branches"],
     queryFn: async (): Promise<DiscountUsageRow[]> => {
-      let query = (
-        allBranches ? supabase.from("discount_usage") : supabase.from("discount_usage_branches")
-      ).select(
-        "discount, code, timesUsed:times_used, discountGiven:discount_given, avgOrder:avg_order, conversion",
-      );
-      if (!allBranches) query = query.eq("branch", branch);
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as unknown as DiscountUsageRow[];
+      let txnQuery = supabase
+        .from("pos_transactions")
+        .select("invoice, coupon_code, subtotal, discount, total, invoice_date, created_at")
+        .not("coupon_code", "is", null);
+      if (!allBranches) txnQuery = txnQuery.eq("branch", branch);
+
+      const [txns, promos, campaigns, seasonal] = await Promise.all([
+        txnQuery,
+        supabase.from("discount_promos").select("name, code"),
+        supabase.from("discount_campaigns").select("name, code").not("code", "is", null),
+        supabase.from("discount_seasonal").select("season, code").not("code", "is", null),
+      ]);
+      if (txns.error) throw txns.error;
+      if (promos.error) throw promos.error;
+      if (campaigns.error) throw campaigns.error;
+      if (seasonal.error) throw seasonal.error;
+
+      const nameByCode = new Map<string, string>();
+      for (const p of promos.data ?? []) {
+        if (p.code) nameByCode.set((p.code as string).toUpperCase(), p.name as string);
+      }
+      for (const c of campaigns.data ?? []) {
+        if (c.code) nameByCode.set((c.code as string).toUpperCase(), c.name as string);
+      }
+      for (const s of seasonal.data ?? []) {
+        if (s.code) nameByCode.set((s.code as string).toUpperCase(), s.season as string);
+      }
+
+      const byCode = new Map<string, DiscountUsageRow>();
+      for (const t of txns.data ?? []) {
+        const code = (t.coupon_code as string).toUpperCase();
+        const row = byCode.get(code) ?? {
+          discount: nameByCode.get(code) ?? code,
+          code,
+          timesUsed: 0,
+          discountGiven: 0,
+          avgOrder: 0,
+          transactions: [],
+        };
+        row.timesUsed += 1;
+        row.discountGiven += (t.discount as number) ?? 0;
+        row.transactions.push({
+          invoice: t.invoice as string,
+          date: (t.invoice_date as string) || (t.created_at as string)?.slice(0, 10) || "",
+          subtotal: (t.subtotal as number) ?? 0,
+          discount: (t.discount as number) ?? 0,
+          total: (t.total as number) ?? 0,
+        });
+        byCode.set(code, row);
+      }
+
+      return Array.from(byCode.values())
+        .map((row) => ({
+          ...row,
+          avgOrder: Math.round(
+            row.transactions.reduce((s, t) => s + t.total, 0) / row.transactions.length,
+          ),
+        }))
+        .sort((a, b) => b.timesUsed - a.timesUsed);
     },
   });
 }
@@ -628,59 +718,3 @@ export function useDeleteSeasonal() {
   });
 }
 
-// --- CRUD: usage records (identity = code) ---
-
-export function useCreateUsage() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: DiscountUsageInput): Promise<DiscountUsageInput> => {
-      const { error } = await supabase.from("discount_usage").insert({
-        code: input.code,
-        discount: input.discount,
-        times_used: input.timesUsed,
-        discount_given: input.discountGiven,
-        avg_order: input.avgOrder,
-        conversion: input.conversion,
-      });
-      if (error) throw error;
-      return input;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["discounts"] }),
-  });
-}
-
-export function useUpdateUsage() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (
-      input: DiscountUsageInput & { originalCode: string },
-    ): Promise<DiscountUsageInput> => {
-      const { error } = await supabase
-        .from("discount_usage")
-        .update({
-          code: input.code,
-          discount: input.discount,
-          times_used: input.timesUsed,
-          discount_given: input.discountGiven,
-          avg_order: input.avgOrder,
-          conversion: input.conversion,
-        })
-        .eq("code", input.originalCode);
-      if (error) throw error;
-      return input;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["discounts"] }),
-  });
-}
-
-export function useDeleteUsage() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (code: string): Promise<string> => {
-      const { error } = await supabase.from("discount_usage").delete().eq("code", code);
-      if (error) throw error;
-      return code;
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["discounts"] }),
-  });
-}

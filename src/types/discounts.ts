@@ -63,17 +63,29 @@ export type DiscountSeasonRow = {
   status: DiscountStatus;
 } & DiscountRedemption;
 
+export type DiscountUsageTxn = {
+  invoice: string;
+  date: string;
+  subtotal: number;
+  discount: number;
+  total: number;
+};
+
+// Computed live from pos_transactions (see useDiscountUsage) — every row here
+// is a real redemption, not admin-entered data, so there's no create/update/
+// delete for this report. No "conversion" field: nothing in the app logs a
+// coupon being *attempted* and rejected (only successful applications), so a
+// promo→checkout conversion rate isn't a number we can honestly compute yet.
 export type DiscountUsageRow = {
   discount: string;
   code: string;
   timesUsed: number;
   discountGiven: number;
   avgOrder: number;
-  conversion: number;
+  transactions: DiscountUsageTxn[];
 };
 
 // CRUD input shapes (identity = the natural key each table is written by:
-// campaign name, season, usage code — edited via an `original*` field).
+// campaign name, season — edited via an `original*` field).
 export type DiscountCampaignInput = DiscountCampaign;
 export type DiscountSeasonInput = DiscountSeasonRow;
-export type DiscountUsageInput = DiscountUsageRow;

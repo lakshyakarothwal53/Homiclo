@@ -21,6 +21,7 @@ export function DiscountToolbar({
   onExport,
   addLabel = "Add New",
   addSlot,
+  showAdd = true,
 }: {
   query: string;
   onQuery: (v: string) => void;
@@ -35,6 +36,9 @@ export function DiscountToolbar({
   addLabel?: string;
   /** Replaces the default Add button — e.g. a Dialog trigger. */
   addSlot?: ReactNode;
+  /** Set false for read-only/computed reports with nothing to add — otherwise
+   * omitting addSlot falls back to a button with no click handler. */
+  showAdd?: boolean;
 }) {
   return (
     <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -75,11 +79,12 @@ export function DiscountToolbar({
         <Button variant="outline" size="sm" className="h-9 gap-2" onClick={onExport}>
           <Download className="h-4 w-4" /> Export
         </Button>
-        {addSlot ?? (
-          <Button size="sm" className="h-9 gap-2 bg-brand text-brand-foreground hover:bg-brand/90">
-            <Plus className="h-4 w-4" /> {addLabel}
-          </Button>
-        )}
+        {showAdd &&
+          (addSlot ?? (
+            <Button size="sm" className="h-9 gap-2 bg-brand text-brand-foreground hover:bg-brand/90">
+              <Plus className="h-4 w-4" /> {addLabel}
+            </Button>
+          ))}
       </div>
     </div>
   );

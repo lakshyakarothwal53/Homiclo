@@ -140,6 +140,72 @@ export function buildTaxInvoicePdf(
   return doc;
 }
 
+export type UsageReportTxn = { invoice: string; date: string; subtotal: number; discount: number; total: number };
+
+/** A single discount code's usage report — its summary stats plus every real
+ * redemption behind them, used by Usage Reports' View/Download actions. */
+export function buildUsageReportPdf(
+  summary: { discount: string; code: string; timesUsed: number; discountGiven: number; avgOrder: number },
+  transactions: UsageReportTxn[],
+): jsPDF {
+  const doc = new jsPDF();
+
+  doc.setFontSize(20);
+  doc.setTextColor(BRAND);
+  doc.setFont("helvetica", "bold");
+  doc.text("HOMIQLO", 14, 18);
+
+  doc.setFontSize(13);
+  doc.setTextColor("#111111");
+  doc.text("Discount Usage Report", 14, 27);
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor("#666666");
+  doc.text(`${sanitizeForPdf(summary.discount)} · Code ${sanitizeForPdf(summary.code)}`, 14, 33);
+
+  autoTable(doc, {
+    startY: 40,
+    margin: { left: 14 },
+    tableWidth: 90,
+    theme: "plain",
+    styles: { fontSize: 10, cellPadding: 1.5 },
+    columnStyles: { 1: { halign: "right" } },
+    didParseCell: (data) => {
+      if (data.column.index === 1) data.cell.styles.halign = "right";
+    },
+    body: [
+      ["Times Used", String(summary.timesUsed)],
+      ["Discount Given", rupee(summary.discountGiven)],
+      ["Avg. Order", rupee(summary.avgOrder)],
+    ],
+  });
+
+  const { lastAutoTable } = doc as unknown as { lastAutoTable: { finalY: number } };
+  const startY = lastAutoTable.finalY + 10;
+
+  autoTable(doc, {
+    startY,
+    head: [["Invoice", "Date", "Subtotal", "Discount", "Total"]],
+    body: transactions.map((t) => [
+      sanitizeForPdf(t.invoice),
+      sanitizeForPdf(t.date),
+      rupee(t.subtotal),
+      rupee(t.discount),
+      rupee(t.total),
+    ]),
+    styles: { fontSize: 8.5, cellPadding: 2.5 },
+    headStyles: { fillColor: [254, 0, 0], textColor: 255, fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [246, 246, 246] },
+    columnStyles: { 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" } },
+    didParseCell: (data) => {
+      if (data.column.index >= 2) data.cell.styles.halign = "right";
+    },
+  });
+
+  return doc;
+}
+
 /** Open the PDF in the browser's native PDF viewer (new tab). */
 export function openPdf(doc: jsPDF) {
   window.open(doc.output("bloburl"), "_blank");
