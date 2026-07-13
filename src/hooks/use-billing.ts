@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { applyStockMovement } from "@/lib/inventory-utils";
 import { loadTallyConfig, pushToTally, salesVoucherXml } from "@/lib/tally";
+import { localDateIso } from "@/lib/utils";
 import type {
   BillingDashboard,
   BillingPayment,
@@ -33,6 +34,12 @@ function monthDelta(current: number, previous: number): string {
 function parseAmountNum(raw: unknown): number {
   if (typeof raw !== "string") return 0;
   return parseFloat(raw.replace(/[₹,\s]/g, "")) || 0;
+}
+
+// Unabbreviated ₹ formatting for per-invoice line amounts (unlike formatINR
+// above, which abbreviates to Cr/L for dashboard KPI tiles).
+function formatPlainINR(n: number): string {
+  return `₹${Math.round(n).toLocaleString("en-IN")}`;
 }
 
 // Computed entirely client-side (rather than via the billing_dashboard_stats
@@ -136,8 +143,34 @@ type PosTxnBillRow = {
   invoice_date?: string;
 };
 
+type PosTxnTaxRow = {
+  invoice: string;
+  customer_gstin: string | null;
+  subtotal?: number | null;
+  discount?: number | null;
+  gst?: number | null;
+  total?: number | null;
+  created_at?: string;
+  invoice_date?: string;
+};
+
+function posTxnToTaxInvoice(r: PosTxnTaxRow): BillingTaxInvoice {
+  const billDate = r.invoice_date || (r.created_at ? localDateIso(new Date(r.created_at)) : "");
+  const taxable = (r.subtotal ?? 0) - (r.discount ?? 0);
+  const gstHalf = (r.gst ?? 0) / 2;
+  return {
+    invoice: r.invoice,
+    date: billDate ? isoToDisplayDate(billDate) : "",
+    gstin: r.customer_gstin ?? "",
+    taxable: formatPlainINR(taxable),
+    cgst: formatPlainINR(gstHalf),
+    sgst: formatPlainINR(gstHalf),
+    total: formatPlainINR(r.total ?? 0),
+  };
+}
+
 function posTxnToBill(r: PosTxnBillRow): BillingSalesBill {
-  const billDate = r.invoice_date || (r.created_at ? String(r.created_at).slice(0, 10) : "");
+  const billDate = r.invoice_date || (r.created_at ? localDateIso(new Date(r.created_at)) : "");
   return {
     invoice: r.invoice,
     date: billDate || r.time || "",
@@ -215,7 +248,7 @@ function isoToDisplayDate(iso: string): string {
 }
 
 function posTxnToPayment(r: PosTxnBillRow): BillingPayment {
-  const billDate = r.invoice_date || (r.created_at ? String(r.created_at).slice(0, 10) : "");
+  const billDate = r.invoice_date || (r.created_at ? localDateIso(new Date(r.created_at)) : "");
   const digits = r.invoice.replace(/\D/g, "");
   return {
     date: billDate ? isoToDisplayDate(billDate) : r.time || "",
@@ -297,17 +330,39 @@ export function useBillingRefunds(search?: string, branch?: string) {
   });
 }
 
+// A tax invoice is any completed sale where the customer supplied a GSTIN at
+// checkout (POS "Collect Payment" step) — derived straight from
+// pos_transactions, the same source useBillingSalesBills/useBillingPayments
+// read, instead of the standalone billing_tax_invoices table (which can't
+// stay in sync with sales rung up at the POS). A sale with no GSTIN captured
+// simply isn't a tax invoice and is excluded.
 export function useBillingTaxInvoices(search?: string, branch?: string) {
   const allBranches = !branch || branch === "all";
   return useQuery({
     queryKey: ["billing", "tax-invoices", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<BillingTaxInvoice[]> => {
-      let query = (
-        allBranches
-          ? supabase.from("billing_tax_invoices")
-          : supabase.from("billing_tax_invoices_branches")
-      ).select("invoice, date, gstin, taxable, cgst, sgst, total");
-      if (!allBranches) query = query.eq("branch", branch);
+      if (allBranches) {
+        let q = supabase
+          .from("pos_transactions")
+          .select(
+            "invoice, subtotal, discount, gst, total, customer_gstin, created_at, invoice_date",
+          )
+          .not("customer_gstin", "is", null)
+          .neq("customer_gstin", "")
+          .order("created_at", { ascending: false });
+        if (search) q = q.or(`invoice.ilike.${like(search)},customer_gstin.ilike.${like(search)}`);
+        const { data, error } = await q;
+        if (error) throw error;
+        return (data as unknown as PosTxnTaxRow[]).map(posTxnToTaxInvoice);
+      }
+
+      // No live per-branch source for customer GSTIN yet (pos_transactions_branches
+      // predates supabase/pos/07_customer_details.sql) — keep reading the seeded
+      // per-branch snapshot table.
+      let query = supabase
+        .from("billing_tax_invoices_branches")
+        .select("invoice, date, gstin, taxable, cgst, sgst, total")
+        .eq("branch", branch);
       if (search) query = query.or(`invoice.ilike.${like(search)},gstin.ilike.${like(search)}`);
       const { data, error } = await query;
       if (error) throw error;
@@ -590,21 +645,30 @@ export function useNextRefundNumber() {
   });
 }
 
+export type RefundLineInput = { sku: string; name: string; qty: number; unitPrice: number };
+
 export function useCreateRefund() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: BillingRefund & { amount_num?: number }): Promise<BillingRefund> => {
+    mutationFn: async (
+      input: BillingRefund & { amount_num?: number; items?: RefundLineInput[] },
+    ): Promise<BillingRefund> => {
       const amountNum = input.amount_num ?? (parseFloat(input.amount.replace(/[₹,\s]/g, "")) || 0);
+      const explicitItems = input.items && input.items.length > 0 ? input.items : null;
 
-      // Is this the first refund against the invoice? Only the first one restores
-      // stock — the bill is marked fully "Refunded", so a second refund row on the
-      // same invoice must not put the goods back a second time.
-      const { data: priorRefunds } = await supabase
-        .from("billing_refunds")
-        .select("refund")
-        .eq("invoice", input.invoice)
-        .limit(1);
-      const firstRefund = !priorRefunds || priorRefunds.length === 0;
+      // Legacy path (no item-level detail supplied, e.g. the Sales Bills quick
+      // "Refund" button): only the FIRST refund against an invoice restores
+      // stock, using the sale's full line items — a second refund row on the
+      // same invoice must not put the same goods back a second time.
+      let firstRefund = false;
+      if (!explicitItems) {
+        const { data: priorRefunds } = await supabase
+          .from("billing_refunds")
+          .select("refund")
+          .eq("invoice", input.invoice)
+          .limit(1);
+        firstRefund = !priorRefunds || priorRefunds.length === 0;
+      }
 
       const { error } = await supabase.from("billing_refunds").insert({
         refund: input.refund,
@@ -623,13 +687,25 @@ export function useCreateRefund() {
         .eq("invoice", input.invoice);
       if (updateError) throw updateError;
 
-      // Refunding a bill returns its goods to the shelf: put each sold line back
-      // into products (the stock source of truth) using the sale's saved line
-      // items. Best-effort — the refund is already recorded, so a stock hiccup
-      // shouldn't read back as "Could not create refund". A manually-created
-      // invoice with no POS line items simply has nothing to restore.
-      if (firstRefund) {
-        try {
+      // Refunding returns goods to the shelf: put the refunded lines back into
+      // products (the stock source of truth). Best-effort — the refund is
+      // already recorded, so a stock hiccup shouldn't read back as "Could not
+      // create refund". Two sources for which lines to restore:
+      //   - explicitItems: the New Refund dialog's product picker — the cashier
+      //     chose specific products/quantities, so restore exactly those (this
+      //     is what makes a PARTIAL refund of one item out of a multi-item sale
+      //     restore only that item, not the whole order).
+      //   - legacy whole-invoice fallback: no item-level detail was supplied,
+      //     so restore the sale's full line items, once, on the first refund
+      //     only. A manually-created invoice with no POS line items has
+      //     nothing to restore either way.
+      try {
+        if (explicitItems) {
+          await applyStockMovement(
+            explicitItems.map((i) => ({ sku: i.sku, qty: i.qty })),
+            "in",
+          );
+        } else if (firstRefund) {
           const { data: items } = await supabase
             .from("pos_transaction_items")
             .select("sku, qty")
@@ -640,9 +716,9 @@ export function useCreateRefund() {
               "in",
             );
           }
-        } catch (stockError) {
-          console.error("Failed to restore stock after refund:", stockError);
         }
+      } catch (stockError) {
+        console.error("Failed to restore stock after refund:", stockError);
       }
 
       return input;

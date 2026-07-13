@@ -245,6 +245,45 @@ export async function fetchPosTransactionItems(invoice: string): Promise<PosLine
   return (data ?? []) as PosLineItem[];
 }
 
+export type PosTransactionSummary = {
+  invoice: string;
+  customerName?: string;
+  status: string;
+  // subtotal/discount/gst, when present, let a refund flow attribute the
+  // transaction's actual GST (and discount) down to each individual product
+  // being refunded — pos_transaction_items.unit_price is PRE-TAX, GST/discount
+  // are only ever stored at the whole-transaction level (see
+  // fetchPosTransactionByInvoice).
+  subtotal?: number;
+  discount?: number;
+  gst?: number;
+  total?: number;
+};
+
+/** Look up a single transaction by invoice number (used by the Refunds "New
+ * Refund" dialog to auto-fill customer + pull the sale's line items). Returns
+ * null when no transaction matches, rather than throwing. */
+export async function fetchPosTransactionByInvoice(
+  invoice: string,
+): Promise<PosTransactionSummary | null> {
+  const { data, error } = await supabase
+    .from("pos_transactions")
+    .select("invoice, customer_name, status, subtotal, discount, gst, total")
+    .eq("invoice", invoice)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return {
+    invoice: data.invoice,
+    customerName: data.customer_name ?? undefined,
+    status: data.status,
+    subtotal: data.subtotal ?? undefined,
+    discount: data.discount ?? undefined,
+    gst: data.gst ?? undefined,
+    total: data.total ?? undefined,
+  };
+}
+
 export function usePosTransactionItems(invoice: string | undefined) {
   return useQuery({
     queryKey: ["pos", "transaction-items", invoice ?? ""],

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, QrCode } from "lucide-react";
 import { toast } from "sonner";
 
@@ -21,17 +22,15 @@ import {
 } from "@/components/ui/select";
 import { formatINR } from "@/components/pos/products";
 import { checkUpiStatus, createUpiQr } from "@/hooks/use-pos";
+import { fetchCustomerByMobile } from "@/hooks/use-customers";
+import { localDateIso } from "@/lib/utils";
 import type { PaymentResult, PosCustomer } from "@/types/pos";
-
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 const EMPTY_CUSTOMER: PosCustomer = {
   name: "",
   mobile: "",
   dob: "",
-  invoiceDate: today(),
+  invoiceDate: localDateIso(),
   gstin: "",
 };
 
@@ -54,6 +53,7 @@ export function PaymentDialog({
   const [qr, setQr] = useState<{ qrId: string; imageUrl: string } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [waiting, setWaiting] = useState(false);
+  const [debouncedMobile, setDebouncedMobile] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function stopPolling() {
@@ -70,7 +70,8 @@ export function PaymentDialog({
       setGenerating(false);
       setMode("UPI");
       setStep("customer");
-      setCustomer({ ...EMPTY_CUSTOMER, invoiceDate: today() });
+      setCustomer({ ...EMPTY_CUSTOMER, invoiceDate: localDateIso() });
+      setDebouncedMobile("");
     }
     return stopPolling;
   }, [open]);
@@ -78,6 +79,35 @@ export function PaymentDialog({
   function setField<K extends keyof PosCustomer>(key: K, value: PosCustomer[K]) {
     setCustomer((c) => ({ ...c, [key]: value }));
   }
+
+  // Look up the mobile number once it's a complete 10-digit entry — debounced
+  // so a lookup doesn't fire on every keystroke while typing.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedMobile(customer.mobile.length === 10 ? customer.mobile : "");
+    }, 400);
+    return () => clearTimeout(t);
+  }, [customer.mobile]);
+
+  const { data: foundCustomer, isFetching: lookingUpCustomer } = useQuery({
+    queryKey: ["pos", "customer-lookup", debouncedMobile],
+    queryFn: () => fetchCustomerByMobile(debouncedMobile),
+    enabled: debouncedMobile.length === 10,
+  });
+
+  // An already-registered customer's saved details take over the rest of the
+  // form the moment their mobile number resolves — the cashier only needs to
+  // confirm/edit, not re-type a return customer's name, DOB, and GSTIN.
+  useEffect(() => {
+    if (!foundCustomer) return;
+    setCustomer((c) => ({
+      ...c,
+      name: foundCustomer.name || c.name,
+      dob: foundCustomer.dob || c.dob,
+      gstin: foundCustomer.gst || c.gstin,
+    }));
+    toast.success(`Existing customer found — details filled in for ${foundCustomer.name}.`);
+  }, [foundCustomer]);
 
   function continueToPayment(e: React.FormEvent) {
     e.preventDefault();
@@ -156,6 +186,16 @@ export function PaymentDialog({
                 onChange={(e) => setField("mobile", e.target.value.replace(/\D/g, "").slice(0, 10))}
                 placeholder="10-digit mobile"
               />
+              {customer.mobile.length === 10 &&
+                (debouncedMobile !== customer.mobile || lookingUpCustomer ? (
+                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Checking for an existing customer…
+                  </p>
+                ) : foundCustomer ? (
+                  <p className="flex items-center gap-1 text-xs text-[color:var(--success)]">
+                    <CheckCircle2 className="h-3 w-3" /> Existing customer — details filled in.
+                  </p>
+                ) : null)}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -166,7 +206,7 @@ export function PaymentDialog({
                   id="cust-dob"
                   type="date"
                   value={customer.dob}
-                  max={today()}
+                  max={localDateIso()}
                   onChange={(e) => setField("dob", e.target.value)}
                 />
               </div>

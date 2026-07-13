@@ -20,6 +20,20 @@ export function useCustomerSearch(search: string) {
   });
 }
 
+/** Exact-match lookup by mobile (the customers table's key) — used by the POS
+ * Customer Details step to auto-fill name/DOB/GST once a full 10-digit
+ * number is entered, instead of the fuzzy name/mobile substring search
+ * useCustomerSearch does for the Create Invoice suggestion dropdown. */
+export async function fetchCustomerByMobile(mobile: string): Promise<Customer | null> {
+  const { data, error } = await supabase
+    .from("customers")
+    .select("mobile, name, gst, dob")
+    .eq("mobile", mobile)
+    .maybeSingle();
+  if (error) throw error;
+  return data as Customer | null;
+}
+
 export function useUpsertCustomer() {
   const queryClient = useQueryClient();
   return useMutation({
