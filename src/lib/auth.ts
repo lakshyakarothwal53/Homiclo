@@ -64,12 +64,27 @@ const readSessionCookie = createIsomorphicFn()
  * untouched by the swap. users.json and its passwordHash field then disappear.
  * ──────────────────────────────────────────────────────────────────────── */
 
+// employees.role stores the display strings offered on the Add Employee form,
+// not the Role union — map them so DB-created accounts get the right access.
+const EMPLOYEE_ROLE_MAP: Record<string, Role> = {
+  admin: "branch_admin",
+  "floor manager": "store_manager",
+  supervisor: "store_manager",
+  cashier: "cashier",
+  inventory: "inventory",
+  hr: "hr",
+};
+
+function toSessionRole(dbRole: string | null | undefined): Role {
+  return EMPLOYEE_ROLE_MAP[(dbRole ?? "").trim().toLowerCase()] ?? "employee";
+}
+
 export async function signIn(email: string, password: string): Promise<SessionUser> {
   const hash = await sha256(password);
   const normalizedEmail = email.trim().toLowerCase();
 
   // First try to find in mock users
-  let match = USERS.find(
+  const match = USERS.find(
     (u) => u.email.toLowerCase() === normalizedEmail && u.passwordHash === hash,
   );
 
@@ -87,7 +102,7 @@ export async function signIn(email: string, password: string): Promise<SessionUs
             .map((n: string) => n[0])
             .join("")
             .toUpperCase(),
-          role: "employee",
+          role: toSessionRole(employeeMatch.role),
           branch: employeeMatch.branch,
         };
         setSessionCookie(user);
@@ -110,7 +125,7 @@ async function findEmployeeByEmail(email: string, passwordHash: string) {
     const { supabase } = await import("@/lib/supabase");
     const { data } = await supabase
       .from("employees")
-      .select("id, name, email, branch, password_hash")
+      .select("id, name, email, branch, role, password_hash")
       .eq("email", email)
       .single();
 

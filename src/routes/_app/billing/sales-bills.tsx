@@ -12,6 +12,7 @@ import {
   type EntityField,
   type EntityValues,
 } from "@/components/inventory/EntityFormDialog";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import {
   useBillingBranches,
@@ -47,9 +48,10 @@ export const Route = createFileRoute("/_app/billing/sales-bills")({
 
 function Page() {
   const router = useRouter();
+  const { scoped, homeBranch } = useBranchScope();
   const [search, setSearch] = useState("");
   const [date, setDate] = useState("");
-  const [branch, setBranch] = useState("all");
+  const [branch, setBranch] = useState(homeBranch);
   const { data: allBills = [] } = useBillingSalesBills(search, branch);
   const { data: branches = [] } = useBillingBranches();
   const bills = useMemo(
@@ -88,6 +90,7 @@ function Page() {
         reason: String(v.reason),
         status: "Processing",
         amount_num: amountNum,
+        branch,
       },
       {
         onSuccess: () => toast.success(`Refund ${nextRefund} created for ${bill.invoice}.`),
@@ -167,9 +170,7 @@ function Page() {
         addLabel="Add New"
         onAdd={() => router.navigate({ to: "/billing/create-invoice" })}
         onExport={handleExport}
-        branches={branches}
-        branch={branch}
-        onBranchChange={setBranch}
+        {...(scoped ? { showBranch: false } : { branches, branch, onBranchChange: setBranch })}
       />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={pageItems} rowKey={(r) => r.invoice} />

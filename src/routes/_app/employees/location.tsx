@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MapPin } from "lucide-react";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useEmployeeLocations } from "@/hooks/use-employees";
 
 export const Route = createFileRoute("/_app/employees/location")({
@@ -29,7 +30,8 @@ const ITEMS_PER_PAGE = 10;
 function LocationTrackingPage() {
   const [currentPage, setCurrentPage] = useState(1);
 
-  const { data = [], isLoading } = useEmployeeLocations();
+  const { homeBranch } = useBranchScope();
+  const { data = [], isLoading } = useEmployeeLocations(homeBranch);
 
   const totalPages = Math.ceil(data.length / ITEMS_PER_PAGE);
   const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;

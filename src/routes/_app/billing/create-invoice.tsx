@@ -21,6 +21,7 @@ import {
   useNextInvoiceNumber,
   useNextReceiptNumber,
 } from "@/hooks/use-billing";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useCustomerSearch, useUpsertCustomer } from "@/hooks/use-customers";
 import type { Customer } from "@/types/customer";
 
@@ -101,6 +102,7 @@ function Page() {
     return () => clearTimeout(t);
   }, [customer]);
 
+  const { homeBranch } = useBranchScope();
   const { data: suggestions = [] } = useCustomerSearch(debouncedName);
   const { data: nextInvoice } = useNextInvoiceNumber();
   const { data: nextReceipt } = useNextReceiptNumber();
@@ -177,6 +179,7 @@ function Page() {
         status: "Paid",
         bill_date: isoDate,
         amount_num: total,
+        branch: homeBranch,
       });
 
       await createPayment.mutateAsync({
@@ -189,6 +192,7 @@ function Page() {
         status: "Received",
         pay_date: isoDate,
         amount_num: total,
+        branch: homeBranch,
       });
 
       // Only invoices where the customer supplied a GST number appear on
@@ -202,6 +206,7 @@ function Page() {
           cgst: inr(gstAmount / 2),
           sgst: inr(gstAmount / 2),
           total: amount,
+          branch: homeBranch,
         });
       }
 

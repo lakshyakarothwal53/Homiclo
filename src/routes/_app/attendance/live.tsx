@@ -15,6 +15,7 @@ import {
 import { MapPin, Thermometer, Camera, CheckCircle, RefreshCw, Map } from "lucide-react";
 import { toast } from "sonner";
 import { useLiveTracking } from "@/hooks/use-attendance";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 
 export const Route = createFileRoute("/_app/attendance/live")({
   head: () => ({
@@ -62,7 +63,8 @@ function EmployeeAvatar({ name, size = "sm" }: { name: string; size?: "sm" | "md
 
 function Page() {
   const [search, setSearch] = useState("");
-  const { data: tracking = [], isLoading, refetch } = useLiveTracking(search);
+  const { homeBranch } = useBranchScope();
+  const { data: tracking = [], isLoading, refetch } = useLiveTracking(search, homeBranch);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   useEffect(() => {

@@ -123,7 +123,9 @@ const BASE_TXN_ROW = (input: PosTransactionInput) => ({
 export function useCreatePosTransaction() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: PosTransactionInput): Promise<PosTransaction> => {
+    mutationFn: async (
+      input: PosTransactionInput & { branch?: string },
+    ): Promise<PosTransaction> => {
       // Try the full shape (money breakdown columns) first; if
       // supabase/pos/06_transaction_items.sql hasn't been run yet, those
       // columns won't exist — fall back to the base row so checkout still
@@ -147,6 +149,19 @@ export function useCreatePosTransaction() {
           .from("pos_transactions")
           .insert(BASE_TXN_ROW(input));
         if (fallbackError) throw fallbackError;
+      }
+
+      // Branch-scoped cashiers/admins are pinned to one branch: mirror the sale
+      // into the per-branch snapshot so their Transactions / Sales Bills /
+      // Payments views (which read pos_transactions_branches) include it while
+      // other branches never see it. Best-effort like the line items below.
+      if (input.branch && input.branch !== "all") {
+        const { error: branchError } = await supabase
+          .from("pos_transactions_branches")
+          .insert({ ...BASE_TXN_ROW(input), branch: input.branch });
+        if (branchError) {
+          console.error("Failed to mirror sale into branch snapshot:", branchError);
+        }
       }
 
       if (input.lines && input.lines.length > 0) {

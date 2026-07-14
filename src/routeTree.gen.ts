@@ -32,6 +32,7 @@ import { Route as AppSettingsPreferencesRouteImport } from './routes/_app/settin
 import { Route as AppSettingsPaymentGatewayRouteImport } from './routes/_app/settings/payment-gateway'
 import { Route as AppSettingsNotificationsRouteImport } from './routes/_app/settings/notifications'
 import { Route as AppSettingsCompanyRouteImport } from './routes/_app/settings/company'
+import { Route as AppSettingsBranchesRouteImport } from './routes/_app/settings/branches'
 import { Route as AppSettingsAttendanceRouteImport } from './routes/_app/settings/attendance'
 import { Route as AppReportsSalesRouteImport } from './routes/_app/reports/sales'
 import { Route as AppReportsInventoryRouteImport } from './routes/_app/reports/inventory'
@@ -199,6 +200,11 @@ const AppSettingsNotificationsRoute =
 const AppSettingsCompanyRoute = AppSettingsCompanyRouteImport.update({
   id: '/settings/company',
   path: '/settings/company',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsBranchesRoute = AppSettingsBranchesRouteImport.update({
+  id: '/settings/branches',
+  path: '/settings/branches',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsAttendanceRoute = AppSettingsAttendanceRouteImport.update({
@@ -532,6 +538,7 @@ export interface FileRoutesByFullPath {
   '/reports/inventory': typeof AppReportsInventoryRoute
   '/reports/sales': typeof AppReportsSalesRoute
   '/settings/attendance': typeof AppSettingsAttendanceRoute
+  '/settings/branches': typeof AppSettingsBranchesRoute
   '/settings/company': typeof AppSettingsCompanyRoute
   '/settings/notifications': typeof AppSettingsNotificationsRoute
   '/settings/payment-gateway': typeof AppSettingsPaymentGatewayRoute
@@ -601,6 +608,7 @@ export interface FileRoutesByTo {
   '/reports/inventory': typeof AppReportsInventoryRoute
   '/reports/sales': typeof AppReportsSalesRoute
   '/settings/attendance': typeof AppSettingsAttendanceRoute
+  '/settings/branches': typeof AppSettingsBranchesRoute
   '/settings/company': typeof AppSettingsCompanyRoute
   '/settings/notifications': typeof AppSettingsNotificationsRoute
   '/settings/payment-gateway': typeof AppSettingsPaymentGatewayRoute
@@ -679,6 +687,7 @@ export interface FileRoutesById {
   '/_app/reports/inventory': typeof AppReportsInventoryRoute
   '/_app/reports/sales': typeof AppReportsSalesRoute
   '/_app/settings/attendance': typeof AppSettingsAttendanceRoute
+  '/_app/settings/branches': typeof AppSettingsBranchesRoute
   '/_app/settings/company': typeof AppSettingsCompanyRoute
   '/_app/settings/notifications': typeof AppSettingsNotificationsRoute
   '/_app/settings/payment-gateway': typeof AppSettingsPaymentGatewayRoute
@@ -757,6 +766,7 @@ export interface FileRouteTypes {
     | '/reports/inventory'
     | '/reports/sales'
     | '/settings/attendance'
+    | '/settings/branches'
     | '/settings/company'
     | '/settings/notifications'
     | '/settings/payment-gateway'
@@ -826,6 +836,7 @@ export interface FileRouteTypes {
     | '/reports/inventory'
     | '/reports/sales'
     | '/settings/attendance'
+    | '/settings/branches'
     | '/settings/company'
     | '/settings/notifications'
     | '/settings/payment-gateway'
@@ -903,6 +914,7 @@ export interface FileRouteTypes {
     | '/_app/reports/inventory'
     | '/_app/reports/sales'
     | '/_app/settings/attendance'
+    | '/_app/settings/branches'
     | '/_app/settings/company'
     | '/_app/settings/notifications'
     | '/_app/settings/payment-gateway'
@@ -1084,6 +1096,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/company'
       fullPath: '/settings/company'
       preLoaderRoute: typeof AppSettingsCompanyRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings/branches': {
+      id: '/_app/settings/branches'
+      path: '/settings/branches'
+      fullPath: '/settings/branches'
+      preLoaderRoute: typeof AppSettingsBranchesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/settings/attendance': {
@@ -1640,6 +1659,7 @@ interface AppRouteChildren {
   AppReportsInventoryRoute: typeof AppReportsInventoryRoute
   AppReportsSalesRoute: typeof AppReportsSalesRoute
   AppSettingsAttendanceRoute: typeof AppSettingsAttendanceRoute
+  AppSettingsBranchesRoute: typeof AppSettingsBranchesRoute
   AppSettingsCompanyRoute: typeof AppSettingsCompanyRoute
   AppSettingsNotificationsRoute: typeof AppSettingsNotificationsRoute
   AppSettingsPaymentGatewayRoute: typeof AppSettingsPaymentGatewayRoute
@@ -1665,6 +1685,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppReportsInventoryRoute: AppReportsInventoryRoute,
   AppReportsSalesRoute: AppReportsSalesRoute,
   AppSettingsAttendanceRoute: AppSettingsAttendanceRoute,
+  AppSettingsBranchesRoute: AppSettingsBranchesRoute,
   AppSettingsCompanyRoute: AppSettingsCompanyRoute,
   AppSettingsNotificationsRoute: AppSettingsNotificationsRoute,
   AppSettingsPaymentGatewayRoute: AppSettingsPaymentGatewayRoute,

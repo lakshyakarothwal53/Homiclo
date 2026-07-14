@@ -26,10 +26,20 @@ export function useReports(category: ReportCategory, branch?: string) {
 export function useCreateReport(category: ReportCategory) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: Omit<ReportRow, "id">): Promise<ReportRow> => {
-      const row = { id: crypto.randomUUID(), category, ...input };
+    mutationFn: async (input: Omit<ReportRow, "id"> & { branch?: string }): Promise<ReportRow> => {
+      const { branch, ...rest } = input;
+      const row = { id: crypto.randomUUID(), category, ...rest };
       const { error } = await supabase.from("reports").insert(row);
       if (error) throw error;
+      // Branch-scoped sessions are pinned to one branch: mirror the report into
+      // the per-branch table their list view reads (needs the FK repoint in
+      // supabase/16_branch_management.sql).
+      if (branch && branch !== "All Branches") {
+        const { error: branchError } = await supabase
+          .from("reports_branches")
+          .insert({ ...row, branch });
+        if (branchError) throw branchError;
+      }
       return row;
     },
     onSuccess: () => {
@@ -38,13 +48,14 @@ export function useCreateReport(category: ReportCategory) {
   });
 }
 
-// Reports has its own branch vocabulary (city outlets), distinct from the shared
-// `branches` table used by inventory/billing/discounts — see supabase/reports/04_branches.sql.
+// Reports used to have its own branch vocabulary (city outlets in
+// report_branches); supabase/16_branch_management.sql repoints reports_branches
+// at the shared `branches` table, so the dropdown reads the canonical list.
 export function useReportBranches() {
   return useQuery({
     queryKey: ["reports", "branches"],
     queryFn: async (): Promise<string[]> => {
-      const { data, error } = await supabase.from("report_branches").select("name").order("name");
+      const { data, error } = await supabase.from("branches").select("name").order("name");
       if (error) throw error;
       return (data ?? []).map((b) => b.name as string);
     },

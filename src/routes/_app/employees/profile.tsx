@@ -22,24 +22,26 @@ import {
 } from "@/components/inventory/EntityFormDialog";
 import { ArrowLeft, Download, Edit2, Trash2 } from "lucide-react";
 import { useEmployeeProfile, useDeleteEmployee, useUpdateEmployee } from "@/hooks/use-employees";
+import { useBranches } from "@/hooks/use-inventory";
 import { fetchEmployeeAttendanceSummary } from "@/lib/report-data";
 import { buildTablePdf, downloadPdf } from "@/lib/pdf-utils";
 import type { EmployeeRole, EmployeeStatus } from "@/types/employees";
 import { toast } from "sonner";
 
-const BRANCHES = ["Bandra", "Andheri", "Powai", "Worli", "Fort", "Dadar"];
-const ROLES = ["Cashier", "Floor Manager", "Inventory", "Supervisor", "Admin"];
+const ROLES = ["Cashier", "Floor Manager", "Inventory", "Supervisor", "Admin", "HR", "Employee"];
 const STATUSES = ["Active", "Inactive", "Suspended"];
 
-const EDIT_FIELDS: EntityField[] = [
-  { key: "name", label: "Name", required: true },
-  { key: "email", label: "Email", required: true },
-  { key: "phone", label: "Phone", required: true },
-  { key: "role", label: "Role", type: "select", options: ROLES, required: true },
-  { key: "branch", label: "Branch", type: "select", options: BRANCHES, required: true },
-  { key: "status", label: "Status", type: "select", options: STATUSES, required: true },
-  { key: "salary", label: "Salary", required: true },
-];
+function editFields(branches: string[]): EntityField[] {
+  return [
+    { key: "name", label: "Name", required: true },
+    { key: "email", label: "Email", required: true },
+    { key: "phone", label: "Phone", required: true },
+    { key: "role", label: "Role", type: "select", options: ROLES, required: true },
+    { key: "branch", label: "Branch", type: "select", options: branches, required: true },
+    { key: "status", label: "Status", type: "select", options: STATUSES, required: true },
+    { key: "salary", label: "Salary", required: true },
+  ];
+}
 
 export const Route = createFileRoute("/_app/employees/profile")({
   head: () => ({
@@ -73,6 +75,7 @@ function EmployeeProfilePage() {
   const { data: profile, isLoading } = useEmployeeProfile(id);
   const { mutate: deleteEmployee, isPending: isDeleting } = useDeleteEmployee();
   const { mutate: updateEmployee } = useUpdateEmployee();
+  const { data: branches = [] } = useBranches();
   const [editOpen, setEditOpen] = useState(false);
 
   if (isLoading) {
@@ -212,7 +215,7 @@ function EmployeeProfilePage() {
         mode="edit"
         title="Edit Employee"
         description="Update this employee's details."
-        fields={EDIT_FIELDS}
+        fields={editFields(branches)}
         initial={profile}
         open={editOpen}
         onOpenChange={setEditOpen}

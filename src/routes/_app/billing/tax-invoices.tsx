@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import { useBillingBranches, useBillingTaxInvoices } from "@/hooks/use-billing";
 import { fetchPosTransactionItems } from "@/hooks/use-pos";
@@ -101,9 +102,10 @@ const columns: Column<BillingTaxInvoice>[] = [
 ];
 
 function Page() {
+  const { scoped, homeBranch } = useBranchScope();
   const [search, setSearch] = useState("");
   const [date, setDate] = useState("");
-  const [branch, setBranch] = useState("all");
+  const [branch, setBranch] = useState(homeBranch);
   const { data: allInvoices = [] } = useBillingTaxInvoices(search, branch);
   const { data: branches = [] } = useBillingBranches();
   const invoices = useMemo(
@@ -139,9 +141,7 @@ function Page() {
         date={date}
         onDateChange={setDate}
         onExport={handleExport}
-        branches={branches}
-        branch={branch}
-        onBranchChange={setBranch}
+        {...(scoped ? { showBranch: false } : { branches, branch, onBranchChange: setBranch })}
       />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={pageItems} rowKey={(r) => r.invoice} />

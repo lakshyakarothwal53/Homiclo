@@ -19,6 +19,7 @@ import { calculateProductStatus } from "@/lib/inventory-utils";
 import { exportProductsToCSV } from "@/lib/export-utils";
 import { printBarcodes } from "@/lib/barcode-utils";
 import type { Product } from "@/types/inventory";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import {
   useBranches,
   useCategories,
@@ -66,8 +67,9 @@ function toProduct(v: ProductFormValues): Product {
 const ITEMS_PER_PAGE = 10;
 
 function Page() {
+  const { scoped, homeBranch } = useBranchScope();
   const [search, setSearch] = useState("");
-  const [branch, setBranch] = useState("all");
+  const [branch, setBranch] = useState(homeBranch);
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -186,9 +188,7 @@ function Page() {
         onPrimary={() => setAddOpen(true)}
         onExport={handleExport}
         onImport={() => setImportOpen(true)}
-        branches={branches}
-        branch={branch}
-        onBranchChange={setBranch}
+        {...(scoped ? {} : { branches, branch, onBranchChange: setBranch })}
         minPrice={minPrice}
         maxPrice={maxPrice}
         onMinPriceChange={setMinPrice}

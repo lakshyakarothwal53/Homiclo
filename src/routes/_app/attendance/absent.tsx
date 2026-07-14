@@ -31,6 +31,7 @@ import {
 import { CalendarClock, Download, UserX, RefreshCw, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAbsentRecords, useCreateAbsentRecord } from "@/hooks/use-attendance";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useEmployees } from "@/hooks/use-employees";
 import { usePagination } from "@/hooks/use-pagination";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
@@ -92,8 +93,9 @@ function Page() {
   const [month, setMonth] = useState("all");
   const [openDialog, setOpenDialog] = useState(false);
   const [formData, setFormData] = useState({ employee: "", date: "", type: "", reason: "" });
-  const { data: allAbsentRecords = [], isLoading, refetch } = useAbsentRecords(search);
-  const { data: employees = [] } = useEmployees();
+  const { homeBranch } = useBranchScope();
+  const { data: allAbsentRecords = [], isLoading, refetch } = useAbsentRecords(search, homeBranch);
+  const { data: employees = [] } = useEmployees(undefined, homeBranch);
   const createAbsent = useCreateAbsentRecord();
 
   const monthOptions = useMemo(() => {

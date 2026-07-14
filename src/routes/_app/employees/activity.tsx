@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useEmployeeActivity } from "@/hooks/use-employees";
 
 export const Route = createFileRoute("/_app/employees/activity")({
@@ -30,7 +31,8 @@ function ActivityTrackingPage() {
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
-  const { data = [], isLoading } = useEmployeeActivity(search);
+  const { homeBranch } = useBranchScope();
+  const { data = [], isLoading } = useEmployeeActivity(search, homeBranch);
 
   const totalPages = Math.ceil(data.length / ITEMS_PER_PAGE);
   const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;

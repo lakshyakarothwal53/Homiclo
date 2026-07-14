@@ -13,6 +13,7 @@ import { formatINR } from "@/components/pos/products";
 import { useCart } from "@/components/pos/CartProvider";
 import { PaymentDialog } from "@/components/pos/PaymentDialog";
 import { useBarcodeScanner } from "@/hooks/use-barcode-scanner";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import {
   useCreatePosTransaction,
@@ -61,9 +62,10 @@ function beep() {
 
 function Page() {
   const { user } = useAuth();
+  const { scoped, homeBranch } = useBranchScope();
   const { settings } = usePosSettings();
   const [search, setSearch] = useState("");
-  const [branch, setBranch] = useState("all");
+  const [branch, setBranch] = useState(homeBranch);
   const [payOpen, setPayOpen] = useState(false);
   const [couponInput, setCouponInput] = useState("");
   const [applyingCoupon, setApplyingCoupon] = useState(false);
@@ -186,7 +188,9 @@ function Page() {
         return;
       }
       if (totals.subtotal < found.minOrder) {
-        toast.error(`Coupon ${found.code} requires a minimum order of ${formatINR(found.minOrder)}.`);
+        toast.error(
+          `Coupon ${found.code} requires a minimum order of ${formatINR(found.minOrder)}.`,
+        );
         return;
       }
       const eligibleLines =
@@ -271,6 +275,7 @@ function Page() {
         invoiceDate: customer.invoiceDate,
         couponCode: coupon?.code,
         lines: receiptLines,
+        branch,
       },
       {
         onSuccess: () => {
@@ -321,9 +326,7 @@ function Page() {
             search={search}
             onSearchChange={setSearch}
             searchPlaceholder="Scan barcode or search by name / SKU..."
-            branches={branches}
-            branch={branch}
-            onBranchChange={setBranch}
+            {...(scoped ? { showBranch: false } : { branches, branch, onBranchChange: setBranch })}
           />
           <Card className="overflow-hidden border-border">
             <DataTable columns={columns} rows={pageItems} rowKey={(r) => r.sku} />

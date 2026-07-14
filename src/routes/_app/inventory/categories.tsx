@@ -18,6 +18,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import {
   useBranches,
@@ -47,8 +48,9 @@ const COLUMNS: Column[] = [
 ];
 
 function Page() {
+  const { scoped, homeBranch } = useBranchScope();
   const [search, setSearch] = useState("");
-  const [branch, setBranch] = useState("all");
+  const [branch, setBranch] = useState(homeBranch);
   const [addOpen, setAddOpen] = useState(false);
   const { data = [], isLoading } = useCategories(search, branch);
   const { data: branches = [] } = useBranches();
@@ -59,10 +61,13 @@ function Page() {
   const deleteCategory = useDeleteCategory();
 
   function handleCreate(values: CategoryInput) {
-    createCategory.mutate(values, {
-      onSuccess: () => toast.success(`${values.name} created.`),
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Could not create category."),
-    });
+    createCategory.mutate(
+      { ...values, branch },
+      {
+        onSuccess: () => toast.success(`${values.name} created.`),
+        onError: (e) => toast.error(e instanceof Error ? e.message : "Could not create category."),
+      },
+    );
   }
 
   function handleUpdate(originalName: string, values: CategoryInput) {
@@ -76,10 +81,13 @@ function Page() {
   }
 
   function handleDelete(name: string) {
-    deleteCategory.mutate(name, {
-      onSuccess: () => toast.success(`${name} deleted.`),
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Could not delete category."),
-    });
+    deleteCategory.mutate(
+      { name, branch },
+      {
+        onSuccess: () => toast.success(`${name} deleted.`),
+        onError: (e) => toast.error(e instanceof Error ? e.message : "Could not delete category."),
+      },
+    );
   }
 
   return (
@@ -95,9 +103,7 @@ function Page() {
         searchPlaceholder="Search categories…"
         primaryLabel="Add New"
         onPrimary={() => setAddOpen(true)}
-        branches={branches}
-        branch={branch}
-        onBranchChange={setBranch}
+        {...(scoped ? {} : { branches, branch, onBranchChange: setBranch })}
       />
 
       <CategoryDialog mode="add" open={addOpen} onOpenChange={setAddOpen} onSave={handleCreate} />

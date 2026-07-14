@@ -138,6 +138,11 @@ export const NAV: NavGroup[] = [
     icon: Settings,
     children: [
       { label: "Company", to: "/settings/company" },
+      {
+        label: "Branches",
+        to: "/settings/branches",
+        hiddenFor: ["branch_admin", "store_manager", "inventory", "cashier", "employee", "hr"],
+      },
       { label: "Roles & Permissions", to: "/settings/roles" },
       { label: "Payment Gateway", to: "/settings/payment-gateway", hiddenFor: ["super_admin"] },
       { label: "Tally", to: "/settings/tally" },

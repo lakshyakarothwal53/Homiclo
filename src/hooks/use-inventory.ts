@@ -233,14 +233,22 @@ export function useInventoryReports(search?: string, branch?: string) {
 export function useCreateInventoryReport() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: InventoryReport): Promise<InventoryReport> => {
-      const { error } = await supabase.from("inventory_reports").insert({
+    mutationFn: async (input: InventoryReport & { branch?: string }): Promise<InventoryReport> => {
+      const row = {
         report: input.report,
         period: input.period,
         generated: input.generated,
         format: input.format,
-      });
+      };
+      const { error } = await supabase.from("inventory_reports").insert(row);
       if (error) throw error;
+      const branch = input.branch && input.branch !== "all" ? input.branch : null;
+      if (branch) {
+        const { error: branchError } = await supabase
+          .from("inventory_reports_branches")
+          .insert({ ...row, branch });
+        if (branchError) throw branchError;
+      }
       return input;
     },
     onSuccess: () => {
@@ -253,10 +261,17 @@ export type CategoryInput = {
   name: string;
 };
 
+// Branch-scoped sessions pin every page to one branch. Their writes go to BOTH
+// the global table (the super admin "All Branches" view) and the `_branches`
+// junction row (their own branch view) — pass the pinned branch to opt in.
+function realBranch(branch?: string): string | null {
+  return branch && branch !== "all" ? branch : null;
+}
+
 export function useCreateCategory() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: CategoryInput): Promise<CategoryInput> => {
+    mutationFn: async (input: CategoryInput & { branch?: string }): Promise<CategoryInput> => {
       // product_count/stock_value are no longer read (useCategories computes
       // them live from products) but the columns are still not-null, so seed
       // zero values for a freshly created, still-empty category.
@@ -267,6 +282,17 @@ export function useCreateCategory() {
         last_updated: "Just now",
       });
       if (error) throw error;
+      const branch = realBranch(input.branch);
+      if (branch) {
+        const { error: branchError } = await supabase.from("category_branches").insert({
+          category: input.name,
+          branch,
+          product_count: 0,
+          stock_value: "₹0",
+          last_updated: "Just now",
+        });
+        if (branchError) throw branchError;
+      }
       return input;
     },
     onSuccess: () => {
@@ -295,10 +321,23 @@ export function useUpdateCategory() {
 export function useDeleteCategory() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (name: string): Promise<string> => {
-      const { error } = await supabase.from("categories").delete().eq("name", name);
+    // From a pinned branch view, delete removes the category from that branch
+    // only (its junction row); the global entity delete stays the "All
+    // Branches" behavior and cascades every branch row away.
+    mutationFn: async (input: { name: string; branch?: string }): Promise<string> => {
+      const branch = realBranch(input.branch);
+      if (branch) {
+        const { error } = await supabase
+          .from("category_branches")
+          .delete()
+          .eq("category", input.name)
+          .eq("branch", branch);
+        if (error) throw error;
+        return input.name;
+      }
+      const { error } = await supabase.from("categories").delete().eq("name", input.name);
       if (error) throw error;
-      return name;
+      return input.name;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
@@ -382,9 +421,16 @@ function inwardRow(input: StockInwardInput) {
 export function useCreateStockInward() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: StockInwardInput) => {
+    mutationFn: async (input: StockInwardInput & { branch?: string }) => {
       const { error } = await supabase.from("stock_inward").insert(inwardRow(input));
       if (error) throw error;
+      const branch = realBranch(input.branch);
+      if (branch) {
+        const { error: branchError } = await supabase
+          .from("stock_inward_branches")
+          .insert({ ...inwardRow(input), branch });
+        if (branchError) throw branchError;
+      }
       return input;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory"] }),
@@ -394,12 +440,21 @@ export function useCreateStockInward() {
 export function useUpdateStockInward() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: StockInwardInput & { originalGrn: string }) => {
+    mutationFn: async (input: StockInwardInput & { originalGrn: string; branch?: string }) => {
       const { error } = await supabase
         .from("stock_inward")
         .update(inwardRow(input))
         .eq("grn", input.originalGrn);
       if (error) throw error;
+      const branch = realBranch(input.branch);
+      if (branch) {
+        const { error: branchError } = await supabase
+          .from("stock_inward_branches")
+          .update({ ...inwardRow(input), branch })
+          .eq("grn", input.originalGrn)
+          .eq("branch", branch);
+        if (branchError) throw branchError;
+      }
       return input;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory"] }),
@@ -409,21 +464,49 @@ export function useUpdateStockInward() {
 export function useDeleteStockInward() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (grn: string) => {
-      const { error } = await supabase.from("stock_inward").delete().eq("grn", grn);
+    mutationFn: async (input: { grn: string; branch?: string }) => {
+      const { error } = await supabase.from("stock_inward").delete().eq("grn", input.grn);
       if (error) throw error;
-      return grn;
+      const branch = realBranch(input.branch);
+      if (branch) {
+        const { error: branchError } = await supabase
+          .from("stock_inward_branches")
+          .delete()
+          .eq("grn", input.grn)
+          .eq("branch", branch);
+        if (branchError) throw branchError;
+      }
+      return input.grn;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory"] }),
   });
 }
 
+function outwardRow(input: StockOutwardInput) {
+  return {
+    ref: input.ref,
+    date: input.date,
+    product: input.product,
+    type: input.type,
+    qty: input.qty,
+    reference: input.reference,
+    by: input.by,
+  };
+}
+
 export function useCreateStockOutward() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: StockOutwardInput) => {
-      const { error } = await supabase.from("stock_outward").insert(input);
+    mutationFn: async (input: StockOutwardInput & { branch?: string }) => {
+      const { error } = await supabase.from("stock_outward").insert(outwardRow(input));
       if (error) throw error;
+      const branch = realBranch(input.branch);
+      if (branch) {
+        const { error: branchError } = await supabase
+          .from("stock_outward_branches")
+          .insert({ ...outwardRow(input), branch });
+        if (branchError) throw branchError;
+      }
       return input;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory"] }),
@@ -433,10 +516,21 @@ export function useCreateStockOutward() {
 export function useUpdateStockOutward() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: StockOutwardInput & { originalRef: string }) => {
-      const { originalRef, ...row } = input;
-      const { error } = await supabase.from("stock_outward").update(row).eq("ref", originalRef);
+    mutationFn: async (input: StockOutwardInput & { originalRef: string; branch?: string }) => {
+      const { error } = await supabase
+        .from("stock_outward")
+        .update(outwardRow(input))
+        .eq("ref", input.originalRef);
       if (error) throw error;
+      const branch = realBranch(input.branch);
+      if (branch) {
+        const { error: branchError } = await supabase
+          .from("stock_outward_branches")
+          .update({ ...outwardRow(input), branch })
+          .eq("ref", input.originalRef)
+          .eq("branch", branch);
+        if (branchError) throw branchError;
+      }
       return input;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory"] }),
@@ -446,10 +540,19 @@ export function useUpdateStockOutward() {
 export function useDeleteStockOutward() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (ref: string) => {
-      const { error } = await supabase.from("stock_outward").delete().eq("ref", ref);
+    mutationFn: async (input: { ref: string; branch?: string }) => {
+      const { error } = await supabase.from("stock_outward").delete().eq("ref", input.ref);
       if (error) throw error;
-      return ref;
+      const branch = realBranch(input.branch);
+      if (branch) {
+        const { error: branchError } = await supabase
+          .from("stock_outward_branches")
+          .delete()
+          .eq("ref", input.ref)
+          .eq("branch", branch);
+        if (branchError) throw branchError;
+      }
+      return input.ref;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory"] }),
   });
@@ -462,7 +565,9 @@ export function useDeleteStockOutward() {
 export function useSubmitStockAdjustment() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: StockAdjustmentInput): Promise<StockAdjustmentInput> => {
+    mutationFn: async (
+      input: StockAdjustmentInput & { branch?: string },
+    ): Promise<StockAdjustmentInput> => {
       const { error: adjError } = await supabase.from("stock_adjustments").insert({
         sku: input.sku,
         adjusted_stock: input.adjustedStock,
@@ -478,15 +583,24 @@ export function useSubmitStockAdjustment() {
         .eq("sku", input.sku);
       if (prodError) throw prodError;
 
-      const { error: historyError } = await supabase.from("stock_history").insert({
+      const historyRow = {
         datetime: input.date,
         product: input.sku,
         change: input.adjustedStock,
         type: "Adjustment",
         balance: input.adjustedStock,
         by: "Admin",
-      });
+      };
+      const { error: historyError } = await supabase.from("stock_history").insert(historyRow);
       if (historyError) throw historyError;
+
+      const branch = realBranch(input.branch);
+      if (branch) {
+        const { error: branchError } = await supabase
+          .from("stock_history_branches")
+          .insert({ ...historyRow, branch });
+        if (branchError) throw branchError;
+      }
 
       return input;
     },

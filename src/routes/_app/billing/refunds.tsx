@@ -8,6 +8,7 @@ import { DataTable, type Column } from "@/components/billing/DataTable";
 import { RefundStatusSelect } from "@/components/billing/RefundStatusSelect";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
 import { NewRefundDialog } from "@/components/billing/NewRefundDialog";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import { useBillingBranches, useBillingRefunds, useUpdateRefundStatus } from "@/hooks/use-billing";
 import { downloadCsv } from "@/lib/pdf-utils";
@@ -25,9 +26,10 @@ export const Route = createFileRoute("/_app/billing/refunds")({
 });
 
 function Page() {
+  const { scoped, homeBranch } = useBranchScope();
   const [search, setSearch] = useState("");
   const [date, setDate] = useState("");
-  const [branch, setBranch] = useState("all");
+  const [branch, setBranch] = useState(homeBranch);
   const [addOpen, setAddOpen] = useState(false);
   const { data: allRefunds = [] } = useBillingRefunds(search, branch);
   const { data: branches = [] } = useBillingBranches();
@@ -112,9 +114,7 @@ function Page() {
         addLabel="Add New"
         onAdd={() => setAddOpen(true)}
         onExport={handleExport}
-        branches={branches}
-        branch={branch}
-        onBranchChange={setBranch}
+        {...(scoped ? { showBranch: false } : { branches, branch, onBranchChange: setBranch })}
       />
       <NewRefundDialog open={addOpen} onOpenChange={setAddOpen} />
       <Card className="overflow-hidden border-border">

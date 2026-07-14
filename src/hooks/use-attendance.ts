@@ -25,9 +25,10 @@ function like(value: string) {
 // Overview stats are computed live from employees + employee_checkins +
 // late_arrivals + absent_records (the attendance_dashboard seed row is no
 // longer used — it went stale the moment real check-ins started).
-export function useAttendanceDashboard() {
+export function useAttendanceDashboard(branch?: string) {
+  const allBranches = !branch || branch === "all";
   return useQuery({
-    queryKey: ["attendance", "dashboard"],
+    queryKey: ["attendance", "dashboard", branch ?? "all"],
     queryFn: async (): Promise<AttendanceDashboard> => {
       const todayIso = new Date().toISOString().slice(0, 10);
       const todayLabel = new Date().toLocaleDateString("en-IN", {
@@ -36,30 +37,34 @@ export function useAttendanceDashboard() {
         year: "numeric",
       });
 
-      const { data: employees, error: empError } = await supabase
-        .from("employees")
-        .select("id, role");
+      let empQuery = supabase.from("employees").select("id, role, branch");
+      if (!allBranches) empQuery = empQuery.eq("branch", branch);
+      const { data: employees, error: empError } = await empQuery;
       if (empError) throw empError;
       const totalEmployees = employees?.length ?? 0;
 
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 6);
-      const { data: checkins, error: chkError } = await supabase
+      let chkQuery = supabase
         .from("employee_checkins")
         .select("employee_id, check_date, check_type, check_time, status")
         .eq("check_type", "check-in")
         .gte("check_date", weekAgo.toISOString().slice(0, 10));
+      if (!allBranches) chkQuery = chkQuery.eq("branch", branch);
+      const { data: checkins, error: chkError } = await chkQuery;
       if (chkError) throw chkError;
 
       const presentToday = new Set(
         (checkins ?? []).filter((c) => c.check_date === todayIso).map((c) => c.employee_id),
       ).size;
 
-      const { data: lateRows } = await supabase
+      let lateQuery = supabase
         .from("late_arrivals")
         .select(
           "id, date, employee_id, employee_name, check_in_time, lateness_minutes, branch, status",
         );
+      if (!allBranches) lateQuery = lateQuery.eq("branch", branch);
+      const { data: lateRows } = await lateQuery;
       // Late Arrivals today = the seeded rows dated today PLUS real self-service
       // check-ins whose first check-in of the day is past the grace cutoff — the
       // same derivation the Late Arrivals page uses, so this KPI matches it.
@@ -78,10 +83,9 @@ export function useAttendanceDashboard() {
       const seedLateToday = (lateRows ?? []).filter((l) => l.date === todayLabel).length;
       const lateToday = derivedLateToday + seedLateToday;
 
-      const { data: absentRows } = await supabase
-        .from("absent_records")
-        .select("id")
-        .eq("date", todayLabel);
+      let absentQuery = supabase.from("absent_records").select("id").eq("date", todayLabel);
+      if (!allBranches) absentQuery = absentQuery.eq("branch", branch);
+      const { data: absentRows } = await absentQuery;
       const onLeave = absentRows?.length ?? 0;
 
       // Attendance % for today only: how much of the roster is actually
@@ -96,10 +100,14 @@ export function useAttendanceDashboard() {
       // shared by daily_logs/late_arrivals/absent_records/live_tracking/
       // employee_checkins) — the separate `employees` table uses unrelated
       // uuids and names, so joining against it here always produced 0%.
+      let desigQuery = supabase.from("absent_records").select("employee_id, designation");
+      if (!allBranches) desigQuery = desigQuery.eq("branch", branch);
+      let rosterQuery = supabase.from("daily_logs").select("employee_id");
+      if (!allBranches) rosterQuery = rosterQuery.eq("branch", branch);
       const [designationRows, liveDesignationRows, rosterRows] = await Promise.all([
-        supabase.from("absent_records").select("employee_id, designation"),
+        desigQuery,
         supabase.from("live_tracking").select("employee_id, designation"),
-        supabase.from("daily_logs").select("employee_id"),
+        rosterQuery,
       ]);
       const designationMap = new Map<string, string>();
       (designationRows.data ?? []).forEach((r) => designationMap.set(r.employee_id, r.designation));
@@ -189,17 +197,18 @@ export interface AttendanceTrendPoint {
 // no check-in rows still render as a bar (0 present, roster absent) — the
 // window is fixed at 7 real days, not however many distinct dates happen to
 // have data.
-export function useAttendanceTrend() {
+export function useAttendanceTrend(branch?: string) {
+  const allBranches = !branch || branch === "all";
   return useQuery({
-    queryKey: ["attendance", "trend"],
+    queryKey: ["attendance", "trend", branch ?? "all"],
     queryFn: async (): Promise<AttendanceTrendPoint[]> => {
       // Use the real employee headcount as the roster denominator — the same
       // total the Attendance Overview "Absent" KPI divides against — so the
       // chart's Absent count matches the card instead of diverging (the old
       // daily_logs-derived roster was a different, smaller seed dataset).
-      const { data: rosterRows, error: rosterError } = await supabase
-        .from("employees")
-        .select("id");
+      let rosterQuery = supabase.from("employees").select("id");
+      if (!allBranches) rosterQuery = rosterQuery.eq("branch", branch);
+      const { data: rosterRows, error: rosterError } = await rosterQuery;
       if (rosterError) throw rosterError;
       const totalRoster = rosterRows?.length ?? 0;
 
@@ -210,12 +219,14 @@ export function useAttendanceTrend() {
         last7Dates.push(d.toISOString().slice(0, 10));
       }
 
-      const { data: checkins, error } = await supabase
+      let checkinQuery = supabase
         .from("employee_checkins")
         .select("employee_id, check_date, check_time")
         .eq("check_type", "check-in")
         .gte("check_date", last7Dates[0])
         .lte("check_date", last7Dates[last7Dates.length - 1]);
+      if (!allBranches) checkinQuery = checkinQuery.eq("branch", branch);
+      const { data: checkins, error } = await checkinQuery;
       if (error) throw error;
 
       const byDate = new Map<string, { employee_id: string; check_time: string | null }[]>();
@@ -259,23 +270,28 @@ export function useAttendanceTrend() {
 // check-ins for a day roll up into one row: earliest check-in, latest
 // check-out, and Present/Late decided by the grace cutoff. Search is applied
 // client-side over the merged set.
-export function useDailyLogs(search?: string) {
+export function useDailyLogs(search?: string, branch?: string) {
+  const allBranches = !branch || branch === "all";
   return useQuery({
-    queryKey: ["attendance", "daily-logs", search ?? ""],
+    queryKey: ["attendance", "daily-logs", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<DailyLog[]> => {
-      const { data: seedRows, error } = await supabase
+      let seedQuery = supabase
         .from("daily_logs")
         .select(
           "id, date, employeeId:employee_id, employeeName:employee_name, checkInTime:check_in_time, checkOutTime:check_out_time, status, branch, location, notes",
         );
+      if (!allBranches) seedQuery = seedQuery.eq("branch", branch);
+      const { data: seedRows, error } = await seedQuery;
       if (error) {
         console.error("Error fetching daily logs from Supabase:", error);
         throw error;
       }
 
-      const { data: checkins, error: chkError } = await supabase
+      let checkinQuery = supabase
         .from("employee_checkins")
         .select("employee_id, employee_name, branch, check_date, check_type, check_time, status");
+      if (!allBranches) checkinQuery = checkinQuery.eq("branch", branch);
+      const { data: checkins, error: chkError } = await checkinQuery;
       if (chkError) throw chkError;
 
       type Agg = {
@@ -368,9 +384,21 @@ export type AttendancePeriodOpts = { from?: string; to?: string };
  * (leave_type), scoped to that period. Attendance % always counts late as
  * attended: (present + late) / (present + late + absent), leave excluded.
  */
-export function useEmployeeAttendance(search?: string, opts: AttendancePeriodOpts = {}) {
+export function useEmployeeAttendance(
+  search?: string,
+  opts: AttendancePeriodOpts = {},
+  branch?: string,
+) {
+  const allBranches = !branch || branch === "all";
   return useQuery({
-    queryKey: ["attendance", "employee", search ?? "", opts.from ?? "", opts.to ?? ""],
+    queryKey: [
+      "attendance",
+      "employee",
+      search ?? "",
+      opts.from ?? "",
+      opts.to ?? "",
+      branch ?? "all",
+    ],
     queryFn: async (): Promise<EmployeeAttendance[]> => {
       const periodSelected = Boolean(opts.from || opts.to);
       let rosterQuery = supabase
@@ -378,6 +406,7 @@ export function useEmployeeAttendance(search?: string, opts: AttendancePeriodOpt
         .select(
           "employee_id, employee_name, designation, branch, last_check_in, total_present, total_absent, total_late, total_leave",
         );
+      if (!allBranches) rosterQuery = rosterQuery.eq("branch", branch);
       if (search)
         rosterQuery = rosterQuery.or(
           `employee_name.ilike.${like(search)},employee_id.ilike.${like(search)}`,
@@ -470,24 +499,29 @@ export function useEmployeeAttendance(search?: string, opts: AttendancePeriodOpt
 //      of the day is past the grace cutoff — these carry the *actual* check-in
 //      date, so the listing reflects live attendance instead of only stale seed
 //      rows. Search + date filtering happen client-side over the merged set.
-export function useLateArrivals(search?: string) {
+export function useLateArrivals(search?: string, branch?: string) {
+  const allBranches = !branch || branch === "all";
   return useQuery({
-    queryKey: ["attendance", "late-arrivals", search ?? ""],
+    queryKey: ["attendance", "late-arrivals", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<LateArrival[]> => {
-      const { data: seedRows, error } = await supabase
+      let seedQuery = supabase
         .from("late_arrivals")
         .select(
           "id, date, employeeId:employee_id, employeeName:employee_name, checkInTime:check_in_time, latenessMinutes:lateness_minutes, branch, status",
         );
+      if (!allBranches) seedQuery = seedQuery.eq("branch", branch);
+      const { data: seedRows, error } = await seedQuery;
       if (error) {
         console.error("Error fetching late arrivals from Supabase:", error);
         throw error;
       }
 
-      const { data: checkins, error: chkError } = await supabase
+      let checkinQuery = supabase
         .from("employee_checkins")
         .select("employee_id, employee_name, branch, check_date, check_type, check_time, status")
         .eq("check_type", "check-in");
+      if (!allBranches) checkinQuery = checkinQuery.eq("branch", branch);
+      const { data: checkins, error: chkError } = await checkinQuery;
       if (chkError) throw chkError;
 
       // Keep only each employee's earliest check-in per day, then flag the ones
@@ -556,15 +590,17 @@ export function useLateArrivals(search?: string) {
   });
 }
 
-export function useAbsentRecords(search?: string) {
+export function useAbsentRecords(search?: string, branch?: string) {
+  const allBranches = !branch || branch === "all";
   return useQuery({
-    queryKey: ["attendance", "absent-records", search ?? ""],
+    queryKey: ["attendance", "absent-records", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<AbsentRecord[]> => {
       let query = supabase
         .from("absent_records")
         .select(
           "id, date, employeeId:employee_id, employeeName:employee_name, designation, branch, leaveType:leave_type, reason, status",
         );
+      if (!allBranches) query = query.eq("branch", branch);
       if (search)
         query = query.or(`employee_name.ilike.${like(search)},branch.ilike.${like(search)}`);
       const { data, error } = await query;
@@ -650,15 +686,19 @@ export function useApplyLeaveRequest() {
   });
 }
 
-export function useLiveTracking(search?: string) {
+export function useLiveTracking(search?: string, branch?: string) {
+  // live_tracking gains its branch column in supabase/16_branch_management.sql
+  // (backfilled from employee_attendance).
+  const allBranches = !branch || branch === "all";
   return useQuery({
-    queryKey: ["attendance", "live-tracking", search ?? ""],
+    queryKey: ["attendance", "live-tracking", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<LiveTracking[]> => {
       let query = supabase
         .from("live_tracking")
         .select(
           "id, employeeId:employee_id, employeeName:employee_name, designation, checkInTime:check_in_time, currentStatus:current_status, location, temperature, lastLocation:last_location, gpsVerified:gps_verified, photoVerified:photo_verified",
         );
+      if (!allBranches) query = query.eq("branch", branch);
       if (search)
         query = query.or(`employee_name.ilike.${like(search)},location.ilike.${like(search)}`);
       const { data, error } = await query;

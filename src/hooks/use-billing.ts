@@ -497,17 +497,32 @@ export function useBillingReports(search?: string, branch?: string) {
   });
 }
 
+// Branch-scoped sessions pin every billing page to one branch; their writes go
+// to BOTH the global table (super admin "All Branches" view) and the
+// `_branches` junction row (their own branch view).
+function realBranch(branch?: string): string | null {
+  return branch && branch !== "all" ? branch : null;
+}
+
 export function useCreateBillingReport() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: BillingReport): Promise<BillingReport> => {
-      const { error } = await supabase.from("billing_reports").insert({
+    mutationFn: async (input: BillingReport & { branch?: string }): Promise<BillingReport> => {
+      const row = {
         report: input.report,
         period: input.period,
         generated: input.generated,
         format: input.format,
-      });
+      };
+      const { error } = await supabase.from("billing_reports").insert(row);
       if (error) throw error;
+      const branch = realBranch(input.branch);
+      if (branch) {
+        const { error: branchError } = await supabase
+          .from("billing_reports_branches")
+          .insert({ ...row, branch });
+        if (branchError) throw branchError;
+      }
       return input;
     },
     onSuccess: () => {
@@ -530,10 +545,12 @@ export function useBillingBranches() {
 export function useCreateBillingInvoice() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: BillingSalesBill): Promise<BillingSalesBill> => {
+    mutationFn: async (
+      input: BillingSalesBill & { branch?: string },
+    ): Promise<BillingSalesBill> => {
       const amountNum = input.amount_num ?? (parseFloat(input.amount.replace(/[₹,\s]/g, "")) || 0);
       const billDate = input.bill_date ?? new Date().toISOString().slice(0, 10);
-      const { error } = await supabase.from("billing_sales_bills").insert({
+      const row = {
         invoice: input.invoice,
         date: input.date,
         customer: input.customer,
@@ -542,8 +559,16 @@ export function useCreateBillingInvoice() {
         status: input.status,
         bill_date: billDate,
         amount_num: amountNum,
-      });
+      };
+      const { error } = await supabase.from("billing_sales_bills").insert(row);
       if (error) throw error;
+      const branch = realBranch(input.branch);
+      if (branch) {
+        const { error: branchError } = await supabase
+          .from("billing_sales_bills_branches")
+          .insert({ ...row, branch });
+        if (branchError) throw branchError;
+      }
       return input;
     },
     onSuccess: () => {
@@ -588,11 +613,11 @@ export function useCreateBillingPayment() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (
-      input: BillingPayment & { amount_num?: number; pay_date?: string },
+      input: BillingPayment & { amount_num?: number; pay_date?: string; branch?: string },
     ): Promise<BillingPayment> => {
       const amountNum = input.amount_num ?? (parseFloat(input.amount.replace(/[₹,\s]/g, "")) || 0);
       const payDate = input.pay_date ?? new Date().toISOString().slice(0, 10);
-      const { error } = await supabase.from("billing_payments").insert({
+      const row = {
         receipt: input.receipt,
         date: input.date,
         customer: input.customer,
@@ -602,8 +627,16 @@ export function useCreateBillingPayment() {
         status: input.status,
         pay_date: payDate,
         amount_num: amountNum,
-      });
+      };
+      const { error } = await supabase.from("billing_payments").insert(row);
       if (error) throw error;
+      const branch = realBranch(input.branch);
+      if (branch) {
+        const { error: branchError } = await supabase
+          .from("billing_payments_branches")
+          .insert({ ...row, branch });
+        if (branchError) throw branchError;
+      }
       return input;
     },
     onSuccess: () => {
@@ -615,8 +648,10 @@ export function useCreateBillingPayment() {
 export function useCreateTaxInvoice() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: BillingTaxInvoice): Promise<BillingTaxInvoice> => {
-      const { error } = await supabase.from("billing_tax_invoices").insert({
+    mutationFn: async (
+      input: BillingTaxInvoice & { branch?: string },
+    ): Promise<BillingTaxInvoice> => {
+      const row = {
         invoice: input.invoice,
         date: input.date,
         gstin: input.gstin,
@@ -624,8 +659,16 @@ export function useCreateTaxInvoice() {
         cgst: input.cgst,
         sgst: input.sgst,
         total: input.total,
-      });
+      };
+      const { error } = await supabase.from("billing_tax_invoices").insert(row);
       if (error) throw error;
+      const branch = realBranch(input.branch);
+      if (branch) {
+        const { error: branchError } = await supabase
+          .from("billing_tax_invoices_branches")
+          .insert({ ...row, branch });
+        if (branchError) throw branchError;
+      }
       return input;
     },
     onSuccess: () => {
@@ -683,7 +726,7 @@ export function useCreateRefund() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (
-      input: BillingRefund & { amount_num?: number; items?: RefundLineInput[] },
+      input: BillingRefund & { amount_num?: number; items?: RefundLineInput[]; branch?: string },
     ): Promise<BillingRefund> => {
       const amountNum = input.amount_num ?? (parseFloat(input.amount.replace(/[₹,\s]/g, "")) || 0);
       const explicitItems = input.items && input.items.length > 0 ? input.items : null;
@@ -702,7 +745,7 @@ export function useCreateRefund() {
         firstRefund = !priorRefunds || priorRefunds.length === 0;
       }
 
-      const { error } = await supabase.from("billing_refunds").insert({
+      const refundRow = {
         refund: input.refund,
         invoice: input.invoice,
         customer: input.customer,
@@ -710,8 +753,17 @@ export function useCreateRefund() {
         reason: input.reason,
         status: input.status,
         amount_num: amountNum,
-      });
+      };
+      const { error } = await supabase.from("billing_refunds").insert(refundRow);
       if (error) throw error;
+
+      const refundBranch = realBranch(input.branch);
+      if (refundBranch) {
+        const { error: branchError } = await supabase
+          .from("billing_refunds_branches")
+          .insert({ ...refundRow, branch: refundBranch });
+        if (branchError) throw branchError;
+      }
 
       // Persist which lines this refund covered so a later refund against the
       // same invoice can see what's already been returned (see
@@ -795,7 +847,10 @@ export function useUpdateRefundStatus() {
       refund: string;
       status: string;
     }): Promise<{ refund: string; status: string }> => {
-      const { error } = await supabase.from("billing_refunds").update({ status }).eq("refund", refund);
+      const { error } = await supabase
+        .from("billing_refunds")
+        .update({ status })
+        .eq("refund", refund);
       if (error) throw error;
       return { refund, status };
     },

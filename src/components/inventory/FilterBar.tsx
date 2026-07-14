@@ -58,6 +58,9 @@ export function FilterBar({
           />
         </div>
 
+        {/* Opt-in controlled branch select. Branch-scoped sessions omit the
+            branch props entirely (their pages are pinned to one branch), so
+            nothing renders — no dead dropdown implying they can switch. */}
         {onBranchChange ? (
           <Select value={branch ?? "all"} onValueChange={onBranchChange}>
             <SelectTrigger className="h-8 w-full md:w-32 text-sm flex-shrink-0">
@@ -72,19 +75,7 @@ export function FilterBar({
               ))}
             </SelectContent>
           </Select>
-        ) : (
-          <Select defaultValue="all">
-            <SelectTrigger className="h-8 w-full md:w-32 text-sm flex-shrink-0">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Branches</SelectItem>
-              <SelectItem value="bandra">Bandra</SelectItem>
-              <SelectItem value="andheri">Andheri</SelectItem>
-              <SelectItem value="powai">Powai</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
+        ) : null}
 
         {onMinPriceChange && onMaxPriceChange ? (
           <div className="flex items-center gap-1 w-full md:w-auto flex-shrink-0">

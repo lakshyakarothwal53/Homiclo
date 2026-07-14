@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useDailyLogs } from "@/hooks/use-attendance";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
 import { buildTablePdf, downloadPdf } from "@/lib/pdf-utils";
@@ -90,7 +91,8 @@ function Page() {
   const [search, setSearch] = useState("");
   const [date, setDate] = useState("");
   const [month, setMonth] = useState("all");
-  const { data: allLogs = [], isLoading, refetch } = useDailyLogs(search);
+  const { homeBranch } = useBranchScope();
+  const { data: allLogs = [], isLoading, refetch } = useDailyLogs(search, homeBranch);
 
   const monthOptions = useMemo(() => {
     const seen = new Map<string, string>();

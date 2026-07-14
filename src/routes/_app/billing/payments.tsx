@@ -14,6 +14,7 @@ import {
   type EntityField,
   type EntityValues,
 } from "@/components/inventory/EntityFormDialog";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import {
   useBillingBranches,
@@ -105,9 +106,10 @@ const columns: Column<BillingPayment>[] = [
 ];
 
 function Page() {
+  const { scoped, homeBranch } = useBranchScope();
   const [search, setSearch] = useState("");
   const [date, setDate] = useState("");
-  const [branch, setBranch] = useState("all");
+  const [branch, setBranch] = useState(homeBranch);
   const [addOpen, setAddOpen] = useState(false);
   const { data: allPayments = [] } = useBillingPayments(search, branch);
   const { data: branches = [] } = useBillingBranches();
@@ -150,6 +152,7 @@ function Page() {
         status: String(v.status),
         pay_date: now.toISOString().slice(0, 10),
         amount_num: amountNum,
+        branch,
       },
       {
         onSuccess: () => toast.success(`Payment ${nextReceipt} recorded.`),
@@ -174,9 +177,7 @@ function Page() {
         addLabel="Add New"
         onAdd={() => setAddOpen(true)}
         onExport={handleExport}
-        branches={branches}
-        branch={branch}
-        onBranchChange={setBranch}
+        {...(scoped ? { showBranch: false } : { branches, branch, onBranchChange: setBranch })}
       />
       <EntityFormDialog
         mode="add"

@@ -11,6 +11,7 @@ import {
 } from "@/components/inventory/EntityFormDialog";
 import { FilterBar } from "@/components/inventory/FilterBar";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import { useCreateRole, useRoles, useSettingsBranches, useUpdateRole } from "@/hooks/use-settings";
 import { downloadCsv } from "@/lib/pdf-utils";
@@ -49,8 +50,9 @@ const ROLE_FIELDS: EntityField[] = [
 const RLS_HINT = " — run supabase/13_completion_pack.sql to enable role writes.";
 
 function Page() {
+  const { scoped, homeBranch } = useBranchScope();
   const [search, setSearch] = useState("");
-  const [branch, setBranch] = useState("all");
+  const [branch, setBranch] = useState(homeBranch);
   const [addOpen, setAddOpen] = useState(false);
   const { data: rows = [] } = useRoles(search, branch);
   const { data: branches = [] } = useSettingsBranches();
@@ -119,9 +121,7 @@ function Page() {
         primaryLabel="Add New"
         onPrimary={() => setAddOpen(true)}
         onExport={handleExport}
-        branches={branches}
-        branch={branch}
-        onBranchChange={setBranch}
+        {...(scoped ? {} : { branches, branch, onBranchChange: setBranch })}
       />
 
       <EntityFormDialog

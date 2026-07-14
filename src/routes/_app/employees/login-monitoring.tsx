@@ -13,6 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useEmployeeLogins } from "@/hooks/use-employees";
 
 export const Route = createFileRoute("/_app/employees/login-monitoring")({
@@ -57,7 +58,8 @@ function LoginMonitoringPage() {
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
-  const { data = [], isLoading } = useEmployeeLogins(search);
+  const { homeBranch } = useBranchScope();
+  const { data = [], isLoading } = useEmployeeLogins(search, homeBranch);
 
   const totalPages = Math.ceil(data.length / ITEMS_PER_PAGE);
   const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;

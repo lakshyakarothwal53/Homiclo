@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useCreateRefund, useNextRefundNumber, useRefundedQtyByInvoice } from "@/hooks/use-billing";
 import { fetchPosTransactionByInvoice, fetchPosTransactionItems } from "@/hooks/use-pos";
 import type { PosLineItem } from "@/types/pos";
@@ -68,6 +69,7 @@ export function NewRefundDialog({
   const [customReason, setCustomReason] = useState("");
   const [status, setStatus] = useState<string>("Processing");
 
+  const { homeBranch } = useBranchScope();
   const { data: nextRefund } = useNextRefundNumber();
   const createRefund = useCreateRefund();
 
@@ -100,7 +102,12 @@ export function NewRefundDialog({
     setItems(
       (lineItems ?? []).map((l) => {
         const remaining = Math.max(0, l.qty - (refundedQty?.[l.sku] ?? 0));
-        return { ...l, selected: remaining > 0, refundQty: remaining || l.qty, remainingQty: remaining };
+        return {
+          ...l,
+          selected: remaining > 0,
+          refundQty: remaining || l.qty,
+          remainingQty: remaining,
+        };
       }),
     );
   }, [lineItems, refundedQty]);
@@ -205,6 +212,7 @@ export function NewRefundDialog({
         amount_num: Math.round(amount),
         reason: finalReason,
         status,
+        branch: homeBranch,
         items: hasLineItems
           ? selectedItems.map((i) => ({
               sku: i.sku,

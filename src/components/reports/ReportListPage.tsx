@@ -26,6 +26,7 @@ import {
   type EntityValues,
 } from "@/components/inventory/EntityFormDialog";
 import { cn } from "@/lib/utils";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useCreateReport, useReportBranches, useReports } from "@/hooks/use-reports";
 import { buildTablePdf, downloadCsv, downloadPdf, openPdf } from "@/lib/pdf-utils";
 import { fetchNamedReport, fetchReportData, matchesDate } from "@/lib/report-data";
@@ -59,8 +60,9 @@ export function ReportListPage({
   description: string;
   category: ReportCategory;
 }) {
+  const { scoped, homeBranch } = useBranchScope();
   const [query, setQuery] = useState("");
-  const [branch, setBranch] = useState<string>("All Branches");
+  const [branch, setBranch] = useState<string>(scoped ? homeBranch : "All Branches");
   const [date, setDate] = useState("");
   const [page, setPage] = useState(1);
   const [addOpen, setAddOpen] = useState(false);
@@ -134,6 +136,7 @@ export function ReportListPage({
         period: String(v.period),
         generated: longDate(new Date()),
         size: "—",
+        branch: branch === "All Branches" ? undefined : branch,
       },
       {
         onSuccess: () => toast.success(`Report "${v.name}" added.`),
@@ -193,19 +196,21 @@ export function ReportListPage({
             className="pl-9"
           />
         </div>
-        <Select value={branch} onValueChange={setBranch}>
-          <SelectTrigger className="sm:w-44">
-            <SelectValue placeholder="All Branches" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="All Branches">All Branches</SelectItem>
-            {branches.map((b) => (
-              <SelectItem key={b} value={b}>
-                {b}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {!scoped && (
+          <Select value={branch} onValueChange={setBranch}>
+            <SelectTrigger className="sm:w-44">
+              <SelectValue placeholder="All Branches" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="All Branches">All Branches</SelectItem>
+              {branches.map((b) => (
+                <SelectItem key={b} value={b}>
+                  {b}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Input
           type="date"
           value={date}

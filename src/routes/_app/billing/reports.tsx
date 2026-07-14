@@ -13,6 +13,7 @@ import {
   type EntityField,
   type EntityValues,
 } from "@/components/inventory/EntityFormDialog";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import { useBillingBranches, useBillingReports, useCreateBillingReport } from "@/hooks/use-billing";
 import { buildTablePdf, downloadCsv, downloadPdf } from "@/lib/pdf-utils";
@@ -45,9 +46,10 @@ const displayDate = (d: Date) =>
   `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })} ${d.getFullYear()}`;
 
 function Page() {
+  const { scoped, homeBranch } = useBranchScope();
   const [search, setSearch] = useState("");
   const [date, setDate] = useState("");
-  const [branch, setBranch] = useState("all");
+  const [branch, setBranch] = useState(homeBranch);
   const [period, setPeriod] = useState<PeriodOption>({ key: "all", label: "All time" });
   const [addOpen, setAddOpen] = useState(false);
   const { data: allReports = [] } = useBillingReports(search, branch);
@@ -105,6 +107,7 @@ function Page() {
         period: String(v.period),
         generated: displayDate(new Date()),
         format: String(v.format),
+        branch,
       },
       {
         onSuccess: () => toast.success(`Report "${v.report}" added.`),
@@ -172,9 +175,7 @@ function Page() {
             addLabel="Add New"
             onAdd={() => setAddOpen(true)}
             onExport={handleExport}
-            branches={branches}
-            branch={branch}
-            onBranchChange={setBranch}
+            {...(scoped ? { showBranch: false } : { branches, branch, onBranchChange: setBranch })}
           />
         </div>
         <PeriodFilter value={period.key} onChange={setPeriod} />

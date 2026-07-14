@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useProducts, useSubmitStockAdjustment } from "@/hooks/use-inventory";
 
 export const Route = createFileRoute("/_app/inventory/stock-adjustment")({
@@ -52,6 +53,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 function Page() {
+  const { homeBranch } = useBranchScope();
   const { data: products = [] } = useProducts();
   const submit = useSubmitStockAdjustment();
 
@@ -64,13 +66,16 @@ function Page() {
   const currentStock = products.find((p) => p.sku === selectedSku)?.stock;
 
   function onSubmit(values: FormValues) {
-    submit.mutate(values, {
-      onSuccess: () => {
-        const product = products.find((p) => p.sku === values.sku);
-        toast.success(`Stock adjusted for ${product?.name ?? values.sku}`);
-        form.reset();
+    submit.mutate(
+      { ...values, branch: homeBranch },
+      {
+        onSuccess: () => {
+          const product = products.find((p) => p.sku === values.sku);
+          toast.success(`Stock adjusted for ${product?.name ?? values.sku}`);
+          form.reset();
+        },
       },
-    });
+    );
   }
 
   return (

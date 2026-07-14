@@ -15,6 +15,7 @@ import { PeriodFilter, type PeriodOption } from "@/components/reports/PeriodFilt
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import { useBranches, useCreateInventoryReport, useInventoryReports } from "@/hooks/use-inventory";
 import { buildTablePdf, downloadCsv, downloadPdf } from "@/lib/pdf-utils";
@@ -55,8 +56,9 @@ const longDate = (d: Date) =>
   `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })} ${d.getFullYear()}`;
 
 function Page() {
+  const { scoped, homeBranch } = useBranchScope();
   const [search, setSearch] = useState("");
-  const [branch, setBranch] = useState("all");
+  const [branch, setBranch] = useState(homeBranch);
   const [period, setPeriod] = useState<PeriodOption>({ key: "all", label: "All time" });
   const [addOpen, setAddOpen] = useState(false);
   const { data = [], isLoading } = useInventoryReports(search, branch);
@@ -111,6 +113,7 @@ function Page() {
         period: String(v.period),
         generated: longDate(new Date()),
         format: v.format === "Excel" ? "Excel" : "PDF",
+        branch,
       },
       {
         onSuccess: () => toast.success(`Report "${v.report}" generated.`),
@@ -140,9 +143,7 @@ function Page() {
             primaryLabel="Generate"
             onPrimary={() => setAddOpen(true)}
             onExport={handleExport}
-            branches={branches}
-            branch={branch}
-            onBranchChange={setBranch}
+            {...(scoped ? {} : { branches, branch, onBranchChange: setBranch })}
           />
         </div>
         <PeriodFilter value={period.key} onChange={setPeriod} />

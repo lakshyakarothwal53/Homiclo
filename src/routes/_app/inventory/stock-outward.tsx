@@ -12,6 +12,7 @@ import {
 } from "@/components/inventory/EntityFormDialog";
 import { FilterBar } from "@/components/inventory/FilterBar";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import {
   useBranches,
@@ -72,8 +73,9 @@ function toEntry(v: EntityValues): StockOutwardEntry {
 }
 
 function Page() {
+  const { scoped, homeBranch } = useBranchScope();
   const [search, setSearch] = useState("");
-  const [branch, setBranch] = useState("all");
+  const [branch, setBranch] = useState(homeBranch);
   const [addOpen, setAddOpen] = useState(false);
   const { data = [], isLoading } = useStockOutward(search, branch);
   const { data: branches = [] } = useBranches();
@@ -85,16 +87,19 @@ function Page() {
 
   function handleCreate(v: EntityValues) {
     const row = toEntry(v);
-    createEntry.mutate(row, {
-      onSuccess: () => toast.success(`${row.ref} created.`),
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Could not create entry."),
-    });
+    createEntry.mutate(
+      { ...row, branch },
+      {
+        onSuccess: () => toast.success(`${row.ref} created.`),
+        onError: (e) => toast.error(e instanceof Error ? e.message : "Could not create entry."),
+      },
+    );
   }
 
   function handleUpdate(originalRef: string, v: EntityValues) {
     const row = toEntry(v);
     updateEntry.mutate(
-      { ...row, originalRef },
+      { ...row, originalRef, branch },
       {
         onSuccess: () => toast.success(`${row.ref} updated.`),
         onError: (e) => toast.error(e instanceof Error ? e.message : "Could not update entry."),
@@ -103,10 +108,13 @@ function Page() {
   }
 
   function handleDelete(ref: string) {
-    deleteEntry.mutate(ref, {
-      onSuccess: () => toast.success(`${ref} deleted.`),
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Could not delete entry."),
-    });
+    deleteEntry.mutate(
+      { ref, branch },
+      {
+        onSuccess: () => toast.success(`${ref} deleted.`),
+        onError: (e) => toast.error(e instanceof Error ? e.message : "Could not delete entry."),
+      },
+    );
   }
 
   return (
@@ -122,9 +130,7 @@ function Page() {
         searchPlaceholder="Search ref or product…"
         primaryLabel="Add New"
         onPrimary={() => setAddOpen(true)}
-        branches={branches}
-        branch={branch}
-        onBranchChange={setBranch}
+        {...(scoped ? {} : { branches, branch, onBranchChange: setBranch })}
       />
 
       <EntityFormDialog

@@ -13,6 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Download, Plus } from "lucide-react";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useEmployees } from "@/hooks/use-employees";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -46,7 +47,8 @@ function EmployeeListPage() {
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
-  const { data = [], isLoading } = useEmployees(search);
+  const { homeBranch } = useBranchScope();
+  const { data = [], isLoading } = useEmployees(search, homeBranch);
 
   const totalPages = Math.ceil(data.length / ITEMS_PER_PAGE);
   const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;

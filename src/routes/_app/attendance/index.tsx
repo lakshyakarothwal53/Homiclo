@@ -32,6 +32,7 @@ import {
   useAbsentRecords,
   useAttendanceTrend,
 } from "@/hooks/use-attendance";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 
 export const Route = createFileRoute("/_app/attendance/")({
   head: () => ({
@@ -78,10 +79,18 @@ function EmployeeAvatar({ name, size = "sm" }: { name: string; size?: "sm" | "md
 }
 
 function Page() {
-  const { data: dashboard, refetch: refetchDashboard, isRefetching } = useAttendanceDashboard();
-  const { data: lateArrivals = [], refetch: refetchLate } = useLateArrivals();
-  const { data: absentRecords = [], refetch: refetchAbsent } = useAbsentRecords();
-  const { data: attendanceTrendData = [] } = useAttendanceTrend();
+  const { homeBranch } = useBranchScope();
+  const {
+    data: dashboard,
+    refetch: refetchDashboard,
+    isRefetching,
+  } = useAttendanceDashboard(homeBranch);
+  const { data: lateArrivals = [], refetch: refetchLate } = useLateArrivals(undefined, homeBranch);
+  const { data: absentRecords = [], refetch: refetchAbsent } = useAbsentRecords(
+    undefined,
+    homeBranch,
+  );
+  const { data: attendanceTrendData = [] } = useAttendanceTrend(homeBranch);
 
   const handleRefresh = async () => {
     await Promise.all([refetchDashboard(), refetchLate(), refetchAbsent()]);

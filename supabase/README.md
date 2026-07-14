@@ -18,6 +18,8 @@ Run these in the Supabase dashboard **SQL Editor**, in order:
 | 12    | `12_branch_authority.sql`       | Branch authority infra                                    |
 | 13    | `13_completion_pack.sql`        | `app_settings` + remaining CRUD policies                 |
 | 14    | `14_product_barcode.sql`        | **Optional, not required** — see the file header          |
+| 15    | `15_redundancy_cleanup.sql`     | Part 1 safe now; Part 2 (DROPs) later — see file header   |
+| 16    | `16_branch_management.sql`      | Branch CRUD write policies + junction writes + reports FK |
 
 ## Steps
 

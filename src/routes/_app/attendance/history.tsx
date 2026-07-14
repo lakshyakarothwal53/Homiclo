@@ -15,6 +15,7 @@ import {
 import { Download, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useEmployeeAttendance } from "@/hooks/use-attendance";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { PeriodFilter, type PeriodOption } from "@/components/reports/PeriodFilter";
 import { downloadCsv } from "@/lib/pdf-utils";
 import type { EmployeeAttendance } from "@/types/attendance";
@@ -99,13 +100,14 @@ const toCsvRow = (emp: EmployeeAttendance): (string | number)[] => [
 ];
 
 function Page() {
+  const { homeBranch } = useBranchScope();
   const [search, setSearch] = useState("");
   const [period, setPeriod] = useState<PeriodOption>({ key: "all", label: "All time" });
   const {
     data: employees = [],
     isLoading,
     refetch,
-  } = useEmployeeAttendance(search, { from: period.from, to: period.to });
+  } = useEmployeeAttendance(search, { from: period.from, to: period.to }, homeBranch);
 
   const { branchRows, branchTotal } = useMemo(() => {
     const map = new Map<string, BranchSummaryRow>();

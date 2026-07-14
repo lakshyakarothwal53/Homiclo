@@ -9,6 +9,7 @@ import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
 import { StatusBadge } from "@/components/billing/StatusBadge";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import {
   fetchPosTransactionItems,
@@ -67,9 +68,10 @@ async function reprint(r: PosTransaction, settings: PosSettings) {
 
 function Page() {
   const router = useRouter();
+  const { scoped, homeBranch } = useBranchScope();
   const { settings } = usePosSettings();
   const [search, setSearch] = useState("");
-  const [branch, setBranch] = useState("all");
+  const [branch, setBranch] = useState(homeBranch);
   const { data: txns = [] } = usePosTransactions(search, branch);
   const { data: branches = [] } = usePosBranches();
   const { page, setPage, totalPages, pageItems } = usePagination(txns);
@@ -127,9 +129,7 @@ function Page() {
         searchPlaceholder="Search invoice or cashier..."
         addLabel="Add New"
         onAdd={() => router.navigate({ to: "/pos" })}
-        branches={branches}
-        branch={branch}
-        onBranchChange={setBranch}
+        {...(scoped ? { showBranch: false } : { branches, branch, onBranchChange: setBranch })}
       />
       <Card className="overflow-hidden border-border">
         <DataTable columns={columns} rows={pageItems} rowKey={(r) => r.invoice} />

@@ -13,7 +13,9 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertCircle, ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useCreateEmployee } from "@/hooks/use-employees";
+import { useBranches } from "@/hooks/use-inventory";
 import type { EmployeeRole, EmployeeStatus } from "@/types/employees";
 import { toast } from "sonner";
 
@@ -27,19 +29,20 @@ export const Route = createFileRoute("/_app/employees/add")({
   component: AddEmployeePage,
 });
 
-const BRANCHES = ["Bandra", "Andheri", "Powai", "Worli", "Fort", "Dadar"];
-const ROLES = ["Cashier", "Floor Manager", "Inventory", "Supervisor", "Admin"];
+const ROLES = ["Cashier", "Floor Manager", "Inventory", "Supervisor", "Admin", "HR", "Employee"];
 
 function AddEmployeePage() {
   const router = useRouter();
   const { mutate: createEmployee, isPending } = useCreateEmployee();
+  const { data: branches = [] } = useBranches();
+  const { scoped, homeBranch } = useBranchScope();
 
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     phone: "",
     role: "",
-    branch: "",
+    branch: scoped ? homeBranch : "",
     joinDate: new Date().toLocaleDateString("en-IN", {
       day: "2-digit",
       month: "short",
@@ -66,8 +69,7 @@ function AddEmployeePage() {
     if (!formData.branch) newErrors.branch = "Branch is required";
     if (!formData.salary.trim()) newErrors.salary = "Salary is required";
     if (!formData.password.trim()) newErrors.password = "Password is required";
-    if (formData.password.length < 6)
-      newErrors.password = "Password must be at least 6 characters";
+    if (formData.password.length < 6) newErrors.password = "Password must be at least 6 characters";
     if (formData.password !== formData.confirmPassword)
       newErrors.confirmPassword = "Passwords do not match";
     return newErrors;
@@ -201,12 +203,13 @@ function AddEmployeePage() {
                 <Select
                   value={formData.branch}
                   onValueChange={(value) => setFormData({ ...formData, branch: value })}
+                  disabled={scoped}
                 >
                   <SelectTrigger className={errors.branch ? "border-red-500" : ""}>
                     <SelectValue placeholder="Select branch" />
                   </SelectTrigger>
                   <SelectContent>
-                    {BRANCHES.map((branch) => (
+                    {(scoped ? [homeBranch] : branches).map((branch) => (
                       <SelectItem key={branch} value={branch}>
                         {branch}
                       </SelectItem>
@@ -232,11 +235,7 @@ function AddEmployeePage() {
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
                 {errors.password && <p className="text-xs text-red-500">{errors.password}</p>}
@@ -250,12 +249,8 @@ function AddEmployeePage() {
                     type={showConfirmPassword ? "text" : "password"}
                     placeholder="Re-enter your password"
                     value={formData.confirmPassword}
-                    onChange={(e) =>
-                      setFormData({ ...formData, confirmPassword: e.target.value })
-                    }
-                    className={
-                      errors.confirmPassword ? "border-red-500 pr-10" : "pr-10"
-                    }
+                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                    className={errors.confirmPassword ? "border-red-500 pr-10" : "pr-10"}
                   />
                   <button
                     type="button"

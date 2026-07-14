@@ -22,6 +22,7 @@ import {
 import { CalendarClock, Download, RefreshCw, Clock, X } from "lucide-react";
 import { toast } from "sonner";
 import { useLateArrivals } from "@/hooks/use-attendance";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
 import { matchesDate, parseRowDate, todayIso } from "@/lib/report-data";
@@ -80,7 +81,8 @@ function Page() {
   const [search, setSearch] = useState("");
   const [date, setDate] = useState(todayIso());
   const [month, setMonth] = useState("all");
-  const { data: allLateArrivals = [], isLoading, refetch } = useLateArrivals(search);
+  const { homeBranch } = useBranchScope();
+  const { data: allLateArrivals = [], isLoading, refetch } = useLateArrivals(search, homeBranch);
 
   const monthOptions = useMemo(() => {
     const seen = new Map<string, string>();

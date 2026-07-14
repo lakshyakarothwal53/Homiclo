@@ -8,6 +8,7 @@ import { FilterBar } from "@/components/inventory/FilterBar";
 import { InventoryStatusBadge } from "@/components/inventory/InventoryStatusBadge";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import { useBranches, useLowStockAlerts } from "@/hooks/use-inventory";
 import type { LowStockAlert } from "@/types/inventory";
@@ -33,8 +34,9 @@ const COLUMNS: Column[] = [
 
 function Page() {
   const router = useRouter();
+  const { scoped, homeBranch } = useBranchScope();
   const [search, setSearch] = useState("");
-  const [branch, setBranch] = useState("all");
+  const [branch, setBranch] = useState(homeBranch);
   const { data = [], isLoading } = useLowStockAlerts(search, branch);
   const { data: branches = [] } = useBranches();
   const { page, setPage, totalPages, pageItems } = usePagination(data);
@@ -59,9 +61,7 @@ function Page() {
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search alerts…"
-        branches={branches}
-        branch={branch}
-        onBranchChange={setBranch}
+        {...(scoped ? {} : { branches, branch, onBranchChange: setBranch })}
       />
 
       <DataTableCard
