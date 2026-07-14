@@ -1,0 +1,202 @@
+import { useMemo, useState } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { toast } from "sonner";
+import { Download } from "lucide-react";
+import { PageHeader } from "@/components/common/PageHeader";
+import { Card } from "@/components/ui/card";
+import { FilterBar } from "@/components/billing/FilterBar";
+import { DataTable, type Column } from "@/components/billing/DataTable";
+import { EntriesFooter } from "@/components/billing/EntriesFooter";
+import { PeriodFilter, type PeriodOption } from "@/components/reports/PeriodFilter";
+import {
+  EntityFormDialog,
+  type EntityField,
+  type EntityValues,
+} from "@/components/inventory/EntityFormDialog";
+import { usePagination } from "@/hooks/use-pagination";
+import { useBillingBranches, useBillingReports, useCreateBillingReport } from "@/hooks/use-billing";
+import { buildTablePdf, downloadCsv, downloadPdf } from "@/lib/pdf-utils";
+import { fetchNamedBillingReport, matchesDate } from "@/lib/report-data";
+import type { BillingReport } from "@/types/billing";
+
+export const Route = createFileRoute("/_app/billing/reports")({
+  head: () => ({
+    meta: [
+      { title: "Billing Reports — HOMIQLO" },
+      { name: "description", content: "Revenue, dues and tax summaries." },
+    ],
+  }),
+  component: Page,
+});
+
+const REPORT_FIELDS: EntityField[] = [
+  { key: "report", label: "Report Name", required: true, placeholder: "Daily Sales Summary" },
+  { key: "period", label: "Period", required: true, placeholder: "Jul 2026" },
+  {
+    key: "format",
+    label: "Format",
+    type: "select",
+    options: ["PDF", "CSV"],
+    required: true,
+  },
+];
+
+const displayDate = (d: Date) =>
+  `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })} ${d.getFullYear()}`;
+
+function Page() {
+  const [search, setSearch] = useState("");
+  const [date, setDate] = useState("");
+  const [branch, setBranch] = useState("all");
+  const [period, setPeriod] = useState<PeriodOption>({ key: "all", label: "All time" });
+  const [addOpen, setAddOpen] = useState(false);
+  const { data: allReports = [] } = useBillingReports(search, branch);
+  const { data: branches = [] } = useBillingBranches();
+  const createReport = useCreateBillingReport();
+  const reports = useMemo(
+    () => allReports.filter((r) => matchesDate(date, r.generated)),
+    [allReports, date],
+  );
+  const { page, setPage, totalPages, pageItems } = usePagination(reports);
+
+  const opts = () => ({
+    from: period.from,
+    to: period.to,
+    branch: branch === "all" ? undefined : branch,
+  });
+
+  async function handleDownload(r: BillingReport) {
+    try {
+      const data = await fetchNamedBillingReport(r.report, opts());
+      if (data.rows.length === 0) {
+        toast.error("No data available for this report and period.");
+        return;
+      }
+      const filename = r.report.toLowerCase().replace(/\s+/g, "-");
+      const subtitle = period.key === "all" ? r.period : `${r.period} · ${period.label}`;
+      if (r.format.toUpperCase() === "CSV" || r.format.toUpperCase() === "EXCEL") {
+        downloadCsv(filename, data.columns, data.rows);
+      } else {
+        downloadPdf(buildTablePdf({ title: r.report, subtitle, ...data }), filename);
+      }
+      toast.success(`Downloaded ${r.report} (${r.format}).`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not generate report.");
+    }
+  }
+
+  function handleExport() {
+    if (reports.length === 0) {
+      toast.error("Nothing to export.");
+      return;
+    }
+    downloadCsv(
+      "billing-reports.csv",
+      ["Report", "Period", "Generated", "Format"],
+      reports.map((r) => [r.report, r.period, r.generated, r.format]),
+    );
+    toast.success(`Exported ${reports.length} reports.`);
+  }
+
+  function handleAdd(v: EntityValues) {
+    createReport.mutate(
+      {
+        report: String(v.report),
+        period: String(v.period),
+        generated: displayDate(new Date()),
+        format: String(v.format),
+      },
+      {
+        onSuccess: () => toast.success(`Report "${v.report}" added.`),
+        onError: (e) =>
+          toast.error(
+            e instanceof Error
+              ? `${e.message} — run supabase/13_completion_pack.sql to enable report writes.`
+              : "Could not add report.",
+          ),
+      },
+    );
+  }
+
+  const columns: Column<BillingReport>[] = [
+    {
+      key: "report",
+      header: "Report",
+      render: (r) => <span className="font-medium">{r.report}</span>,
+    },
+    {
+      key: "period",
+      header: "Period",
+      render: (r) => <span className="text-muted-foreground">{r.period}</span>,
+    },
+    {
+      key: "generated",
+      header: "Generated",
+      render: (r) => <span className="text-muted-foreground">{r.generated}</span>,
+    },
+    {
+      key: "format",
+      header: "Format",
+      render: (r) => <span className="text-muted-foreground">{r.format}</span>,
+    },
+    {
+      key: "action",
+      header: "",
+      align: "right",
+      render: (r) => (
+        <button
+          onClick={() => handleDownload(r)}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-secondary"
+        >
+          <Download className="h-3.5 w-3.5" /> Download
+        </button>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Billing › Reports"
+        title="Billing Reports"
+        description="Reports overview and controls."
+      />
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex-1">
+          <FilterBar
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Search reports..."
+            date={date}
+            onDateChange={setDate}
+            addLabel="Add New"
+            onAdd={() => setAddOpen(true)}
+            onExport={handleExport}
+            branches={branches}
+            branch={branch}
+            onBranchChange={setBranch}
+          />
+        </div>
+        <PeriodFilter value={period.key} onChange={setPeriod} />
+      </div>
+      <EntityFormDialog
+        mode="add"
+        title="New Billing Report"
+        description="Register a report; Download always renders it from live billing data for the selected period."
+        fields={REPORT_FIELDS}
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onSave={handleAdd}
+      />
+      <Card className="overflow-hidden border-border">
+        <DataTable columns={columns} rows={pageItems} rowKey={(r) => r.report} />
+        <EntriesFooter
+          total={reports.length}
+          currentPage={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+        />
+      </Card>
+    </>
+  );
+}
