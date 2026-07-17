@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { applyStockMovement } from "@/lib/inventory-utils";
 import { loadTallyConfig, pushToTally, salesVoucherXml } from "@/lib/tally";
 import { localDateIso } from "@/lib/utils";
+import { parseRowDate } from "@/lib/report-data";
 import type {
   BillingDashboard,
   BillingPayment,
@@ -48,44 +49,95 @@ function formatPlainINR(n: number): string {
 // refund figures were also wrong: 'refundsThisWeek' summed every refund ever
 // recorded with no date filter at all (a lifetime total mislabeled as a
 // weekly count) — replaced with real daily + current-month refund totals.
-export function useBillingDashboard() {
+// Branch-scoped viewers (branch_admin, cashier) must only ever see their own
+// branch's revenue here — previously this queried the global
+// billing_sales_bills table unconditionally, so every branch saw the same
+// company-wide numbers regardless of who was logged in.
+export function useBillingDashboard(branch?: string) {
+  const allBranches = !branch || branch === "all";
   return useQuery({
-    queryKey: ["billing", "dashboard"],
+    queryKey: ["billing", "dashboard", branch ?? "all"],
     queryFn: async (): Promise<BillingDashboard> => {
       const today = new Date();
       const todayIso = today.toISOString().slice(0, 10);
+      const nextDayIso = new Date(today.getTime() + 86400000).toISOString().slice(0, 10);
       const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
       const lastMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
       const lastMonthStart = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, "0")}-01`;
-      const lastMonthEnd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
 
-      const [todayBills, pendingBills, monthBills, lastMonthBills, refunds] = await Promise.all([
-        supabase.from("billing_sales_bills").select("amount_num").eq("bill_date", todayIso),
-        supabase.from("billing_sales_bills").select("amount_num").eq("status", "Pending"),
-        supabase.from("billing_sales_bills").select("amount_num").gte("bill_date", monthStart),
-        supabase
+      // Bills: the global table has bill_date/amount_num (04_computed.sql);
+      // the branch snapshot predates that migration and only has a free-text
+      // `date` column + text `amount`, so both are normalized into one shape
+      // and every bucket below (today/pending/month/last month) is derived
+      // from a single fetch instead of a Supabase round-trip per bucket.
+      type Bill = { amountNum: number; dateIso: string | null; status: string };
+      let bills: Bill[];
+      if (allBranches) {
+        const { data, error } = await supabase
           .from("billing_sales_bills")
-          .select("amount_num")
-          .gte("bill_date", lastMonthStart)
-          .lt("bill_date", lastMonthEnd),
-        // `*` so refund_date (added by 13_completion_pack.sql) is picked up
-        // when present without erroring on older schemas.
-        supabase.from("billing_refunds").select("*"),
-      ]);
-      if (todayBills.error) throw todayBills.error;
-      if (pendingBills.error) throw pendingBills.error;
-      if (monthBills.error) throw monthBills.error;
-      if (refunds.error) throw refunds.error;
+          .select("amount_num, bill_date, status");
+        if (error) throw error;
+        bills = (data ?? []).map((r) => ({
+          amountNum: r.amount_num ?? 0,
+          dateIso: r.bill_date ?? null,
+          status: r.status ?? "",
+        }));
+      } else {
+        const { data, error } = await supabase
+          .from("billing_sales_bills_branches")
+          .select("amount, date, status")
+          .eq("branch", branch);
+        if (error) throw error;
+        bills = (data ?? []).map((r) => {
+          const d = parseRowDate(r.date);
+          return {
+            amountNum: parseAmountNum(r.amount),
+            dateIso: d
+              ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+              : null,
+            status: r.status ?? "",
+          };
+        });
+      }
 
-      const sumAmountNum = (rows: { amount_num?: number }[] | null) =>
-        (rows ?? []).reduce((s, r) => s + (r.amount_num ?? 0), 0);
+      // POS checkout (useCreatePosTransaction) never writes to
+      // billing_sales_bills, so "today's revenue" would silently exclude
+      // every POS sale — and, for a branch-scoped viewer, would previously
+      // have summed every branch's POS sales together — without this.
+      let posQuery = supabase
+        .from("pos_transactions")
+        .select("amount")
+        .gte("created_at", `${todayIso}T00:00:00.000Z`)
+        .lt("created_at", `${nextDayIso}T00:00:00.000Z`);
+      if (!allBranches) posQuery = posQuery.eq("branch", branch);
+      const { data: posToday, error: posError } = await posQuery;
+      if (posError) throw posError;
+      const posTodayRevenue = (posToday ?? []).reduce((s, r) => s + parseAmountNum(r.amount), 0);
 
-      const todayRevenue = sumAmountNum(todayBills.data);
-      const pendingPayments = sumAmountNum(pendingBills.data);
-      const thisMonthRevenue = sumAmountNum(monthBills.data);
-      const lastMonthRevenue = sumAmountNum(lastMonthBills.data);
+      const billsToday = bills.filter((b) => b.dateIso === todayIso);
+      const pendingBills = bills.filter((b) => b.status === "Pending");
+      const monthBills = bills.filter((b) => b.dateIso !== null && b.dateIso >= monthStart);
+      const lastMonthBills = bills.filter(
+        (b) => b.dateIso !== null && b.dateIso >= lastMonthStart && b.dateIso < monthStart,
+      );
 
-      const refundRows = (refunds.data ?? []) as (BillingRefund & { refund_date?: string })[];
+      const billsTodaySum = billsToday.reduce((s, b) => s + b.amountNum, 0);
+      const pendingPayments = pendingBills.reduce((s, b) => s + b.amountNum, 0);
+      const thisMonthRevenue = monthBills.reduce((s, b) => s + b.amountNum, 0);
+      const lastMonthRevenue = lastMonthBills.reduce((s, b) => s + b.amountNum, 0);
+      const todayRevenue = billsTodaySum + posTodayRevenue;
+      const todayInvoiceCount = billsToday.length + (posToday?.length ?? 0);
+
+      // `*` so refund_date (added by 13_completion_pack.sql) is picked up
+      // when present without erroring on older schemas. billing_refunds_branches
+      // has no date column at all, so refunds stay company-wide even for a
+      // branch-scoped viewer — a known gap this doesn't attempt to fix.
+      const { data: refundsData, error: refundsError } = await supabase
+        .from("billing_refunds")
+        .select("*");
+      if (refundsError) throw refundsError;
+
+      const refundRows = (refundsData ?? []) as (BillingRefund & { refund_date?: string })[];
       const refundsToday = refundRows
         .filter((r) => r.refund_date === todayIso)
         .reduce((s, r) => s + parseAmountNum(r.amount), 0);
@@ -95,9 +147,9 @@ export function useBillingDashboard() {
 
       return {
         todayRevenue: formatINR(todayRevenue),
-        todayRevenueHint: `${todayBills.data?.length ?? 0} invoice${(todayBills.data?.length ?? 0) !== 1 ? "s" : ""}`,
+        todayRevenueHint: `${todayInvoiceCount} invoice${todayInvoiceCount !== 1 ? "s" : ""}`,
         pendingPayments: formatINR(pendingPayments),
-        pendingPaymentsHint: `${pendingBills.data?.length ?? 0} invoice${(pendingBills.data?.length ?? 0) !== 1 ? "s" : ""}`,
+        pendingPaymentsHint: `${pendingBills.length} invoice${pendingBills.length !== 1 ? "s" : ""}`,
         thisMonth: formatINR(thisMonthRevenue),
         thisMonthDelta: monthDelta(thisMonthRevenue, lastMonthRevenue),
         refunds: formatINR(refundsToday),
@@ -114,16 +166,48 @@ export function useBillingDashboard() {
   });
 }
 
-export function useBillingRevenueTrend() {
+// billing_revenue_trend_live is a global SQL view with no branch dimension,
+// so branch-scoped viewers get a client-computed 14-day trend from their own
+// branch's billing_sales_bills_branches rows instead (matches the view's
+// window/shape so the chart renders identically either way).
+export function useBillingRevenueTrend(branch?: string) {
+  const allBranches = !branch || branch === "all";
   return useQuery({
-    queryKey: ["billing", "revenue-trend"],
+    queryKey: ["billing", "revenue-trend", branch ?? "all"],
     queryFn: async (): Promise<BillingRevenueTrend[]> => {
+      if (allBranches) {
+        const { data, error } = await supabase
+          .from("billing_revenue_trend_live")
+          .select("d, revenue")
+          .order("sort_key");
+        if (error) throw error;
+        return data as BillingRevenueTrend[];
+      }
+
+      const since = new Date();
+      since.setDate(since.getDate() - 13);
       const { data, error } = await supabase
-        .from("billing_revenue_trend_live")
-        .select("d, revenue")
-        .order("sort_key");
+        .from("billing_sales_bills_branches")
+        .select("amount, date, status")
+        .eq("branch", branch)
+        .eq("status", "Paid");
       if (error) throw error;
-      return data as BillingRevenueTrend[];
+
+      const byDate = new Map<string, number>();
+      (data ?? []).forEach((r) => {
+        const d = parseRowDate(r.date);
+        if (!d || d < since) return;
+        const sortKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        byDate.set(sortKey, (byDate.get(sortKey) ?? 0) + parseAmountNum(r.amount));
+      });
+
+      return [...byDate.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([sortKey, revenue]) => {
+          const d = new Date(sortKey);
+          const label = `${String(d.getDate()).padStart(2, "0")} ${d.toLocaleString("en-US", { month: "short" })}`;
+          return { d: label, revenue: Math.round(revenue) };
+        });
     },
   });
 }

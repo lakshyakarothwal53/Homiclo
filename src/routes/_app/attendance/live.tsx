@@ -16,6 +16,8 @@ import { MapPin, Thermometer, Camera, CheckCircle, RefreshCw, Map } from "lucide
 import { toast } from "sonner";
 import { useLiveTracking } from "@/hooks/use-attendance";
 import { useBranchScope } from "@/hooks/use-branch-scope";
+import { useBranches } from "@/hooks/use-inventory";
+import { BranchFilterSelect } from "@/components/common/BranchFilterSelect";
 
 export const Route = createFileRoute("/_app/attendance/live")({
   head: () => ({
@@ -63,8 +65,11 @@ function EmployeeAvatar({ name, size = "sm" }: { name: string; size?: "sm" | "md
 
 function Page() {
   const [search, setSearch] = useState("");
-  const { homeBranch } = useBranchScope();
-  const { data: tracking = [], isLoading, refetch } = useLiveTracking(search, homeBranch);
+  const { scoped, homeBranch } = useBranchScope();
+  const [branchFilter, setBranchFilter] = useState("all");
+  const { data: branches = [] } = useBranches();
+  const effectiveBranch = scoped ? homeBranch : branchFilter;
+  const { data: tracking = [], isLoading, refetch } = useLiveTracking(search, effectiveBranch);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   useEffect(() => {
@@ -183,18 +188,28 @@ function Page() {
           <CardTitle className="text-base">Live Presence</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Input
-            placeholder="Search by employee name or location..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-10"
-          />
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Input
+              placeholder="Search by employee name or location..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-10"
+            />
+            {!scoped && (
+              <BranchFilterSelect
+                value={branchFilter}
+                onChange={setBranchFilter}
+                branches={branches}
+              />
+            )}
+          </div>
 
           <div className="rounded-lg border border-border overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/50">
                   <TableHead className="h-12 font-semibold">Employee</TableHead>
+                  <TableHead className="h-12 font-semibold">Branch</TableHead>
                   <TableHead className="h-12 font-semibold">Designation</TableHead>
                   <TableHead className="h-12 font-semibold">Check-In Time</TableHead>
                   <TableHead className="h-12 font-semibold">Location</TableHead>
@@ -205,13 +220,13 @@ function Page() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                       Loading...
                     </TableCell>
                   </TableRow>
                 ) : tracking.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                       No active presence data.
                     </TableCell>
                   </TableRow>
@@ -234,6 +249,9 @@ function Page() {
                             </span>
                           </div>
                         </div>
+                      </TableCell>
+                      <TableCell className="py-4 text-sm text-muted-foreground">
+                        {track.branch}
                       </TableCell>
                       <TableCell className="py-4 text-sm">{track.designation}</TableCell>
                       <TableCell className="py-4 text-sm font-medium">

@@ -54,6 +54,7 @@ export interface AbsentRecord {
 export interface LiveTracking {
   employeeId: string;
   employeeName: string;
+  branch: string;
   designation: string;
   checkInTime: string;
   currentStatus: string;
@@ -144,6 +145,7 @@ export interface EmployeeCheckin {
   geofenceErrorMessage?: string;
   status: "success" | "outside_geofence" | "gps_error";
   notes?: string;
+  photoUrl?: string;
 }
 
 export interface EmployeeMonthlySummary {

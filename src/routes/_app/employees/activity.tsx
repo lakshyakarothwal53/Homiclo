@@ -13,6 +13,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useBranchScope } from "@/hooks/use-branch-scope";
+import { useBranches } from "@/hooks/use-inventory";
+import { BranchFilterSelect } from "@/components/common/BranchFilterSelect";
 import { useEmployeeActivity } from "@/hooks/use-employees";
 
 export const Route = createFileRoute("/_app/employees/activity")({
@@ -31,8 +33,11 @@ function ActivityTrackingPage() {
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
-  const { homeBranch } = useBranchScope();
-  const { data = [], isLoading } = useEmployeeActivity(search, homeBranch);
+  const { scoped, homeBranch } = useBranchScope();
+  const [branchFilter, setBranchFilter] = useState("all");
+  const { data: branches = [] } = useBranches();
+  const effectiveBranch = scoped ? homeBranch : branchFilter;
+  const { data = [], isLoading } = useEmployeeActivity(search, effectiveBranch);
 
   const totalPages = Math.ceil(data.length / ITEMS_PER_PAGE);
   const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -70,7 +75,7 @@ function ActivityTrackingPage() {
 
       <Card className="border-border">
         <CardContent className="pt-6">
-          <div className="mb-6">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row">
             <Input
               placeholder="Search by name or activity..."
               value={search}
@@ -80,6 +85,16 @@ function ActivityTrackingPage() {
               }}
               className="max-w-xs"
             />
+            {!scoped && (
+              <BranchFilterSelect
+                value={branchFilter}
+                onChange={(v) => {
+                  setBranchFilter(v);
+                  setCurrentPage(1);
+                }}
+                branches={branches}
+              />
+            )}
           </div>
 
           <div className="overflow-x-auto">

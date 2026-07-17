@@ -73,6 +73,7 @@ const EMPLOYEE_ROLE_MAP: Record<string, Role> = {
   cashier: "cashier",
   inventory: "inventory",
   hr: "hr",
+  salesman: "employee",
 };
 
 function toSessionRole(dbRole: string | null | undefined): Role {

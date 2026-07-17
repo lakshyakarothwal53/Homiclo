@@ -261,7 +261,14 @@ export function useDeleteBranch() {
   return useMutation({
     mutationFn: async (name: string) => {
       const { error } = await supabase.from("branches").delete().eq("name", name);
-      if (error) throw new Error(`${MISSING_BRANCH_POLICY_HINT} (${error.message})`);
+      if (error) {
+        if (error.code === "23503") {
+          throw new Error(
+            `Cannot delete "${name}" — employees are still assigned to this branch. Reassign or remove them first.`,
+          );
+        }
+        throw new Error(`${MISSING_BRANCH_POLICY_HINT} (${error.message})`);
+      }
       const { error: officeError } = await supabase
         .from("office_locations")
         .delete()

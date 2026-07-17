@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MapPin } from "lucide-react";
 import { useBranchScope } from "@/hooks/use-branch-scope";
+import { useBranches } from "@/hooks/use-inventory";
+import { BranchFilterSelect } from "@/components/common/BranchFilterSelect";
 import { useEmployeeLocations } from "@/hooks/use-employees";
 
 export const Route = createFileRoute("/_app/employees/location")({
@@ -30,8 +32,11 @@ const ITEMS_PER_PAGE = 10;
 function LocationTrackingPage() {
   const [currentPage, setCurrentPage] = useState(1);
 
-  const { homeBranch } = useBranchScope();
-  const { data = [], isLoading } = useEmployeeLocations(homeBranch);
+  const { scoped, homeBranch } = useBranchScope();
+  const [branchFilter, setBranchFilter] = useState("all");
+  const { data: branches = [] } = useBranches();
+  const effectiveBranch = scoped ? homeBranch : branchFilter;
+  const { data = [], isLoading } = useEmployeeLocations(effectiveBranch);
 
   const totalPages = Math.ceil(data.length / ITEMS_PER_PAGE);
   const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -74,6 +79,15 @@ function LocationTrackingPage() {
 
       <Card className="border-border">
         <CardContent className="pt-6">
+          {!scoped && (
+            <div className="mb-4 flex justify-end">
+              <BranchFilterSelect
+                value={branchFilter}
+                onChange={setBranchFilter}
+                branches={branches}
+              />
+            </div>
+          )}
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>

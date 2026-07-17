@@ -51,13 +51,24 @@
       "Bash(powershell -Command ' *)",
       "Bash(curl -s http://localhost:8082/)",
       "Bash(git reset *)",
-      "Bash(pkill -f \"npm run dev\")"
+      "Bash(pkill -f \"npm run dev\")",
+      "mcp__supabase__list_projects",
+      "mcp__supabase__execute_sql",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8081/)",
+      "Bash(kill 9152)",
+      "Bash(taskkill //PID 15224 //F)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\Piyush Kumar\\\\.claude\\\\plans\" 2>/dev/null; echo ok)",
+      "mcp__supabase__apply_migration",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8080/)"
     ],
     "deny": [
       "Bash(git push --force*)",
       "Bash(git rebase*)",
       "Bash(git reset --hard*)",
       "Bash(rm -rf*)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Piyush Kumar\\.claude\\plans"
     ]
   }
 }

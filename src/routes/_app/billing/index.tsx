@@ -6,6 +6,7 @@ import { StatCard } from "@/components/common/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useBillingDashboard, useBillingRevenueTrend } from "@/hooks/use-billing";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 
 export const Route = createFileRoute("/_app/billing/")({
   head: () => ({
@@ -18,8 +19,9 @@ export const Route = createFileRoute("/_app/billing/")({
 });
 
 function Page() {
-  const { data: dashboard } = useBillingDashboard();
-  const { data: trend = [] } = useBillingRevenueTrend();
+  const { homeBranch } = useBranchScope();
+  const { data: dashboard } = useBillingDashboard(homeBranch);
+  const { data: trend = [] } = useBillingRevenueTrend(homeBranch);
 
   return (
     <>

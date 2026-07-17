@@ -61,14 +61,21 @@ function isScoped(branch?: string): boolean {
   return !!branch && branch !== "all";
 }
 
-// Sum sales for a given (ISO) date, scoped to a branch when provided.
+function addDaysIso(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
+// Sum manually-created invoices (billing_sales_bills) for a given (ISO)
+// date, scoped to a branch when provided.
 //
 // billing_sales_bills_branches predates 04_computed.sql (which added
 // bill_date/amount_num to the global billing_sales_bills table), so the
 // branch-scoped junction table only has the original free-text `date`
 // column. Match against that via parseRowDate instead of filtering on a
 // bill_date column that may not exist yet on this table.
-async function sumSalesForDate(date: string, branch?: string): Promise<number> {
+async function sumBillingSalesForDate(date: string, branch?: string): Promise<number> {
   const sumRows = (rows: { amount?: string }[] | null) =>
     (rows ?? []).reduce((total, row) => total + parseAmount(row.amount), 0);
 
@@ -88,6 +95,32 @@ async function sumSalesForDate(date: string, branch?: string): Promise<number> {
     .select("amount")
     .eq("bill_date", date);
   return sumRows(data);
+}
+
+// Sum POS checkout sales (pos_transactions) for a given (ISO) date, scoped
+// to a branch when provided. pos_transactions carries both `created_at`
+// and `branch` on the global table, so it's read directly instead of the
+// branch-junction table (pos_transactions_branches has no date column).
+async function sumPosSalesForDate(date: string, branch?: string): Promise<number> {
+  let query = supabase
+    .from("pos_transactions")
+    .select("amount")
+    .gte("created_at", `${date}T00:00:00.000Z`)
+    .lt("created_at", `${addDaysIso(date, 1)}T00:00:00.000Z`);
+  if (isScoped(branch)) query = query.eq("branch", branch);
+  const { data } = await query;
+  return (data ?? []).reduce((total, row) => total + parseAmount(row.amount), 0);
+}
+
+// Sales Today = manually-created invoices + POS checkout sales, since POS
+// checkout (useCreatePosTransaction) only ever writes to pos_transactions,
+// never to billing_sales_bills.
+async function sumSalesForDate(date: string, branch?: string): Promise<number> {
+  const [billing, pos] = await Promise.all([
+    sumBillingSalesForDate(date, branch),
+    sumPosSalesForDate(date, branch),
+  ]);
+  return billing + pos;
 }
 
 export interface DashboardStats {
@@ -244,6 +277,21 @@ export function useSalesChartData(branch?: string) {
           byDate[row.bill_date] = (byDate[row.bill_date] ?? 0) + parseAmount(row.amount);
         });
       }
+
+      // POS checkout sales for the same window — pos_transactions is where
+      // useCreatePosTransaction actually writes, so it's merged in here too
+      // (see sumSalesForDate above for the same fix on the stat card).
+      let posQuery = supabase
+        .from("pos_transactions")
+        .select("amount, created_at")
+        .gte("created_at", `${sinceIso}T00:00:00.000Z`);
+      if (isScoped(branch)) posQuery = posQuery.eq("branch", branch);
+      const { data: posData } = await posQuery;
+      (posData ?? []).forEach((row) => {
+        const iso = row.created_at?.split("T")[0];
+        if (!iso) return;
+        byDate[iso] = (byDate[iso] ?? 0) + parseAmount(row.amount);
+      });
 
       const last7DaysData: SalesChartData[] = [];
       for (let i = 6; i >= 0; i--) {

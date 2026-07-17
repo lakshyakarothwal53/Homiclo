@@ -130,8 +130,15 @@ export function useCreatePosTransaction() {
       // supabase/pos/06_transaction_items.sql hasn't been run yet, those
       // columns won't exist — fall back to the base row so checkout still
       // completes instead of failing outright.
+      // branch is stamped on the canonical row too (not just the
+      // pos_transactions_branches mirror below) — the dashboard's Sales
+      // Today / sales chart read this global table with a branch filter
+      // for branch-scoped roles, so a null branch here silently zeroed
+      // every branch_admin/cashier's "today's sale".
+      const branchValue = input.branch && input.branch !== "all" ? input.branch : null;
       const { error } = await supabase.from("pos_transactions").insert({
         ...BASE_TXN_ROW(input),
+        branch: branchValue,
         subtotal: input.subtotal ?? null,
         discount: input.discount ?? null,
         gst: input.gst ?? null,
@@ -147,7 +154,7 @@ export function useCreatePosTransaction() {
       if (error) {
         const { error: fallbackError } = await supabase
           .from("pos_transactions")
-          .insert(BASE_TXN_ROW(input));
+          .insert({ ...BASE_TXN_ROW(input), branch: branchValue });
         if (fallbackError) throw fallbackError;
       }
 

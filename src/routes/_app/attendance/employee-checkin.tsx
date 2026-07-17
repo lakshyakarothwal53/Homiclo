@@ -39,6 +39,7 @@ import {
   Loader2,
   Navigation,
   CalendarPlus,
+  Camera,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -47,9 +48,11 @@ import {
   useEmployeeMonthlySummary,
   useOfficeLocations,
   useSubmitEmployeeCheckin,
+  uploadCheckinPhoto,
   validateGeofence,
   calculateGeofenceDistance,
 } from "@/hooks/use-attendance";
+import { SelfieCapture, type SelfieResult } from "@/components/attendance/SelfieCapture";
 
 export const Route = createFileRoute("/_app/attendance/employee-checkin")({
   head: () => ({
@@ -72,6 +75,8 @@ function Page() {
     longitude: number;
   } | null>(null);
   const [selectedOffice, setSelectedOffice] = useState<string | null>(null);
+  const [selfie, setSelfie] = useState<SelfieResult | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Get today's date in YYYY-MM-DD format
   const today = new Date();
@@ -166,6 +171,11 @@ function Page() {
       return;
     }
 
+    if (!selfie) {
+      toast.error("Please capture your photo first");
+      return;
+    }
+
     if (!selectedOffice) {
       toast.error("Please select an office location");
       return;
@@ -202,6 +212,11 @@ function Page() {
     });
 
     try {
+      setIsUploading(true);
+      // Upload the watermarked selfie first; if this fails we abort so no
+      // check-in is recorded without its required proof-of-presence photo.
+      const photoUrl = await uploadCheckinPhoto(selfie.blob, user?.id || "", checkType);
+
       await submitCheckin.mutateAsync({
         employeeId: user?.id || "",
         employeeName: user?.name || "",
@@ -214,16 +229,20 @@ function Page() {
         geofenceVerified: geofenceCheck.isWithinGeofence,
         distanceFromOfficeM: geofenceCheck.distanceM,
         status: "success",
+        photoUrl,
       });
 
       toast.success(
         `${checkType === "check-in" ? "Check-in" : "Check-out"} successful! Distance: ${geofenceCheck.distanceM.toFixed(1)}m`,
       );
 
-      // Reset location
+      // Reset location + photo for the next mark.
       setCurrentLocation(null);
+      setSelfie(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to submit attendance");
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -242,6 +261,26 @@ function Page() {
           Number(selectedOfficeData.longitude),
         ).toFixed(1)}m away`
       : "Location not captured";
+
+  // Lines burned into the selfie so the photo itself carries the location,
+  // office and timestamp (a "geotagged" attendance photo).
+  const watermarkLines = [
+    new Date().toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    }),
+    currentLocation
+      ? `Lat ${currentLocation.latitude.toFixed(5)}, Lng ${currentLocation.longitude.toFixed(5)}`
+      : "Location not captured",
+    selectedOfficeData
+      ? `${selectedOfficeData.name}${selectedOfficeData.address ? ` · ${selectedOfficeData.address}` : ""}`
+      : "",
+    user?.name ? `${user.name}${user.branch ? ` · ${user.branch}` : ""}` : "",
+  ].filter(Boolean);
 
   return (
     <>
@@ -357,13 +396,38 @@ function Page() {
                 </>
               )}
 
+              <div className="space-y-2 pt-2">
+                <div className="flex items-center gap-2">
+                  <Camera className="h-4 w-4 text-blue-600" />
+                  <label className="text-sm font-medium text-muted-foreground">
+                    Attendance Photo
+                  </label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {currentLocation
+                    ? "Take a live photo to mark attendance — your location and time are stamped onto it."
+                    : "Capture your location first, then take a live photo to mark attendance."}
+                </p>
+                <SelfieCapture
+                  watermark={watermarkLines}
+                  onCapture={setSelfie}
+                  disabled={!currentLocation}
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-3 pt-4">
                 <Button
                   onClick={() => handleCheckIn("check-in")}
-                  disabled={submitCheckin.isPending || !currentLocation || hasCheckedIn}
+                  disabled={
+                    submitCheckin.isPending ||
+                    isUploading ||
+                    !currentLocation ||
+                    !selfie ||
+                    hasCheckedIn
+                  }
                   className="bg-green-600 hover:bg-green-700 text-white"
                 >
-                  {submitCheckin.isPending ? (
+                  {submitCheckin.isPending || isUploading ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                       Processing...
@@ -379,11 +443,16 @@ function Page() {
                 <Button
                   onClick={() => handleCheckIn("check-out")}
                   disabled={
-                    submitCheckin.isPending || !currentLocation || !hasCheckedIn || hasCheckedOut
+                    submitCheckin.isPending ||
+                    isUploading ||
+                    !currentLocation ||
+                    !selfie ||
+                    !hasCheckedIn ||
+                    hasCheckedOut
                   }
                   className="bg-orange-600 hover:bg-orange-700 text-white"
                 >
-                  {submitCheckin.isPending ? (
+                  {submitCheckin.isPending || isUploading ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                       Processing...
@@ -409,6 +478,7 @@ function Page() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
+                      <TableHead className="h-10">Photo</TableHead>
                       <TableHead className="h-10">Time</TableHead>
                       <TableHead className="h-10">Type</TableHead>
                       <TableHead className="h-10">Status</TableHead>
@@ -418,13 +488,28 @@ function Page() {
                   <TableBody>
                     {todayCheckins.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={4} className="py-4 text-center text-muted-foreground">
+                        <TableCell colSpan={5} className="py-4 text-center text-muted-foreground">
                           No check-ins yet
                         </TableCell>
                       </TableRow>
                     ) : (
                       todayCheckins.map((checkin) => (
                         <TableRow key={checkin.id} className="hover:bg-muted/50">
+                          <TableCell className="py-2">
+                            {checkin.photoUrl ? (
+                              <a href={checkin.photoUrl} target="_blank" rel="noreferrer">
+                                <img
+                                  src={checkin.photoUrl}
+                                  alt="Attendance selfie"
+                                  className="h-10 w-10 rounded-md object-cover border border-border"
+                                />
+                              </a>
+                            ) : (
+                              <div className="grid h-10 w-10 place-items-center rounded-md border border-dashed border-border text-muted-foreground">
+                                <Camera className="h-4 w-4" />
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell className="py-3 font-medium">{checkin.checkTime}</TableCell>
                           <TableCell className="py-3 text-sm capitalize">
                             {checkin.checkType}

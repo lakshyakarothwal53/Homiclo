@@ -29,7 +29,16 @@ export const Route = createFileRoute("/_app/employees/add")({
   component: AddEmployeePage,
 });
 
-const ROLES = ["Cashier", "Floor Manager", "Inventory", "Supervisor", "Admin", "HR", "Employee"];
+const ROLES: EmployeeRole[] = [
+  "Cashier",
+  "Floor Manager",
+  "Inventory",
+  "Supervisor",
+  "Admin",
+  "HR",
+  "Employee",
+  "Salesman",
+];
 
 function AddEmployeePage() {
   const router = useRouter();

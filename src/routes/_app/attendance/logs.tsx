@@ -32,6 +32,8 @@ import {
 import { toast } from "sonner";
 import { useDailyLogs } from "@/hooks/use-attendance";
 import { useBranchScope } from "@/hooks/use-branch-scope";
+import { useBranches } from "@/hooks/use-inventory";
+import { BranchFilterSelect } from "@/components/common/BranchFilterSelect";
 import { usePagination } from "@/hooks/use-pagination";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
 import { buildTablePdf, downloadPdf } from "@/lib/pdf-utils";
@@ -91,8 +93,11 @@ function Page() {
   const [search, setSearch] = useState("");
   const [date, setDate] = useState("");
   const [month, setMonth] = useState("all");
-  const { homeBranch } = useBranchScope();
-  const { data: allLogs = [], isLoading, refetch } = useDailyLogs(search, homeBranch);
+  const { scoped, homeBranch } = useBranchScope();
+  const [branchFilter, setBranchFilter] = useState("all");
+  const { data: branches = [] } = useBranches();
+  const effectiveBranch = scoped ? homeBranch : branchFilter;
+  const { data: allLogs = [], isLoading, refetch } = useDailyLogs(search, effectiveBranch);
 
   const monthOptions = useMemo(() => {
     const seen = new Map<string, string>();
@@ -288,6 +293,13 @@ function Page() {
                 ))}
               </SelectContent>
             </Select>
+            {!scoped && (
+              <BranchFilterSelect
+                value={branchFilter}
+                onChange={setBranchFilter}
+                branches={branches}
+              />
+            )}
           </div>
 
           <div className="rounded-lg border border-border overflow-x-auto">

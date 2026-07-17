@@ -1,5 +1,13 @@
 export type EmployeeStatus = "Active" | "Inactive" | "Suspended";
-export type EmployeeRole = "Cashier" | "Floor Manager" | "Inventory" | "Supervisor" | "Admin";
+export type EmployeeRole =
+  | "Cashier"
+  | "Floor Manager"
+  | "Inventory"
+  | "Supervisor"
+  | "Admin"
+  | "HR"
+  | "Employee"
+  | "Salesman";
 export type LoginStatus = "online" | "idle" | "offline";
 
 export interface Employee {

@@ -696,7 +696,7 @@ export function useLiveTracking(search?: string, branch?: string) {
       let query = supabase
         .from("live_tracking")
         .select(
-          "id, employeeId:employee_id, employeeName:employee_name, designation, checkInTime:check_in_time, currentStatus:current_status, location, temperature, lastLocation:last_location, gpsVerified:gps_verified, photoVerified:photo_verified",
+          "id, employeeId:employee_id, employeeName:employee_name, branch, designation, checkInTime:check_in_time, currentStatus:current_status, location, temperature, lastLocation:last_location, gpsVerified:gps_verified, photoVerified:photo_verified",
         );
       if (!allBranches) query = query.eq("branch", branch);
       if (search)
@@ -887,7 +887,7 @@ export function useEmployeeCheckins(employeeId: string, checkDate?: string) {
       let query = supabase
         .from("employee_checkins")
         .select(
-          "id, employeeId:employee_id, employeeName:employee_name, branch, checkDate:check_date, checkType:check_type, checkTime:check_time, latitude, longitude, geofenceVerified:geofence_verified, distanceFromOfficeM:distance_from_office_m, geofenceErrorMessage:geofence_error_message, status, notes",
+          "id, employeeId:employee_id, employeeName:employee_name, branch, checkDate:check_date, checkType:check_type, checkTime:check_time, latitude, longitude, geofenceVerified:geofence_verified, distanceFromOfficeM:distance_from_office_m, geofenceErrorMessage:geofence_error_message, status, notes, photoUrl:photo_url",
         )
         .eq("employee_id", employeeId);
 
@@ -990,6 +990,24 @@ export function validateGeofence(input: GeofenceCheckInput): GeofenceCheckResult
   };
 }
 
+// Uploads a captured (already watermarked) check-in selfie to the
+// attendance-photos storage bucket and returns its public URL. Thrown errors
+// bubble up so the caller can abort the check-in rather than record it
+// without the required proof-of-presence photo.
+export async function uploadCheckinPhoto(
+  blob: Blob,
+  employeeId: string,
+  checkType: "check-in" | "check-out",
+): Promise<string> {
+  const path = `${employeeId || "unknown"}/${Date.now()}-${checkType}.jpg`;
+  const { error } = await supabase.storage
+    .from("attendance-photos")
+    .upload(path, blob, { contentType: "image/jpeg", upsert: false });
+  if (error) throw error;
+  const { data } = supabase.storage.from("attendance-photos").getPublicUrl(path);
+  return data.publicUrl;
+}
+
 export function useSubmitEmployeeCheckin() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -1007,6 +1025,7 @@ export function useSubmitEmployeeCheckin() {
       geofenceErrorMessage?: string;
       status: "success" | "outside_geofence" | "gps_error";
       notes?: string;
+      photoUrl?: string;
     }) => {
       const { error } = await supabase.from("employee_checkins").insert({
         employee_id: input.employeeId,
@@ -1022,6 +1041,7 @@ export function useSubmitEmployeeCheckin() {
         geofence_error_message: input.geofenceErrorMessage,
         status: input.status,
         notes: input.notes,
+        photo_url: input.photoUrl,
       });
       if (error) throw error;
       return input;
