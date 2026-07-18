@@ -945,3 +945,31 @@ export function useUpdateRefundStatus() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["billing", "refunds"] }),
   });
 }
+
+// Sales Bills reads from pos_transactions (global) / pos_transactions_branches
+// (per-branch view) — see useBillingSalesBills — so delete targets whichever
+// table the row actually came from.
+export function useDeleteSalesBill() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { invoice: string; branch?: string }): Promise<string> => {
+      const branch = realBranch(input.branch);
+      if (branch) {
+        const { error } = await supabase
+          .from("pos_transactions_branches")
+          .delete()
+          .eq("invoice", input.invoice)
+          .eq("branch", branch);
+        if (error) throw error;
+        return input.invoice;
+      }
+      const { error } = await supabase
+        .from("pos_transactions")
+        .delete()
+        .eq("invoice", input.invoice);
+      if (error) throw error;
+      return input.invoice;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["billing"] }),
+  });
+}

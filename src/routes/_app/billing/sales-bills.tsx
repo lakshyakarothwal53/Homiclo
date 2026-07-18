@@ -12,12 +12,14 @@ import {
   type EntityField,
   type EntityValues,
 } from "@/components/inventory/EntityFormDialog";
+import { DeleteConfirm } from "@/components/inventory/DeleteConfirm";
 import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import {
   useBillingBranches,
   useBillingSalesBills,
   useCreateRefund,
+  useDeleteSalesBill,
   useNextRefundNumber,
 } from "@/hooks/use-billing";
 import { viewSalesBillInvoice } from "@/lib/export-utils";
@@ -61,6 +63,17 @@ function Page() {
   const { page, setPage, totalPages, pageItems } = usePagination(bills);
   const { data: nextRefund } = useNextRefundNumber();
   const createRefund = useCreateRefund();
+  const deleteSalesBill = useDeleteSalesBill();
+
+  function handleDelete(bill: BillingSalesBill) {
+    deleteSalesBill.mutate(
+      { invoice: bill.invoice, branch },
+      {
+        onSuccess: () => toast.success(`${bill.invoice} deleted.`),
+        onError: (e) => toast.error(e instanceof Error ? e.message : "Could not delete bill."),
+      },
+    );
+  }
 
   function handleExport() {
     if (bills.length === 0) {
@@ -149,6 +162,7 @@ function Page() {
               onSave={(v) => handleRefund(r, v)}
             />
           )}
+          <DeleteConfirm label={r.invoice} onConfirm={() => handleDelete(r)} />
         </div>
       ),
     },
