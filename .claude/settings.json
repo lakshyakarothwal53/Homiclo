@@ -68,7 +68,9 @@
       "Bash(cd \"d:\\\\project\\\\homiqlo-git\\\\Homiclo\" && sed -i 's/^            refundBranch,$/            refundBranch ?? undefined,/; s/^              refundBranch,$/              refundBranch ?? undefined,/' src/hooks/use-billing.ts && npx tsc --noEmit; echo \"EXIT:$?\")",
       "Bash(node -e ' *)",
       "Bash(echo \"DONE:$?\")",
-      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('src/mocks/users.json','utf8'\\)\\); console.log\\('users.json is valid JSON'\\)\")"
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('src/mocks/users.json','utf8'\\)\\); console.log\\('users.json is valid JSON'\\)\")",
+      "WebSearch",
+      "WebFetch(domain:help.tallysolutions.com)"
     ],
     "deny": [
       "Bash(git push --force*)",

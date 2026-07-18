@@ -296,9 +296,14 @@ export async function checkUpiStatus(
 
 /** Fetch a transaction's saved line items on demand (used for reprint). */
 export async function fetchPosTransactionItems(invoice: string): Promise<PosLineItem[]> {
+  // gst_rate/gst_amount/mrp are the per-line tax snapshot taken at checkout —
+  // selecting them is what lets a REPRINT show the rate actually charged (and
+  // the MRP) rather than falling back to today's flat rate.
   const { data, error } = await supabase
     .from("pos_transaction_items")
-    .select("barcode, sku, name, qty, unitPrice:unit_price, lineTotal:line_total")
+    .select(
+      "barcode, sku, name, qty, unitPrice:unit_price, lineTotal:line_total, gstRate:gst_rate, gstAmount:gst_amount, mrp",
+    )
     .eq("invoice", invoice);
   if (error) throw error;
   return (data ?? []) as PosLineItem[];
