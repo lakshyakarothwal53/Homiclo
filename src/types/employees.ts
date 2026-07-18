@@ -21,6 +21,8 @@ export interface Employee {
   status: EmployeeStatus;
   salary: string;
   password?: string;
+  shiftId?: string;
+  shiftName?: string;
 }
 
 export interface EmployeeLogin {
@@ -76,6 +78,9 @@ export interface EmployeeProfile {
   joinDate: string;
   salary: string;
   status: EmployeeStatus;
+  shiftId?: string;
+  /** "Morning Shift (09:00 AM - 06:00 PM)" — resolved for display. */
+  shiftName?: string;
   address: string;
   emergencyContact: string;
   daysPresent: number;

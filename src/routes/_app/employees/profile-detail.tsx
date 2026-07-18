@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useEmployeeProfile } from "@/hooks/use-employees";
 import { useEmployeeMonthlySummary } from "@/hooks/use-attendance";
-import { Mail, Phone, Briefcase, MapPin, Calendar, BarChart3 } from "lucide-react";
+import { Mail, Phone, Briefcase, MapPin, Calendar, BarChart3, Clock } from "lucide-react";
 
 export const Route = createFileRoute("/_app/employees/profile-detail")({
   head: () => ({
@@ -97,6 +97,25 @@ function ProfileDetailPage() {
                   <div>
                     <p className="text-sm text-muted-foreground">Role</p>
                     <p className="text-lg font-semibold">{profile?.role}</p>
+                  </div>
+                </div>
+
+                {/* Shift — the window this employee may mark attendance in. */}
+                <div className="flex items-start gap-4">
+                  <div className="h-12 w-12 rounded-lg bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center">
+                    <Clock className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Shift</p>
+                    <p
+                      className={
+                        profile?.shiftName
+                          ? "text-lg font-semibold"
+                          : "text-lg font-semibold text-destructive"
+                      }
+                    >
+                      {profile?.shiftName ?? "Not assigned"}
+                    </p>
                   </div>
                 </div>
 

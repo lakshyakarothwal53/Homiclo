@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Download, Plus } from "lucide-react";
 import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useEmployees } from "@/hooks/use-employees";
+import { useShiftConfigs } from "@/hooks/use-attendance";
 import { Card, CardContent } from "@/components/ui/card";
 
 export const Route = createFileRoute("/_app/employees/")({
@@ -49,6 +50,10 @@ function EmployeeListPage() {
 
   const { homeBranch } = useBranchScope();
   const { data = [], isLoading } = useEmployees(search, homeBranch);
+  // Shift names resolved client-side from one lookup, rather than a join per
+  // employee row.
+  const { data: shifts = [] } = useShiftConfigs();
+  const shiftNameById = new Map(shifts.map((s) => [s.id, s.shiftName]));
 
   const totalPages = Math.ceil(data.length / ITEMS_PER_PAGE);
   const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -60,13 +65,14 @@ function EmployeeListPage() {
 
   const handleExport = () => {
     const csv = [
-      ["Name", "Email", "Phone", "Role", "Branch", "Join Date", "Status", "Salary"],
+      ["Name", "Email", "Phone", "Role", "Branch", "Shift", "Join Date", "Status", "Salary"],
       ...data.map((emp) => [
         emp.name,
         emp.email,
         emp.phone,
         emp.role,
         emp.branch,
+        (emp.shiftId && shiftNameById.get(emp.shiftId)) || "Not assigned",
         emp.joinDate,
         emp.status,
         emp.salary,
@@ -128,6 +134,7 @@ function EmployeeListPage() {
                   <TableHead>Phone</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Branch</TableHead>
+                  <TableHead>Shift</TableHead>
                   <TableHead>Join Date</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Salary</TableHead>
@@ -136,13 +143,13 @@ function EmployeeListPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
                       Loading employees...
                     </TableCell>
                   </TableRow>
                 ) : paginatedData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
                       No employees found
                     </TableCell>
                   </TableRow>
@@ -162,6 +169,13 @@ function EmployeeListPage() {
                       <TableCell className="text-sm">{employee.phone}</TableCell>
                       <TableCell className="text-sm">{employee.role}</TableCell>
                       <TableCell className="text-sm">{employee.branch}</TableCell>
+                      <TableCell className="text-sm">
+                        {employee.shiftId && shiftNameById.get(employee.shiftId) ? (
+                          shiftNameById.get(employee.shiftId)
+                        ) : (
+                          <span className="text-destructive">Not assigned</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-sm">{employee.joinDate}</TableCell>
                       <TableCell>
                         <Badge className={getStatusColor(employee.status)}>{employee.status}</Badge>

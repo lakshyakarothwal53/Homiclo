@@ -28,64 +28,23 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
+// Role tiles select which role is being signed in as — they deliberately carry
+// NO credentials. Pre-filling a working email/password on a login screen hands
+// anyone who opens the page a valid account.
 type RoleCard = {
   role: Role;
   label: string;
   code: string;
-  email: string;
-  password: string;
 };
 
 const ROLE_CARDS: RoleCard[] = [
-  {
-    role: "super_admin",
-    label: "Super Admin",
-    code: "SA",
-    email: "admin@homiqlo.co",
-    password: "admin123",
-  },
-  {
-    role: "branch_admin",
-    label: "Branch Admin",
-    code: "BA",
-    email: "branch.mumbai@homiqlo.co",
-    password: "branch123",
-  },
-  {
-    role: "store_manager",
-    label: "Store Mgr",
-    code: "SM",
-    email: "manager@homiqlo.co",
-    password: "mgr123",
-  },
-  {
-    role: "inventory",
-    label: "Inventory",
-    code: "IM",
-    email: "inv@homiqlo.co",
-    password: "inv123",
-  },
-  {
-    role: "cashier",
-    label: "Cashier",
-    code: "PO",
-    email: "cashier@homiqlo.co",
-    password: "cash123",
-  },
-  {
-    role: "employee",
-    label: "Employee",
-    code: "EMP",
-    email: "employee@homiqlo.co",
-    password: "emp123",
-  },
-  {
-    role: "hr",
-    label: "HR Manager",
-    code: "HR",
-    email: "hr@homiqlo.co",
-    password: "hr123",
-  },
+  { role: "super_admin", label: "Super Admin", code: "SA" },
+  { role: "branch_admin", label: "Branch Admin", code: "BA" },
+  { role: "store_manager", label: "Store Mgr", code: "SM" },
+  { role: "inventory", label: "Inventory", code: "IM" },
+  { role: "cashier", label: "Cashier", code: "PO" },
+  { role: "employee", label: "Employee", code: "EMP" },
+  { role: "hr", label: "HR Manager", code: "HR" },
 ];
 
 const FEATURES = [
@@ -114,20 +73,18 @@ function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { email: "admin@homiqlo.co", password: "admin123", remember: true },
+    // Blank: credentials are never pre-filled.
+    defaultValues: { email: "", password: "", remember: true },
   });
 
   const remember = watch("remember");
 
-  const pickRole = (card: RoleCard) => {
-    setSelected(card.role);
-    setValue("email", card.email, { shouldValidate: true });
-    setValue("password", card.password, { shouldValidate: true });
-  };
-
   const onSubmit = async (values: FormValues) => {
     try {
-      const user = await signIn(values.email, values.password);
+      // The selected role is enforced server-side of the auth boundary: signIn
+      // rejects credentials whose account has a different role, and does so
+      // before any session cookie is written.
+      const user = await signIn(values.email, values.password, selected);
       navigate({ to: roleHome(user.role) });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Unable to sign in");
@@ -192,7 +149,7 @@ function LoginPage() {
                     <button
                       key={card.role}
                       type="button"
-                      onClick={() => pickRole(card)}
+                      onClick={() => setSelected(card.role)}
                       className={cn(
                         "w-full flex flex-col items-center gap-2 rounded-lg border p-3 text-center transition-colors",
                         active
@@ -218,10 +175,27 @@ function LoginPage() {
             ))}
           </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4">
+          {/* autoComplete="off" + a non-standard name stops the browser's saved
+              -password manager from re-filling these on load. Chrome ignores
+              "off" on fields it recognises as a login pair, so the password
+              field claims "new-password", which it does honour. */}
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="mt-6 space-y-4"
+            autoComplete="off"
+            noValidate
+          >
             <div className="space-y-1.5">
               <Label htmlFor="email">Email or Employee ID</Label>
-              <Input id="email" type="email" autoComplete="email" {...register("email")} />
+              <Input
+                id="email"
+                type="email"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                {...register("email")}
+              />
               {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
             </div>
 
@@ -230,7 +204,7 @@ function LoginPage() {
               <Input
                 id="password"
                 type="password"
-                autoComplete="current-password"
+                autoComplete="new-password"
                 {...register("password")}
               />
               {errors.password && (
@@ -262,7 +236,7 @@ function LoginPage() {
           </form>
 
           <p className="mt-6 text-center text-xs text-muted-foreground">
-            Demo mode — pick a role above and click sign in to explore that dashboard.
+            Select the role your account belongs to, then sign in with your own credentials.
           </p>
         </div>
       </div>

@@ -72,6 +72,7 @@ export interface AttendanceReport {
   generatedOn: string;
   format: "PDF" | "Excel";
   status: "Ready" | "Pending";
+  branch?: string;
 }
 
 export interface AttendanceSetting {

@@ -40,9 +40,14 @@ export const ROLE_ACCESS: Record<Role, string[]> = {
     "Notifications",
   ],
   store_manager: ["Dashboard", "Attendance", "Inventory", "POS", "Billing", "Reports", "Settings"],
-  inventory: ["Dashboard", "Inventory", "Reports", "Notifications", "Settings"],
-  cashier: ["Dashboard", "POS", "Billing"],
-  employee: ["Dashboard", "Attendance", "Notifications"],
+  // Attendance is granted to `inventory` and `cashier` for self-service only —
+  // every supervisory leaf under it is hidden from them via SELF_SERVICE_ONLY
+  // in nav.ts, leaving just "My Check-in".
+  inventory: ["Dashboard", "Inventory", "Attendance", "Reports", "Notifications", "Settings"],
+  cashier: ["Dashboard", "POS", "Billing", "Attendance"],
+  // No Notifications: those are operational alerts (low stock, payments,
+  // system) aimed at staff who act on them, not at individual employees.
+  employee: ["Dashboard", "Attendance"],
   hr: ["Dashboard", "Employees", "Attendance", "Reports", "Settings"],
 };
 
@@ -52,6 +57,26 @@ export const ROLE_ACCESS: Record<Role, string[]> = {
  */
 export function isBranchScoped(role: Role): boolean {
   return role !== "super_admin";
+}
+
+/**
+ * Roles allowed to approve or decline an employee's leave request on the
+ * Absent Report. Branch-scoped approvers only ever see their own branch's
+ * rows (queries are filtered by branch), so this is a role check, not a
+ * branch check.
+ */
+export function canApproveLeave(role: Role): boolean {
+  return role === "super_admin" || role === "branch_admin" || role === "hr";
+}
+
+/**
+ * Only Super Admin owns the product catalogue: creating, editing, deleting and
+ * importing products, and allocating stock out to branches. Every other role
+ * consumes what has been sent to their branch (see `branch_inventory`), so
+ * they get a read-only product list.
+ */
+export function canManageCatalogue(role: Role): boolean {
+  return role === "super_admin";
 }
 
 export function canSeeSection(role: Role, sectionLabel: string): boolean {

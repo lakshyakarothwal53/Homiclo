@@ -28,10 +28,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { CalendarClock, Download, UserX, RefreshCw, Plus, X } from "lucide-react";
+import { CalendarClock, Download, UserX, RefreshCw, Plus, X, Check, Ban } from "lucide-react";
 import { toast } from "sonner";
-import { useAbsentRecords, useCreateAbsentRecord } from "@/hooks/use-attendance";
-import { useBranchScope } from "@/hooks/use-branch-scope";
+import {
+  useAbsentRecords,
+  useCreateAbsentRecord,
+  useDecideLeaveRequest,
+  type LeaveDecision,
+} from "@/hooks/use-attendance";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { canApproveLeave } from "@/lib/roles";
+import { useBranchScope, useSelfScope } from "@/hooks/use-branch-scope";
 import { useEmployees } from "@/hooks/use-employees";
 import { usePagination } from "@/hooks/use-pagination";
 import { EntriesFooter } from "@/components/billing/EntriesFooter";
@@ -91,12 +98,33 @@ function Page() {
   const [search, setSearch] = useState("");
   const [date, setDate] = useState(todayIso());
   const [month, setMonth] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [openDialog, setOpenDialog] = useState(false);
   const [formData, setFormData] = useState({ employee: "", date: "", type: "", reason: "" });
   const { homeBranch } = useBranchScope();
-  const { data: allAbsentRecords = [], isLoading, refetch } = useAbsentRecords(search, homeBranch);
+  const { selfOnly, employeeId } = useSelfScope();
+  const { role } = useAuth();
+  const {
+    data: allAbsentRecords = [],
+    isLoading,
+    refetch,
+  } = useAbsentRecords(search, homeBranch, employeeId);
   const { data: employees = [] } = useEmployees(undefined, homeBranch);
   const createAbsent = useCreateAbsentRecord();
+  const decideLeave = useDecideLeaveRequest();
+  const isApprover = role ? canApproveLeave(role) : false;
+
+  const handleDecide = (id: string, employeeName: string, decision: LeaveDecision) => {
+    decideLeave.mutate(
+      { id, decision },
+      {
+        onSuccess: () =>
+          toast.success(`Leave request for ${employeeName} ${decision.toLowerCase()}.`),
+        onError: (e) =>
+          toast.error(e instanceof Error ? e.message : "Could not update the leave request."),
+      },
+    );
+  };
 
   const monthOptions = useMemo(() => {
     const seen = new Map<string, string>();
@@ -111,14 +139,32 @@ function Page() {
 
   const absentRecords = useMemo(() => {
     return allAbsentRecords.filter((absent) => {
+      if (statusFilter !== "all" && absent.status !== statusFilter) return false;
       if (!matchesDate(date, absent.date)) return false;
       if (month === "all") return true;
       const d = parseRowDate(absent.date);
       return d ? monthKey(d) === month : false;
     });
-  }, [allAbsentRecords, date, month]);
+  }, [allAbsentRecords, date, month, statusFilter]);
 
   const { page, setPage, totalPages, pageItems } = usePagination(absentRecords);
+
+  // Jump straight to the approval queue: leave requests are usually dated for
+  // a future day, so the default "today" date filter hides them.
+  const showPendingQueue = () => {
+    setStatusFilter("Pending");
+    setDate("");
+    setMonth("all");
+    setPage(1);
+  };
+
+  // Counted across every record in scope, not the date-filtered view — a
+  // request awaiting approval still needs attention even when the table is
+  // filtered to a different day.
+  const pendingCount = useMemo(
+    () => allAbsentRecords.filter((r) => r.status === "Pending").length,
+    [allAbsentRecords],
+  );
 
   const getLeaveTypeColor = (type?: string) => {
     switch (type) {
@@ -141,6 +187,8 @@ function Page() {
         return "text-green-700 bg-green-100";
       case "Pending":
         return "text-amber-700 bg-amber-100";
+      case "Declined":
+        return "text-gray-700 bg-gray-200";
       default:
         return "text-red-700 bg-red-100";
     }
@@ -247,89 +295,94 @@ function Page() {
             <Button size="sm" variant="outline" className="gap-2" onClick={handleExport}>
               <Download className="h-4 w-4" /> Export
             </Button>
-            <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-              <DialogTrigger asChild>
-                <Button
-                  size="sm"
-                  className="gap-2 bg-brand text-brand-foreground hover:bg-brand/90"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add New
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Record Absent</DialogTitle>
-                  <DialogDescription>Add a new absent record for an employee.</DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label className="text-sm font-medium">Employee *</Label>
-                    <Select
-                      value={formData.employee}
-                      onValueChange={(v) => setFormData({ ...formData, employee: v })}
-                    >
-                      <SelectTrigger className="mt-1 h-10">
-                        <SelectValue placeholder="Select employee" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {employees.map((e) => (
-                          <SelectItem key={e.id} value={e.id}>
-                            {e.name} · {e.branch}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Date *</Label>
-                    <Input
-                      type="date"
-                      value={formData.date}
-                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                      className="mt-1 h-10"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Leave Type *</Label>
-                    <Select
-                      value={formData.type}
-                      onValueChange={(v) => setFormData({ ...formData, type: v })}
-                    >
-                      <SelectTrigger className="mt-1 h-10">
-                        <SelectValue placeholder="Select leave type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Sick">Sick Leave</SelectItem>
-                        <SelectItem value="Personal">Personal Leave</SelectItem>
-                        <SelectItem value="Casual">Casual Leave</SelectItem>
-                        <SelectItem value="Paid">Paid Leave</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Reason</Label>
-                    <Input
-                      placeholder="Optional reason for absence"
-                      value={formData.reason}
-                      onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                      className="mt-1 h-10"
-                    />
-                  </div>
+            {/* Recording an absence against an arbitrary colleague is a
+                supervisory action — employees use "Apply for Leave" on their
+                own check-in page instead. */}
+            {!selfOnly && (
+              <Dialog open={openDialog} onOpenChange={setOpenDialog}>
+                <DialogTrigger asChild>
                   <Button
-                    onClick={handleAddAbsent}
-                    className="w-full bg-brand text-brand-foreground hover:bg-brand/90"
+                    size="sm"
+                    className="gap-2 bg-brand text-brand-foreground hover:bg-brand/90"
                   >
-                    Save Absent Record
+                    <Plus className="h-4 w-4" />
+                    Add New
                   </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Record Absent</DialogTitle>
+                    <DialogDescription>Add a new absent record for an employee.</DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium">Employee *</Label>
+                      <Select
+                        value={formData.employee}
+                        onValueChange={(v) => setFormData({ ...formData, employee: v })}
+                      >
+                        <SelectTrigger className="mt-1 h-10">
+                          <SelectValue placeholder="Select employee" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {employees.map((e) => (
+                            <SelectItem key={e.id} value={e.id}>
+                              {e.name} · {e.branch}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Date *</Label>
+                      <Input
+                        type="date"
+                        value={formData.date}
+                        onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                        className="mt-1 h-10"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Leave Type *</Label>
+                      <Select
+                        value={formData.type}
+                        onValueChange={(v) => setFormData({ ...formData, type: v })}
+                      >
+                        <SelectTrigger className="mt-1 h-10">
+                          <SelectValue placeholder="Select leave type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Sick">Sick Leave</SelectItem>
+                          <SelectItem value="Personal">Personal Leave</SelectItem>
+                          <SelectItem value="Casual">Casual Leave</SelectItem>
+                          <SelectItem value="Paid">Paid Leave</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium">Reason</Label>
+                      <Input
+                        placeholder="Optional reason for absence"
+                        value={formData.reason}
+                        onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                        className="mt-1 h-10"
+                      />
+                    </div>
+                    <Button
+                      onClick={handleAddAbsent}
+                      className="w-full bg-brand text-brand-foreground hover:bg-brand/90"
+                    >
+                      Save Absent Record
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
         }
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card className="border-border">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -338,6 +391,26 @@ function Page() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{absentRecords.length}</div>
+          </CardContent>
+        </Card>
+        <Card
+          className={`border-border ${pendingCount > 0 ? "cursor-pointer transition hover:border-amber-400 hover:bg-amber-50/50" : ""}`}
+          onClick={pendingCount > 0 ? showPendingQueue : undefined}
+        >
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Pending Requests
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-600">{pendingCount}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {pendingCount === 0
+                ? "Nothing awaiting approval"
+                : isApprover
+                  ? "Click to review and approve"
+                  : "Awaiting approval"}
+            </p>
           </CardContent>
         </Card>
         <Card className="border-border">
@@ -400,7 +473,36 @@ function Page() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="h-10 w-full sm:w-44">
+                <SelectValue placeholder="All statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="Pending">Pending</SelectItem>
+                <SelectItem value="Approved">Approved</SelectItem>
+                <SelectItem value="Declined">Declined</SelectItem>
+                <SelectItem value="Absent">Absent</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+
+          {isApprover && pendingCount > 0 && statusFilter !== "Pending" && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-sm text-amber-900">
+                <strong>{pendingCount}</strong> leave{" "}
+                {pendingCount === 1 ? "request is" : "requests are"} waiting for your approval.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0 border-amber-300 bg-white hover:bg-amber-100"
+                onClick={showPendingQueue}
+              >
+                Review now
+              </Button>
+            </div>
+          )}
 
           <div className="rounded-lg border border-border overflow-x-auto">
             <Table>
@@ -413,19 +515,41 @@ function Page() {
                   <TableHead className="h-12 font-semibold">Reason</TableHead>
                   <TableHead className="h-12 font-semibold">Branch</TableHead>
                   <TableHead className="h-12 font-semibold">Status</TableHead>
+                  {isApprover && (
+                    <TableHead className="h-12 font-semibold text-right">Action</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={isApprover ? 8 : 7}
+                      className="py-8 text-center text-muted-foreground"
+                    >
                       Loading...
                     </TableCell>
                   </TableRow>
                 ) : absentRecords.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
-                      No absent records found.
+                    <TableCell
+                      colSpan={isApprover ? 8 : 7}
+                      className="py-8 text-center text-muted-foreground"
+                    >
+                      No absent records match these filters.
+                      {date && (
+                        <>
+                          {" "}
+                          Showing <strong>{date}</strong> only —{" "}
+                          <button
+                            className="underline hover:text-foreground"
+                            onClick={() => setDate("")}
+                          >
+                            clear the date filter
+                          </button>{" "}
+                          to see all records.
+                        </>
+                      )}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -459,6 +583,39 @@ function Page() {
                           {absent.status}
                         </span>
                       </TableCell>
+                      {isApprover && (
+                        <TableCell className="py-4 text-right">
+                          {absent.status === "Pending" ? (
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                className="gap-1 bg-green-600 text-white hover:bg-green-700"
+                                disabled={decideLeave.isPending}
+                                onClick={() =>
+                                  handleDecide(absent.id, absent.employeeName, "Approved")
+                                }
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-1 text-destructive hover:text-destructive"
+                                disabled={decideLeave.isPending}
+                                onClick={() =>
+                                  handleDecide(absent.id, absent.employeeName, "Declined")
+                                }
+                              >
+                                <Ban className="h-3.5 w-3.5" />
+                                Decline
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}

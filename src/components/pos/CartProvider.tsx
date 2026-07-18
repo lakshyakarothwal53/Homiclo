@@ -6,12 +6,20 @@ import type { AppliedCoupon, PosLineItem, PosProduct } from "@/types/pos";
 
 export type CartLine = { product: PosProduct; qty: number };
 
+/** Tax charged at one rate, for the bill's GST breakdown. */
+export type GstBucket = { rate: number; taxable: number; tax: number };
+
 export type CartTotals = {
   itemCount: number;
   subtotal: number;
   discount: number;
   gst: number;
   total: number;
+  /** One entry per distinct GST rate in the cart, ascending. */
+  gstBreakdown: GstBucket[];
+  /** Total MRP of the cart, and what the customer saved against it. */
+  mrpTotal: number;
+  mrpSavings: number;
 };
 
 type CartContextValue = {
@@ -125,23 +133,77 @@ export function CartProvider({ children }: { children: ReactNode }) {
             : Math.min(coupon.value, eligibleSubtotal);
       }
     }
-    const gst = Math.round((subtotal - discount) * (settings.gstRate / 100));
+    // Per-line GST. Each product is taxed at its OWN rate (falling back to the
+    // flat POS rate when it has none), so a cart mixing 5% and 18% goods bills
+    // correctly instead of averaging everything at one rate.
+    //
+    // The cart discount is apportioned across lines in proportion to their
+    // value, so tax is charged on what the customer actually pays for that
+    // line, not on its pre-discount value. The last line absorbs any rounding
+    // remainder so the apportioned parts always sum back to `discount` exactly.
+    const buckets = new Map<number, { taxable: number; tax: number }>();
+    let allocatedDiscount = 0;
+    lines.forEach((l, i) => {
+      const lineValue = l.product.price * l.qty;
+      const share =
+        i === lines.length - 1
+          ? discount - allocatedDiscount
+          : subtotal > 0
+            ? Math.round(discount * (lineValue / subtotal))
+            : 0;
+      allocatedDiscount += share;
+
+      const taxable = Math.max(0, lineValue - share);
+      const rate = l.product.gstRate ?? settings.gstRate;
+      const cur = buckets.get(rate) ?? { taxable: 0, tax: 0 };
+      cur.taxable += taxable;
+      cur.tax += taxable * (rate / 100);
+      buckets.set(rate, cur);
+    });
+
+    const gstBreakdown: GstBucket[] = [...buckets.entries()]
+      .map(([rate, b]) => ({ rate, taxable: b.taxable, tax: Math.round(b.tax) }))
+      .sort((a, b) => a.rate - b.rate);
+    const gst = gstBreakdown.reduce((s, b) => s + b.tax, 0);
     const total = subtotal - discount + gst;
-    return { itemCount, subtotal, discount, gst, total };
+
+    // MRP is display-only: it never feeds the total, it just shows the saving.
+    // Products with no MRP fall back to their selling price so the comparison
+    // stays honest rather than overstating the discount.
+    const mrpTotal = lines.reduce((s, l) => s + (l.product.mrp ?? l.product.price) * l.qty, 0);
+    const mrpSavings = Math.max(0, mrpTotal - (subtotal - discount));
+
+    return { itemCount, subtotal, discount, gst, total, gstBreakdown, mrpTotal, mrpSavings };
   }, [lines, coupon, settings.gstRate]);
 
-  const asLineItems = useCallback(
-    (): PosLineItem[] =>
-      lines.map((l) => ({
+  // The rate and tax are snapshotted onto each line so a reprinted bill shows
+  // what was actually charged, even if the product's GST rate changes later.
+  const asLineItems = useCallback((): PosLineItem[] => {
+    const subtotal = lines.reduce((s, l) => s + l.product.price * l.qty, 0);
+    let allocated = 0;
+    return lines.map((l, i) => {
+      const lineTotal = l.product.price * l.qty;
+      const share =
+        i === lines.length - 1
+          ? totals.discount - allocated
+          : subtotal > 0
+            ? Math.round(totals.discount * (lineTotal / subtotal))
+            : 0;
+      allocated += share;
+      const rate = l.product.gstRate ?? settings.gstRate;
+      return {
         barcode: l.product.barcode,
         sku: l.product.sku,
         name: l.product.name,
         qty: l.qty,
         unitPrice: l.product.price,
-        lineTotal: l.product.price * l.qty,
-      })),
-    [lines],
-  );
+        lineTotal,
+        gstRate: rate,
+        gstAmount: Math.round(Math.max(0, lineTotal - share) * (rate / 100)),
+        mrp: l.product.mrp,
+      };
+    });
+  }, [lines, totals.discount, settings.gstRate]);
 
   const value = useMemo(
     () => ({

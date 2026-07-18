@@ -1,7 +1,7 @@
 import { createIsomorphicFn } from "@tanstack/react-start";
 import { getCookie } from "@tanstack/react-start/server";
 import usersData from "@/mocks/users.json";
-import type { Role } from "@/lib/roles";
+import { ROLE_LABEL, type Role } from "@/lib/roles";
 
 const COOKIE_NAME = "homiqlo_session";
 const MAX_AGE = 60 * 60 * 24 * 7; // 7 days
@@ -80,44 +80,73 @@ function toSessionRole(dbRole: string | null | undefined): Role {
   return EMPLOYEE_ROLE_MAP[(dbRole ?? "").trim().toLowerCase()] ?? "employee";
 }
 
-export async function signIn(email: string, password: string): Promise<SessionUser> {
+/**
+ * Authenticate and open a session.
+ *
+ * `expectedRole` is the role the user picked on the login screen. When given,
+ * the credentials must belong to an account that actually HAS that role —
+ * signing in as "Cashier" with an employee's password is rejected. The check
+ * runs BEFORE the session cookie is written, so a refused login leaves no
+ * session behind (a post-hoc check would have logged them in regardless).
+ */
+export async function signIn(
+  email: string,
+  password: string,
+  expectedRole?: Role,
+): Promise<SessionUser> {
   const hash = await sha256(password);
   const normalizedEmail = email.trim().toLowerCase();
 
-  // First try to find in mock users
+  const resolved = await resolveUser(normalizedEmail, hash);
+  if (!resolved) throw new Error("Invalid email or password");
+
+  if (expectedRole && resolved.role !== expectedRole) {
+    throw new Error(
+      `These credentials are for ${ROLE_LABEL[resolved.role]}, not ${ROLE_LABEL[expectedRole]}. ` +
+        `Select the correct role and try again.`,
+    );
+  }
+
+  setSessionCookie(resolved);
+  return resolved;
+}
+
+/**
+ * Resolve credentials to a user without opening a session.
+ *
+ * Real accounts live in the Supabase `employees` table — created through
+ * Employees → Add Employee. src/mocks/users.json is NOT demo data any more: it
+ * holds exactly one break-glass Super Admin, because `employees` has no role
+ * that maps to super_admin (see EMPLOYEE_ROLE_MAP — "Admin" is a BRANCH admin),
+ * so without it nobody could manage the catalogue or allocate stock to
+ * branches. Do not re-add demo logins here.
+ */
+async function resolveUser(normalizedEmail: string, hash: string): Promise<SessionUser | null> {
   const match = USERS.find(
     (u) => u.email.toLowerCase() === normalizedEmail && u.passwordHash === hash,
   );
+  if (match) return sanitize(match);
 
-  if (!match) {
-    // Try Supabase for employee login
-    try {
-      const employeeMatch = await findEmployeeByEmail(normalizedEmail, hash);
-      if (employeeMatch) {
-        const user: SessionUser = {
-          id: employeeMatch.id,
-          email: employeeMatch.email,
-          name: employeeMatch.name,
-          initials: employeeMatch.name
-            .split(" ")
-            .map((n: string) => n[0])
-            .join("")
-            .toUpperCase(),
-          role: toSessionRole(employeeMatch.role),
-          branch: employeeMatch.branch,
-        };
-        setSessionCookie(user);
-        return user;
-      }
-    } catch (error) {
-      console.error("Error checking Supabase for employee:", error);
+  try {
+    const employeeMatch = await findEmployeeByEmail(normalizedEmail, hash);
+    if (employeeMatch) {
+      return {
+        id: employeeMatch.id,
+        email: employeeMatch.email,
+        name: employeeMatch.name,
+        initials: employeeMatch.name
+          .split(" ")
+          .map((n: string) => n[0])
+          .join("")
+          .toUpperCase(),
+        role: toSessionRole(employeeMatch.role),
+        branch: employeeMatch.branch,
+      };
     }
+  } catch (error) {
+    console.error("Error checking Supabase for employee:", error);
   }
-
-  if (!match) throw new Error("Invalid email or password");
-  const user = sanitize(match);
-  setSessionCookie(user);
-  return user;
+  return null;
 }
 
 async function findEmployeeByEmail(email: string, passwordHash: string) {

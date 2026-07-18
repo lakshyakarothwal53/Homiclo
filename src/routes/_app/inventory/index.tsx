@@ -16,13 +16,14 @@ import { StatCard } from "@/components/common/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  useInventoryDashboard,
   useProducts,
   useLowStockAlerts,
   useCategories,
   useStockInward,
   useStockOutward,
+  useBranchAllocationMovement,
 } from "@/hooks/use-inventory";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { parseRowDate } from "@/lib/report-data";
 
 export const Route = createFileRoute("/_app/inventory/")({
@@ -36,12 +37,23 @@ export const Route = createFileRoute("/_app/inventory/")({
 });
 
 function Page() {
-  const { data: dashboardData, isLoading: dashboardLoading } = useInventoryDashboard();
-  const { data: products = [], isLoading: productsLoading } = useProducts();
-  const { data: lowStockAlerts = [], isLoading: alertsLoading } = useLowStockAlerts();
-  const { data: categories = [], isLoading: categoriesLoading } = useCategories();
-  const { data: stockInward = [], isLoading: inwardLoading } = useStockInward();
-  const { data: stockOutward = [], isLoading: outwardLoading } = useStockOutward();
+  // Branch-scoped roles see only their own branch's allocated inventory;
+  // Super Admin ("all") sees the central catalogue.
+  const { scoped, homeBranch } = useBranchScope();
+  const branch = scoped ? homeBranch : undefined;
+
+  // The inventory_dashboard table is a seed-time JSON snapshot that goes stale
+  // the moment stock moves, and every figure below is computed live instead —
+  // so it is deliberately not queried here.
+  const { data: products = [], isLoading: productsLoading } = useProducts(undefined, branch);
+  const { data: lowStockAlerts = [], isLoading: alertsLoading } = useLowStockAlerts(
+    undefined,
+    branch,
+  );
+  const { data: categories = [], isLoading: categoriesLoading } = useCategories(undefined, branch);
+  const { data: stockInward = [], isLoading: inwardLoading } = useStockInward(undefined, branch);
+  const { data: stockOutward = [], isLoading: outwardLoading } = useStockOutward(undefined, branch);
+  const { data: allocationMovement = [] } = useBranchAllocationMovement(branch);
 
   // Calculate real stats from Supabase data
   const totalProducts = products.length;
@@ -78,6 +90,12 @@ function Page() {
 
     stockInward.forEach((item) => record(item.date, item.qty, "inward"));
     stockOutward.forEach((item) => record(item.date, item.qty, "outward"));
+    // Branch view: stock arriving from the centre counts as inward for that
+    // branch, a recall as outward.
+    allocationMovement.forEach((a) => {
+      record(a.date, a.inward, "inward");
+      record(a.date, a.outward, "outward");
+    });
 
     return [...byDate.values()]
       .sort((a, b) => a.date.getTime() - b.date.getTime())
@@ -97,19 +115,16 @@ function Page() {
 
   const stockMovement = generateStockMovement();
   const isLoading =
-    dashboardLoading ||
-    productsLoading ||
-    alertsLoading ||
-    categoriesLoading ||
-    inwardLoading ||
-    outwardLoading;
+    productsLoading || alertsLoading || categoriesLoading || inwardLoading || outwardLoading;
 
   return (
     <>
       <PageHeader
         eyebrow="Inventory"
         title="Inventory Dashboard"
-        description="Dashboard overview and controls."
+        description={
+          branch ? `Stock allocated to ${branch}.` : "Central catalogue across all branches."
+        }
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -128,7 +143,7 @@ function Page() {
         <StatCard
           label="Stock Value"
           value={isLoading ? "—" : formatStockValue(totalStockValue)}
-          hint="Current inventory"
+          hint={branch ? `Held at ${branch}` : "Central inventory"}
           icon={IndianRupee}
         />
         <StatCard

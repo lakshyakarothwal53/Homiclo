@@ -23,6 +23,7 @@ import {
 import { ArrowLeft, Download, Edit2, Trash2 } from "lucide-react";
 import { useEmployeeProfile, useDeleteEmployee, useUpdateEmployee } from "@/hooks/use-employees";
 import { useBranches } from "@/hooks/use-inventory";
+import { useShiftConfigs } from "@/hooks/use-attendance";
 import { fetchEmployeeAttendanceSummary } from "@/lib/report-data";
 import { buildTablePdf, downloadPdf } from "@/lib/pdf-utils";
 import type { EmployeeRole, EmployeeStatus } from "@/types/employees";
@@ -31,13 +32,15 @@ import { toast } from "sonner";
 const ROLES = ["Cashier", "Floor Manager", "Inventory", "Supervisor", "Admin", "HR", "Employee"];
 const STATUSES = ["Active", "Inactive", "Suspended"];
 
-function editFields(branches: string[]): EntityField[] {
+function editFields(branches: string[], shifts: { value: string; label: string }[]): EntityField[] {
   return [
     { key: "name", label: "Name", required: true },
     { key: "email", label: "Email", required: true },
     { key: "phone", label: "Phone", required: true },
     { key: "role", label: "Role", type: "select", options: ROLES, required: true },
     { key: "branch", label: "Branch", type: "select", options: branches, required: true },
+    // Stored value is the shift's id; the label shows its name and hours.
+    { key: "shiftId", label: "Shift", type: "select", options: shifts, required: true },
     { key: "status", label: "Status", type: "select", options: STATUSES, required: true },
     { key: "salary", label: "Salary", required: true },
   ];
@@ -76,6 +79,11 @@ function EmployeeProfilePage() {
   const { mutate: deleteEmployee, isPending: isDeleting } = useDeleteEmployee();
   const { mutate: updateEmployee } = useUpdateEmployee();
   const { data: branches = [] } = useBranches();
+  const { data: shifts = [] } = useShiftConfigs();
+  const shiftOptions = shifts.map((s) => ({
+    value: s.id,
+    label: `${s.shiftName} (${s.startTime} - ${s.endTime})`,
+  }));
   const [editOpen, setEditOpen] = useState(false);
 
   if (isLoading) {
@@ -129,6 +137,7 @@ function EmployeeProfilePage() {
         joinDate: profile.joinDate,
         status: values.status as EmployeeStatus,
         salary: String(values.salary),
+        shiftId: values.shiftId ? String(values.shiftId) : undefined,
       },
       {
         onSuccess: () => toast.success("Employee updated successfully"),
@@ -215,7 +224,7 @@ function EmployeeProfilePage() {
         mode="edit"
         title="Edit Employee"
         description="Update this employee's details."
-        fields={editFields(branches)}
+        fields={editFields(branches, shiftOptions)}
         initial={profile}
         open={editOpen}
         onOpenChange={setEditOpen}
@@ -265,6 +274,12 @@ function EmployeeProfilePage() {
             <div>
               <p className="text-sm text-muted-foreground">Branch</p>
               <p className="font-medium">{profile.branch}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Shift</p>
+              <p className={profile.shiftName ? "font-medium" : "font-medium text-destructive"}>
+                {profile.shiftName ?? "Not assigned"}
+              </p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Join Date</p>

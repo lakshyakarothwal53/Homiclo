@@ -886,10 +886,13 @@ export function useCreateRefund() {
       //     only. A manually-created invoice with no POS line items has
       //     nothing to restore either way.
       try {
+        // Restored to the SAME stock the sale drew down: a branch's refund puts
+        // goods back on that branch's shelf, not into the central warehouse.
         if (explicitItems) {
           await applyStockMovement(
             explicitItems.map((i) => ({ sku: i.sku, qty: i.qty })),
             "in",
+            refundBranch ?? undefined,
           );
         } else if (firstRefund) {
           const { data: items } = await supabase
@@ -900,6 +903,7 @@ export function useCreateRefund() {
             await applyStockMovement(
               items.map((i) => ({ sku: i.sku as string, qty: i.qty as number })),
               "in",
+              refundBranch ?? undefined,
             );
           }
         }

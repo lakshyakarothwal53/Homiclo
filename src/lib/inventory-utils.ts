@@ -20,38 +20,65 @@ export function deriveLowStockStatus(stock: number, minStock: number): LowStockS
 // standalone low_stock_alerts table, whose stored rows had already gone stale
 // (they listed SKUs whose stock was above min_stock). Callers that need fewer
 // columns / a different shape map over this result.
-export async function fetchLowStockAlerts(): Promise<LowStockAlert[]> {
+export async function fetchLowStockAlerts(branch?: string): Promise<LowStockAlert[]> {
+  const scoped = !!branch && branch !== "all";
+
   const { data, error } = await supabase
     .from("products")
     .select("sku, name, stock, min_stock")
     .order("stock");
   if (error) throw error;
-  return (data ?? [])
+
+  // Branch view: the on-hand figure is that branch's allocated quantity
+  // (branch_inventory), not the central warehouse stock. min_stock is still a
+  // product-level fact, so it comes from products either way.
+  let stockFor = (p: { sku: string; stock: number | null }) => (p.stock ?? 0) as number;
+  let rows = data ?? [];
+  if (scoped) {
+    const { data: allocations, error: allocError } = await supabase
+      .from("branch_inventory")
+      .select("sku, stock")
+      .eq("branch", branch);
+    if (allocError) throw allocError;
+    const bySku = new Map((allocations ?? []).map((a) => [a.sku as string, a.stock as number]));
+    // Only products actually sent to this branch can raise an alert for it.
+    rows = rows.filter((p) => bySku.has(p.sku as string));
+    stockFor = (p) => bySku.get(p.sku) ?? 0;
+  }
+
+  return rows
     .map((p) => ({
       sku: p.sku as string,
       product: p.name as string,
-      currentStock: (p.stock ?? 0) as number,
+      currentStock: stockFor(p as { sku: string; stock: number | null }),
       minLevel: (p.min_stock ?? 0) as number,
     }))
     .filter((p) => p.currentStock < p.minLevel)
+    .sort((a, b) => a.currentStock - b.currentStock)
     .map((p) => ({ ...p, status: deriveLowStockStatus(p.currentStock, p.minLevel) }));
 }
 
 export type StockMovementItem = { sku: string; qty: number };
 
 /**
- * Apply a stock movement to the products table (the single source of truth for
- * on-hand stock). `direction` "out" decrements stock — a completed sale ships
- * goods; "in" increments it — a refund/return puts goods back. Lines sharing a
- * SKU are summed first (a cart can list the same SKU twice). Read-modify-write
- * per SKU because the anon key has no atomic decrement/RPC; the new value is
- * clamped at 0 and the stored `status` is recomputed from it so the product
- * record can't drift out of sync with its own stock. Returns how many products
- * actually changed.
+ * Apply a stock movement. `direction` "out" decrements — a completed sale ships
+ * goods; "in" increments — a refund/return puts goods back. Lines sharing a SKU
+ * are summed first (a cart can list the same SKU twice). Read-modify-write per
+ * SKU because the anon key has no atomic decrement; the new value is clamped
+ * at 0. Returns how many rows actually changed.
+ *
+ * WHICH stock moves depends on who sold it:
+ *  - `branch` given  → that branch's own allocation in branch_inventory. A
+ *    till can only ship goods it holds, so a branch sale must NOT drain the
+ *    central warehouse (which would leave the branch's own count untouched
+ *    forever and silently empty head office).
+ *  - no `branch`     → products.stock, the central warehouse, and the stored
+ *    `status` is recomputed so the product record can't drift out of sync.
  */
 export async function applyStockMovement(
   items: StockMovementItem[],
   direction: "in" | "out",
+  branch?: string,
 ): Promise<number> {
   const totals = new Map<string, number>();
   for (const { sku, qty } of items) {
@@ -61,13 +88,40 @@ export async function applyStockMovement(
   const skus = [...totals.keys()];
   if (skus.length === 0) return 0;
 
+  const sign = direction === "out" ? -1 : 1;
+  const scoped = !!branch && branch !== "all";
+
+  if (scoped) {
+    const { data, error } = await supabase
+      .from("branch_inventory")
+      .select("sku, stock")
+      .eq("branch", branch)
+      .in("sku", skus);
+    if (error) throw error;
+
+    let changed = 0;
+    for (const row of data ?? []) {
+      const sku = row.sku as string;
+      const delta = (totals.get(sku) ?? 0) * sign;
+      if (!delta) continue;
+      const newStock = Math.max(0, (row.stock ?? 0) + delta);
+      const { error: updateError } = await supabase
+        .from("branch_inventory")
+        .update({ stock: newStock, updated_at: new Date().toISOString() })
+        .eq("sku", sku)
+        .eq("branch", branch);
+      if (updateError) throw updateError;
+      changed += 1;
+    }
+    return changed;
+  }
+
   const { data, error } = await supabase
     .from("products")
     .select("sku, stock, min_stock")
     .in("sku", skus);
   if (error) throw error;
 
-  const sign = direction === "out" ? -1 : 1;
   let changed = 0;
   for (const row of data ?? []) {
     const sku = row.sku as string;

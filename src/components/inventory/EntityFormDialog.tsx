@@ -21,14 +21,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+/**
+ * A select option. A plain string is used as both the stored value and the
+ * label; the object form separates them, for fields whose stored value is an
+ * id but which must display a human name (e.g. a shift).
+ */
+export type EntityOption = string | { value: string; label: string };
+
 export type EntityField = {
   key: string;
   label: string;
   type?: "text" | "number" | "select";
-  options?: readonly string[];
+  options?: readonly EntityOption[];
   required?: boolean;
   placeholder?: string;
 };
+
+const optionValue = (o: EntityOption) => (typeof o === "string" ? o : o.value);
+const optionLabel = (o: EntityOption) => (typeof o === "string" ? o : o.label);
 
 export type EntityValues = Record<string, string | number>;
 
@@ -130,8 +140,8 @@ export function EntityFormDialog({
                   </SelectTrigger>
                   <SelectContent>
                     {(f.options ?? []).map((o) => (
-                      <SelectItem key={o} value={o}>
-                        {o}
+                      <SelectItem key={optionValue(o)} value={optionValue(o)}>
+                        {optionLabel(o)}
                       </SelectItem>
                     ))}
                   </SelectContent>

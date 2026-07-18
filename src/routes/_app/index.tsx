@@ -1,4 +1,5 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { useMemo } from "react";
 import {
   Area,
   AreaChart,
@@ -45,7 +46,7 @@ import {
   useEmployeeLogins,
 } from "@/hooks/use-dashboard";
 import { useAuth } from "@/components/auth/AuthProvider";
-import { isBranchScoped } from "@/lib/roles";
+import { canAccessPath, canManageCatalogue, isBranchScoped } from "@/lib/roles";
 
 export const Route = createFileRoute("/_app/")({
   head: () => ({
@@ -76,13 +77,35 @@ function DashboardPage() {
   // every branch-scoped role sees only their own branch's data.
   const branch = user && isBranchScoped(user.role) ? user.branch : undefined;
 
+  // Quick actions are filtered to what this role can actually open, so a
+  // cashier isn't offered tiles that the route guard would bounce them from.
+  // "Mark Attendance" leads the list for self-service roles — it's the action
+  // they start their shift with.
+  const quickActions = useMemo(() => {
+    const all = [
+      { icon: Clock, label: "Mark Attendance", route: "/attendance/employee-checkin" },
+      { icon: UserPlus, label: "Add Employee", route: "/employees/add" },
+      // Only Super Admin can create products; a branch receives stock from the
+      // centre, so its tile links to the read-only list instead.
+      user && canManageCatalogue(user.role)
+        ? { icon: Box, label: "Add Product", route: "/inventory/products" }
+        : { icon: Box, label: "View Inventory", route: "/inventory/products" },
+      { icon: Receipt, label: "New Invoice", route: "/billing/create-invoice" },
+      { icon: BadgePercent, label: "New Discount", route: "/discounts" },
+      { icon: ShoppingCart, label: "Open POS", route: "/pos" },
+      { icon: ShieldCheck, label: "Audit Log", route: "/settings/roles" },
+    ];
+    if (!user) return all;
+    return all.filter((a) => canAccessPath(user.role, a.route));
+  }, [user]);
+
   // Fetch all dashboard data from Supabase, scoped to the viewer's branch.
   const statsQuery = useDashboardStats(branch);
   const salesChartQuery = useSalesChartData(branch);
   const attendanceChartQuery = useAttendanceChartData(branch);
   const inventoryMixQuery = useInventoryMixData(branch);
   const transactionsQuery = useRecentTransactions(branch);
-  const stockAlertsQuery = useStockAlertsData();
+  const stockAlertsQuery = useStockAlertsData(branch);
   const loginsQuery = useEmployeeLogins(branch);
 
   // Live data only — while loading (or on error) widgets show placeholders/empty
@@ -275,14 +298,7 @@ function DashboardPage() {
             <CardTitle className="text-base">Quick actions</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-2">
-            {[
-              { icon: UserPlus, label: "Add Employee", route: "/employees/add" },
-              { icon: Box, label: "Add Product", route: "/inventory/products" },
-              { icon: Receipt, label: "New Invoice", route: "/billing/create-invoice" },
-              { icon: BadgePercent, label: "New Discount", route: "/discounts" },
-              { icon: ShoppingCart, label: "Open POS", route: "/pos" },
-              { icon: ShieldCheck, label: "Audit Log", route: "/settings/roles" },
-            ].map(({ icon: Icon, label, route }) => (
+            {quickActions.map(({ icon: Icon, label, route }) => (
               <button
                 key={label}
                 onClick={() => router.navigate({ to: route })}

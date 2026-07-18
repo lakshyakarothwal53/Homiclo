@@ -14,12 +14,15 @@ import { FilterBar } from "@/components/inventory/FilterBar";
 import { InventoryStatusBadge } from "@/components/inventory/InventoryStatusBadge";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Barcode } from "lucide-react";
+import { Barcode, Send } from "lucide-react";
 import { calculateProductStatus } from "@/lib/inventory-utils";
 import { exportProductsToCSV } from "@/lib/export-utils";
 import { printBarcodes } from "@/lib/barcode-utils";
 import type { Product } from "@/types/inventory";
 import { useBranchScope } from "@/hooks/use-branch-scope";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { canManageCatalogue } from "@/lib/roles";
+import { SendToBranchDialog } from "@/components/inventory/SendToBranchDialog";
 import {
   useBranches,
   useCategories,
@@ -41,12 +44,21 @@ export const Route = createFileRoute("/_app/inventory/products")({
   component: Page,
 });
 
-const COLUMNS: Column[] = [
+const BASE_COLUMNS: Column[] = [
   { key: "sku", label: "SKU" },
   { key: "product", label: "Product" },
   { key: "category", label: "Category" },
   { key: "price", label: "Price", align: "right" },
-  { key: "stock", label: "Stock", align: "right" },
+];
+
+// Super Admin's "Stock" is central/unallocated; a branch's is its own holding.
+const columnsFor = (canManage: boolean, scoped: boolean): Column[] => [
+  ...BASE_COLUMNS,
+  {
+    key: "stock",
+    label: canManage && !scoped ? "Central Stock" : "Branch Stock",
+    align: "right",
+  },
   { key: "status", label: "Status" },
   { key: "action", label: "", align: "right" },
 ];
@@ -68,6 +80,10 @@ const ITEMS_PER_PAGE = 10;
 
 function Page() {
   const { scoped, homeBranch } = useBranchScope();
+  const { role } = useAuth();
+  // Only Super Admin owns the catalogue; branch roles get a read-only list of
+  // what has been sent to them.
+  const canManage = role ? canManageCatalogue(role) : false;
   const [search, setSearch] = useState("");
   const [branch, setBranch] = useState(homeBranch);
   const [addOpen, setAddOpen] = useState(false);
@@ -180,14 +196,20 @@ function Page() {
           </Button>
         }
       />
+      {/* Catalogue mutations (Add New / Import) are Super-Admin-only: branches
+          receive stock from the centre rather than creating their own. */}
       <FilterBar
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search products…"
-        primaryLabel="Add New"
-        onPrimary={() => setAddOpen(true)}
         onExport={handleExport}
-        onImport={() => setImportOpen(true)}
+        {...(canManage
+          ? {
+              primaryLabel: "Add New",
+              onPrimary: () => setAddOpen(true),
+              onImport: () => setImportOpen(true),
+            }
+          : {})}
         {...(scoped ? {} : { branches, branch, onBranchChange: setBranch })}
         minPrice={minPrice}
         maxPrice={maxPrice}
@@ -195,26 +217,30 @@ function Page() {
         onMaxPriceChange={setMaxPrice}
       />
 
-      <ImportProductsDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-        onImport={handleBulkImport}
-      />
+      {canManage && (
+        <>
+          <ImportProductsDialog
+            open={importOpen}
+            onOpenChange={setImportOpen}
+            onImport={handleBulkImport}
+          />
 
-      <ProductFormDialog
-        mode="add"
-        title="Add Product"
-        description="Create a new product in the catalog."
-        categories={categories.map((c) => c.name)}
-        allProducts={data}
-        open={addOpen}
-        onOpenChange={setAddOpen}
-        onSave={handleCreate}
-        onAddToStock={handleAddToStock}
-      />
+          <ProductFormDialog
+            mode="add"
+            title="Add Product"
+            description="Create a new product in the catalog."
+            categories={categories.map((c) => c.name)}
+            allProducts={data}
+            open={addOpen}
+            onOpenChange={setAddOpen}
+            onSave={handleCreate}
+            onAddToStock={handleAddToStock}
+          />
+        </>
+      )}
 
       <DataTableCard
-        columns={COLUMNS}
+        columns={columnsFor(canManage, scoped)}
         isLoading={isLoading}
         count={filteredByPrice.length}
         currentPage={currentPage}
@@ -241,19 +267,34 @@ function Page() {
                 >
                   Barcode
                 </button>
-                <ProductFormDialog
-                  mode="edit"
-                  title="Edit Product"
-                  categories={categories.map((c) => c.name)}
-                  allProducts={data}
-                  initial={p}
-                  trigger={
-                    <button className="text-sm font-medium text-brand hover:underline">Edit</button>
-                  }
-                  onSave={(v) => handleUpdate(p.sku, v)}
-                  onAddToStock={handleAddToStock}
-                />
-                <DeleteConfirm label={p.sku} onConfirm={() => handleDelete(p.sku)} />
+                {canManage && (
+                  <>
+                    <SendToBranchDialog
+                      product={p}
+                      branches={branches}
+                      trigger={
+                        <button className="inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline">
+                          <Send className="h-3.5 w-3.5" /> Send
+                        </button>
+                      }
+                    />
+                    <ProductFormDialog
+                      mode="edit"
+                      title="Edit Product"
+                      categories={categories.map((c) => c.name)}
+                      allProducts={data}
+                      initial={p}
+                      trigger={
+                        <button className="text-sm font-medium text-brand hover:underline">
+                          Edit
+                        </button>
+                      }
+                      onSave={(v) => handleUpdate(p.sku, v)}
+                      onAddToStock={handleAddToStock}
+                    />
+                    <DeleteConfirm label={p.sku} onConfirm={() => handleDelete(p.sku)} />
+                  </>
+                )}
               </div>
             </TableCell>
           </TableRow>

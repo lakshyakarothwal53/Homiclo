@@ -84,7 +84,9 @@ function Page() {
   } = useCart();
 
   const { data: rows = [] } = usePosProducts(search, branch);
-  const { data: allProducts = [] } = usePosProducts();
+  // Barcode lookup must resolve against the SAME branch-scoped catalogue the
+  // grid shows — otherwise scanning would add a product the till doesn't hold.
+  const { data: allProducts = [] } = usePosProducts(undefined, branch);
   const { data: branches = [] } = usePosBranches();
   const { page, setPage, totalPages, pageItems } = usePagination(rows);
   const { data: nextInvoice } = useNextPosInvoiceNumber();
@@ -293,6 +295,9 @@ function Page() {
                 discount: snapshot.discount,
                 gst: snapshot.gst,
                 total: snapshot.total,
+                gstBreakdown: snapshot.gstBreakdown,
+                mrpTotal: snapshot.mrpTotal,
+                mrpSavings: snapshot.mrpSavings,
                 customerName: customer.name,
                 customerMobile: customer.mobile,
                 customerDob: customer.dob,
@@ -470,10 +475,29 @@ function Page() {
                     -{formatINR(totals.discount)}
                   </dd>
                 </div>
-                <div className="flex justify-between text-muted-foreground">
-                  <dt>GST {settings.gstRate}%</dt>
-                  <dd className="font-medium text-foreground">{formatINR(totals.gst)}</dd>
-                </div>
+                {/* One row per slab so the cashier can see a mixed-rate cart
+                    itemised, matching what the printed bill will show. */}
+                {totals.gstBreakdown.length > 0 ? (
+                  totals.gstBreakdown.map((b) => (
+                    <div key={b.rate} className="flex justify-between text-muted-foreground">
+                      <dt>
+                        GST {b.rate}% <span className="text-xs">on {formatINR(b.taxable)}</span>
+                      </dt>
+                      <dd className="font-medium text-foreground">{formatINR(b.tax)}</dd>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex justify-between text-muted-foreground">
+                    <dt>GST {settings.gstRate}%</dt>
+                    <dd className="font-medium text-foreground">{formatINR(totals.gst)}</dd>
+                  </div>
+                )}
+                {totals.mrpSavings > 0 && (
+                  <div className="flex justify-between text-[color:var(--success)]">
+                    <dt>You saved (vs MRP)</dt>
+                    <dd className="font-medium">{formatINR(totals.mrpSavings)}</dd>
+                  </div>
+                )}
               </dl>
 
               <div className="mt-4 flex items-center justify-between border-t border-border pt-4">

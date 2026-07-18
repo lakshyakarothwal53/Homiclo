@@ -801,7 +801,7 @@ export async function fetchMonthlyAttendanceReport(opts: ReportOpts = {}): Promi
   if (logsErr) throw logsErr;
   const { data: leaves, error: leavesErr } = await supabase
     .from("absent_records")
-    .select("employee_id, date, leave_type");
+    .select("employee_id, date, leave_type, status");
   if (leavesErr) throw leavesErr;
 
   const inWindow = (date: string) => inRange(parseRowDate(date), opts.from, opts.to);
@@ -818,8 +818,10 @@ export async function fetchMonthlyAttendanceReport(opts: ReportOpts = {}): Promi
       else if (l.status === "Absent") c.absent += 1;
       counts.set(l.employee_id, c);
     });
+  // Only an *approved* leave counts as leave — a pending or declined request
+  // must not silently excuse the day.
   (leaves ?? [])
-    .filter((l) => l.leave_type && inWindow(l.date))
+    .filter((l) => l.leave_type && l.status === "Approved" && inWindow(l.date))
     .forEach((l) => {
       const c = counts.get(l.employee_id) ?? { present: 0, absent: 0, late: 0, leave: 0 };
       c.leave += 1;
@@ -876,23 +878,78 @@ export async function fetchLateArrivalSummary(opts: ReportOpts = {}): Promise<Re
   };
 }
 
+/**
+ * Absence + leave-request register. Includes the approval Status of every
+ * row, so pending / approved / declined leave requests are all auditable
+ * from the report. Branch-scoped when `opts.branch` is given.
+ */
 export async function fetchAbsenteeismReport(opts: ReportOpts = {}): Promise<ReportData> {
-  const { data, error } = await supabase
+  let q = supabase
     .from("absent_records")
-    .select("date, employee_name, designation, branch, leave_type, reason, status")
+    .select("date, employee_id, employee_name, designation, branch, leave_type, reason, status")
     .order("date", { ascending: false });
+  if (opts.branch) q = q.eq("branch", opts.branch);
+  const { data, error } = await q;
   if (error) throw error;
   const rows = (data ?? []).filter((r) => inRange(parseRowDate(r.date), opts.from, opts.to));
   return {
-    columns: ["Date", "Employee", "Designation", "Branch", "Leave Type", "Reason", "Status"],
+    columns: [
+      "Date",
+      "Employee Code",
+      "Employee",
+      "Designation",
+      "Branch",
+      "Leave Type",
+      "Reason",
+      "Status",
+    ],
     rows: rows.map((r) => [
       r.date,
+      r.employee_id,
       r.employee_name,
       r.designation,
       r.branch,
-      r.leave_type,
-      r.reason,
-      r.status,
+      r.leave_type ?? "-",
+      r.reason ?? "-",
+      r.status ?? "-",
+    ]),
+  };
+}
+
+/**
+ * Leave requests only (rows carrying a leave_type), with their approval
+ * state — the report view of the Absent Report's approval queue.
+ */
+export async function fetchLeaveRequestReport(opts: ReportOpts = {}): Promise<ReportData> {
+  let q = supabase
+    .from("absent_records")
+    .select("date, employee_id, employee_name, designation, branch, leave_type, reason, status")
+    .not("leave_type", "is", null)
+    .order("date", { ascending: false });
+  if (opts.branch) q = q.eq("branch", opts.branch);
+  const { data, error } = await q;
+  if (error) throw error;
+  const rows = (data ?? []).filter((r) => inRange(parseRowDate(r.date), opts.from, opts.to));
+  return {
+    columns: [
+      "Date",
+      "Employee Code",
+      "Employee",
+      "Designation",
+      "Branch",
+      "Leave Type",
+      "Reason",
+      "Approval Status",
+    ],
+    rows: rows.map((r) => [
+      r.date,
+      r.employee_id,
+      r.employee_name,
+      r.designation,
+      r.branch,
+      r.leave_type ?? "-",
+      r.reason ?? "-",
+      r.status ?? "-",
     ]),
   };
 }
@@ -1013,6 +1070,50 @@ export async function fetchCashFlow(opts: ReportOpts = {}): Promise<ReportData> 
  * Unmatched names (including user "Add New" custom reports) fall back to
  * fetchReportData(category).
  */
+/** Monthly attendance summary per employee with employee code, branch, and day counts. */
+export async function fetchMonthlyAttendanceSummary(branch?: string): Promise<ReportData> {
+  const now = new Date();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+  // Calculate total working days in the month (approximate 26 days per month)
+  const dateRange = `${monthStart} to ${monthEnd}`;
+  const totalWorkingDays = 26;
+
+  let empQuery = supabase
+    .from("employee_attendance")
+    .select("employee_id, employee_name, branch, total_present, total_absent, total_late");
+  if (branch) empQuery = empQuery.eq("branch", branch);
+  const { data: employees, error: empError } = await empQuery;
+  if (empError) throw empError;
+
+  const rows = (employees ?? []).map((e) => [
+    dateRange,
+    e.employee_id,
+    e.employee_name,
+    e.branch,
+    totalWorkingDays,
+    e.total_present ?? 0,
+    e.total_absent ?? 0,
+    e.total_late ?? 0,
+  ]);
+
+  return {
+    columns: [
+      "Date Range",
+      "Employee Code",
+      "Employee Name",
+      "Branch",
+      "Total Working Days",
+      "Present Days",
+      "Absent Days",
+      "Late Days",
+    ],
+    rows,
+  };
+}
+
 export async function fetchNamedReport(
   category: ReportCategory,
   reportName: string,
@@ -1027,6 +1128,7 @@ export async function fetchNamedReport(
       if (/branch.?performance/.test(name)) return fetchBranchPerformance(opts);
       break;
     case "attendance":
+      if (/leave/.test(name)) return fetchLeaveRequestReport(opts);
       if (/monthly.?attendance/.test(name)) return fetchMonthlyAttendanceReport(opts);
       if (/late.?arrival/.test(name)) return fetchLateArrivalSummary(opts);
       if (/absent/.test(name)) return fetchAbsenteeismReport(opts);

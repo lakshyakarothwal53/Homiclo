@@ -10,10 +10,15 @@ export interface Product {
   barcode?: string;
   name: string;
   category: string;
+  /** Selling price, GST-EXCLUSIVE — tax is added on top at checkout. */
   price: number;
   stock: number;
   minStock: number;
   status: ProductStatus;
+  /** GST percent for this product (e.g. 18). Undefined → fall back to the flat rate in POS settings. */
+  gstRate?: number;
+  /** Maximum Retail Price printed on the pack. Display-only; never used in totals. */
+  mrp?: number;
 }
 
 export interface Category {

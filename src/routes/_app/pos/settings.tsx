@@ -17,6 +17,10 @@ import {
 import { usePosSettings, useSavePosSettings } from "@/hooks/use-pos";
 import type { PosSettings } from "@/types/pos";
 
+// Kept small deliberately: the logo is stored inline as base64 inside the
+// app_settings JSON blob, and base64 inflates by ~33%.
+const MAX_LOGO_BYTES = 200 * 1024;
+
 export const Route = createFileRoute("/_app/pos/settings")({
   head: () => ({
     meta: [
@@ -40,6 +44,28 @@ function Page() {
 
   function set<K extends keyof PosSettings>(key: K, value: PosSettings[K]) {
     setForm((s) => ({ ...s, [key]: value }));
+  }
+
+  // Read the chosen file into a base64 data URI. It is stored inline in
+  // app_settings (not uploaded to storage) so the receipt popup can render it
+  // without a network fetch racing window.print().
+  function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > MAX_LOGO_BYTES) {
+      toast.error(
+        `Logo must be under ${Math.round(MAX_LOGO_BYTES / 1024)} KB — that file is ${Math.round(file.size / 1024)} KB.`,
+      );
+      e.target.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      set("logoDataUrl", String(reader.result));
+      toast.success("Logo loaded — click Save to apply it to receipts.");
+    };
+    reader.onerror = () => toast.error("Could not read that image.");
+    reader.readAsDataURL(file);
   }
 
   function onSubmit(e: React.FormEvent) {
@@ -80,6 +106,48 @@ function Page() {
                 value={form.storeName}
                 onChange={(e) => set("storeName", e.target.value)}
               />
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="logo">Logo (top of every bill)</Label>
+              <div className="flex flex-wrap items-center gap-4">
+                {form.logoDataUrl ? (
+                  <img
+                    src={form.logoDataUrl}
+                    alt="Receipt logo preview"
+                    className="h-14 max-w-[220px] rounded border border-border bg-white object-contain p-1"
+                  />
+                ) : (
+                  <div className="grid h-14 w-[220px] place-items-center rounded border border-dashed border-border text-xs text-muted-foreground">
+                    No logo — store name is printed instead
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Input
+                    id="logo"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                    className="max-w-[260px]"
+                    onChange={handleLogoFile}
+                  />
+                  {form.logoDataUrl && (
+                    // type="button": inside the settings <form>, the default
+                    // "submit" would save the whole form on click.
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => set("logoDataUrl", undefined)}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                PNG, JPG, WEBP or SVG up to {Math.round(MAX_LOGO_BYTES / 1024)} KB. Printed at the
+                top of every receipt. Thermal printers are monochrome — a high-contrast logo prints
+                best.
+              </p>
             </div>
 
             <div className="space-y-2">

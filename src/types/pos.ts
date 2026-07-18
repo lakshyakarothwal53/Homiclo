@@ -3,8 +3,13 @@ export type PosProduct = {
   barcode: string;
   name: string;
   category: string;
+  /** Selling price, GST-EXCLUSIVE. */
   price: number;
   stock: number;
+  /** GST percent for this product. Undefined → the flat POS-settings rate applies. */
+  gstRate?: number;
+  /** MRP printed on the pack — shown on the bill, never used in totals. */
+  mrp?: number;
 };
 
 export type PosTransaction = {
@@ -66,6 +71,11 @@ export type PosLineItem = {
   qty: number;
   unitPrice: number;
   lineTotal: number;
+  /** Rate actually charged on this line, snapshotted so a reprint stays accurate. */
+  gstRate?: number;
+  /** Tax charged on this line, after its share of any cart discount. */
+  gstAmount?: number;
+  mrp?: number;
 };
 
 export type PosTransactionInput = PosTransaction & {
@@ -92,6 +102,12 @@ export type PosSettings = {
   storeName: string;
   storeAddress: string;
   gstin: string;
+  /**
+   * Logo printed at the top of every receipt, stored as a base64 data URI.
+   * Inlined rather than a URL because the receipt is printed from a blank
+   * popup window — an external src would often not load before print() fires.
+   */
+  logoDataUrl?: string;
 };
 
 export const DEFAULT_POS_SETTINGS: PosSettings = {

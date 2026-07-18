@@ -8,6 +8,7 @@ import type {
   EmployeeReport,
   EmployeeProfile,
 } from "@/types/employees";
+import type { ShiftConfig } from "@/types/attendance";
 
 function like(value: string) {
   return `%${value}%`;
@@ -20,7 +21,9 @@ export function useEmployees(search?: string, branch?: string) {
     queryFn: async (): Promise<Employee[]> => {
       let query = supabase
         .from("employees")
-        .select("id, name, email, phone, role, branch, joinDate:join_date, status, salary");
+        .select(
+          "id, name, email, phone, role, branch, joinDate:join_date, status, salary, shiftId:shift_id",
+        );
       if (!allBranches) query = query.eq("branch", branch);
       if (search)
         query = query.or(
@@ -30,6 +33,36 @@ export function useEmployees(search?: string, branch?: string) {
       if (error) throw error;
       return data as unknown as Employee[];
     },
+  });
+}
+
+// The shift an employee is assigned to (for gating self-service check-in/out
+// to their shift window on the employee-checkin page). Two-step fetch — no
+// embedded PostgREST relationship selects are used elsewhere in this codebase.
+export function useEmployeeShift(employeeId?: string) {
+  return useQuery({
+    queryKey: ["employees", "shift", employeeId ?? ""],
+    queryFn: async (): Promise<ShiftConfig | null> => {
+      if (!employeeId) return null;
+      const { data: employee, error: empError } = await supabase
+        .from("employees")
+        .select("shift_id")
+        .eq("id", employeeId)
+        .single();
+      if (empError) throw empError;
+      if (!employee?.shift_id) return null;
+
+      const { data: shift, error: shiftError } = await supabase
+        .from("shift_configs")
+        .select(
+          "id, shiftName:shift_name, startTime:start_time, endTime:end_time, gracePeriodMinutes:grace_period_minutes, geofenceRadius:geofence_radius, requiresGPS:requires_gps, requiresPhoto:requires_photo, applicableDays:applicable_days",
+        )
+        .eq("id", employee.shift_id)
+        .single();
+      if (shiftError) throw shiftError;
+      return shift as unknown as ShiftConfig;
+    },
+    enabled: !!employeeId,
   });
 }
 
@@ -57,10 +90,24 @@ export function useEmployeeProfile(employeeId?: string) {
       if (!employeeId) return null;
       const { data, error } = await supabase
         .from("employees")
-        .select("id, name, email, phone, role, branch, joinDate:join_date, salary, status")
+        .select(
+          "id, name, email, phone, role, branch, joinDate:join_date, salary, status, shiftId:shift_id",
+        )
         .eq("id", employeeId)
         .single();
       if (error) throw error;
+
+      // Resolve the assigned shift's display name (two-step: no embedded
+      // PostgREST relationship selects are used elsewhere in this codebase).
+      let shiftName: string | undefined;
+      if (data?.shiftId) {
+        const { data: shift } = await supabase
+          .from("shift_configs")
+          .select("shift_name, start_time, end_time")
+          .eq("id", data.shiftId)
+          .single();
+        if (shift) shiftName = `${shift.shift_name} (${shift.start_time} - ${shift.end_time})`;
+      }
 
       // Real attendance for this specific employee over the last 30 days —
       // previously hardcoded to 18/2/3/90% identically for every employee.
@@ -89,6 +136,7 @@ export function useEmployeeProfile(employeeId?: string) {
 
       return {
         ...data,
+        shiftName,
         address: "Not set",
         emergencyContact: "Not set",
         daysPresent,
@@ -185,6 +233,7 @@ export function useCreateEmployee() {
         join_date: employee.joinDate,
         status: employee.status,
         salary: employee.salary,
+        shift_id: employee.shiftId || null,
       };
 
       if (employee.password) {
@@ -223,6 +272,7 @@ export function useUpdateEmployee() {
           join_date: employee.joinDate,
           status: employee.status,
           salary: employee.salary,
+          shift_id: employee.shiftId || null,
         })
         .eq("id", employee.id);
       if (error) throw error;

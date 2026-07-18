@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { usePosProducts } from "@/hooks/use-pos";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useCart } from "@/components/pos/CartProvider";
 import { printBarcodes } from "@/lib/barcode-utils";
 import { SCAN_FORMATS, startBarcodeScan } from "@/lib/barcode-detector";
@@ -32,7 +33,10 @@ export function ScannerView({
   const streamRef = useRef<MediaStream | null>(null);
   const scanRef = useRef<{ stop: () => void } | null>(null);
 
-  const { data: products = [] } = usePosProducts();
+  // Scoped to the till's own branch: a scanner must not resolve a barcode for
+  // stock this branch was never sent.
+  const { scoped, homeBranch } = useBranchScope();
+  const { data: products = [] } = usePosProducts(undefined, scoped ? homeBranch : undefined);
   const { addToCart } = useCart();
 
   function lookup(code: string) {

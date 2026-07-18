@@ -2,6 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,7 +34,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useAttendanceReports, useCreateAttendanceReport } from "@/hooks/use-attendance";
 import { buildTablePdf, downloadCsv, downloadPdf } from "@/lib/pdf-utils";
-import { fetchReportData } from "@/lib/report-data";
+import { fetchReportData, fetchMonthlyAttendanceSummary } from "@/lib/report-data";
 
 export const Route = createFileRoute("/_app/attendance/reports")({
   head: () => ({
@@ -47,12 +50,23 @@ export const Route = createFileRoute("/_app/attendance/reports")({
 });
 
 function Page() {
+  const { role, user } = useAuth();
   const [search, setSearch] = useState("");
   const [period, setPeriod] = useState("monthly");
   const [format, setFormat] = useState("pdf");
   const { data: reports = [], isLoading, refetch } = useAttendanceReports(search);
-  const createReport = useCreateAttendanceReport();
+  const createReport = useCreateAttendanceReport(user?.branch);
   const isGenerating = createReport.isPending;
+
+  // Filter reports by branch for non-super-admin users
+  // Branch Admin cannot see "Branch-wise Attendance" report
+  const isSuperAdmin = role === "super_admin";
+  const userBranch = user?.branch;
+  const filteredReports = isSuperAdmin
+    ? reports
+    : reports.filter(
+        (r) => (!r.branch || r.branch === userBranch) && r.reportName !== "Branch-wise Attendance",
+      );
 
   const getFormatBadge = (format: string) => {
     if (format === "PDF") {
@@ -79,9 +93,19 @@ function Page() {
     );
   };
 
-  const handleDownload = async (reportName: string, reportFormat: string, periodLabel: string) => {
+  const handleDownload = async (
+    reportName: string,
+    reportFormat: string,
+    periodLabel: string,
+    branch?: string,
+  ) => {
     try {
-      const data = await fetchReportData("attendance");
+      let data;
+      if (reportName === "Monthly Attendance Summary") {
+        data = await fetchMonthlyAttendanceSummary(branch);
+      } else {
+        data = await fetchReportData("attendance", { branch });
+      }
       if (data.rows.length === 0) {
         toast.error("No attendance data available.");
         return;
@@ -208,14 +232,14 @@ function Page() {
                       Loading...
                     </TableCell>
                   </TableRow>
-                ) : reports.length === 0 ? (
+                ) : filteredReports.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
-                      No reports found.
+                      {!isSuperAdmin ? "No reports found for your branch." : "No reports found."}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  reports.map((report) => (
+                  filteredReports.map((report) => (
                     <TableRow key={report.id} className="hover:bg-muted/50">
                       <TableCell className="py-3 font-medium">{report.reportName}</TableCell>
                       <TableCell className="py-3 text-sm">{report.period}</TableCell>
@@ -240,7 +264,12 @@ function Page() {
                           variant="ghost"
                           className="gap-1"
                           onClick={() =>
-                            handleDownload(report.reportName, report.format, report.period)
+                            handleDownload(
+                              report.reportName,
+                              report.format,
+                              report.period,
+                              isSuperAdmin ? undefined : userBranch,
+                            )
                           }
                         >
                           <Download className="h-3.5 w-3.5" />
@@ -253,7 +282,9 @@ function Page() {
               </TableBody>
             </Table>
           </div>
-          <div className="text-sm text-muted-foreground">Showing {reports.length} reports</div>
+          <div className="text-sm text-muted-foreground">
+            Showing {filteredReports.length} {!isSuperAdmin && userBranch ? `reports for ${userBranch}` : "reports"}
+          </div>
         </CardContent>
       </Card>
     </>

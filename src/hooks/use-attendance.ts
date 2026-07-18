@@ -83,10 +83,14 @@ export function useAttendanceDashboard(branch?: string) {
       const seedLateToday = (lateRows ?? []).filter((l) => l.date === todayLabel).length;
       const lateToday = derivedLateToday + seedLateToday;
 
-      let absentQuery = supabase.from("absent_records").select("id").eq("date", todayLabel);
+      // On-leave today counts only records that are actually in force — a
+      // still-pending or declined leave request must not be reported as leave.
+      let absentQuery = supabase.from("absent_records").select("id, status").eq("date", todayLabel);
       if (!allBranches) absentQuery = absentQuery.eq("branch", branch);
       const { data: absentRows } = await absentQuery;
-      const onLeave = absentRows?.length ?? 0;
+      const onLeave = (absentRows ?? []).filter(
+        (r) => r.status !== "Pending" && r.status !== "Declined",
+      ).length;
 
       // Attendance % for today only: how much of the roster is actually
       // present today (presentToday over the full headcount), not a trailing
@@ -270,10 +274,10 @@ export function useAttendanceTrend(branch?: string) {
 // check-ins for a day roll up into one row: earliest check-in, latest
 // check-out, and Present/Late decided by the grace cutoff. Search is applied
 // client-side over the merged set.
-export function useDailyLogs(search?: string, branch?: string) {
+export function useDailyLogs(search?: string, branch?: string, employeeId?: string) {
   const allBranches = !branch || branch === "all";
   return useQuery({
-    queryKey: ["attendance", "daily-logs", search ?? "", branch ?? "all"],
+    queryKey: ["attendance", "daily-logs", search ?? "", branch ?? "all", employeeId ?? ""],
     queryFn: async (): Promise<DailyLog[]> => {
       let seedQuery = supabase
         .from("daily_logs")
@@ -281,6 +285,7 @@ export function useDailyLogs(search?: string, branch?: string) {
           "id, date, employeeId:employee_id, employeeName:employee_name, checkInTime:check_in_time, checkOutTime:check_out_time, status, branch, location, notes",
         );
       if (!allBranches) seedQuery = seedQuery.eq("branch", branch);
+      if (employeeId) seedQuery = seedQuery.eq("employee_id", employeeId);
       const { data: seedRows, error } = await seedQuery;
       if (error) {
         console.error("Error fetching daily logs from Supabase:", error);
@@ -291,6 +296,7 @@ export function useDailyLogs(search?: string, branch?: string) {
         .from("employee_checkins")
         .select("employee_id, employee_name, branch, check_date, check_type, check_time, status");
       if (!allBranches) checkinQuery = checkinQuery.eq("branch", branch);
+      if (employeeId) checkinQuery = checkinQuery.eq("employee_id", employeeId);
       const { data: checkins, error: chkError } = await checkinQuery;
       if (chkError) throw chkError;
 
@@ -421,7 +427,7 @@ export function useEmployeeAttendance(
 
       const { data: leaves, error: leavesError } = await supabase
         .from("absent_records")
-        .select("employee_id, date, leave_type");
+        .select("employee_id, date, leave_type, status");
       if (leavesError) throw leavesError;
 
       const inWindow = (date: string) => inRange(parseRowDate(date), opts.from, opts.to);
@@ -444,8 +450,10 @@ export function useEmployeeAttendance(
           else if (l.status === "Absent") c.absent += 1;
           countsByEmployee.set(l.employee_id, c);
         });
+      // Only approved leave counts — pending/declined requests don't excuse
+      // the day (matches fetchMonthlyAttendanceReport in report-data.ts).
       (leaves ?? [])
-        .filter((l) => l.leave_type && inWindow(l.date))
+        .filter((l) => l.leave_type && l.status === "Approved" && inWindow(l.date))
         .forEach((l) => {
           const c = countsByEmployee.get(l.employee_id) ?? {
             present: 0,
@@ -493,16 +501,97 @@ export function useEmployeeAttendance(
   });
 }
 
+/**
+ * The logged-in employee's own attendance totals, in the same shape the
+ * History page renders.
+ *
+ * Deliberately NOT read from `employee_attendance`: that table is keyed by the
+ * seeded EMP0xx code space and holds demo people, so a real login (a uuid)
+ * has no row there and would render an empty page. These figures are derived
+ * from the employee's actual check-ins plus their absence/leave records.
+ */
+export function useSelfAttendanceSummary(employeeId?: string, opts: AttendancePeriodOpts = {}) {
+  return useQuery({
+    queryKey: ["attendance", "self-summary", employeeId ?? "", opts.from ?? "", opts.to ?? ""],
+    enabled: !!employeeId,
+    queryFn: async (): Promise<EmployeeAttendance[]> => {
+      if (!employeeId) return [];
+
+      const { data: employee, error: empError } = await supabase
+        .from("employees")
+        .select("id, name, role, branch")
+        .eq("id", employeeId)
+        .single();
+      if (empError) throw empError;
+
+      let chkQuery = supabase
+        .from("employee_checkins")
+        .select("check_date, check_time, status")
+        .eq("employee_id", employeeId)
+        .eq("check_type", "check-in");
+      if (opts.from) chkQuery = chkQuery.gte("check_date", opts.from);
+      if (opts.to) chkQuery = chkQuery.lte("check_date", opts.to);
+      const { data: checkins, error: chkError } = await chkQuery;
+      if (chkError) throw chkError;
+
+      // Earliest check-in per day decides present-vs-late for that day.
+      const firstByDate = new Map<string, number>();
+      (checkins ?? [])
+        .filter((c) => !c.status || c.status === "success")
+        .forEach((c) => {
+          const mins = parseTimeToMinutes(c.check_time);
+          if (mins === null) return;
+          const prev = firstByDate.get(c.check_date);
+          if (prev === undefined || mins < prev) firstByDate.set(c.check_date, mins);
+        });
+      const lateDays = [...firstByDate.values()].filter((m) => m > LATE_CUTOFF_MINUTES).length;
+      const presentDays = Math.max(0, firstByDate.size - lateDays);
+
+      const { data: absences, error: absError } = await supabase
+        .from("absent_records")
+        .select("date, leave_type, status")
+        .eq("employee_id", employeeId);
+      if (absError) throw absError;
+
+      const inWindow = (d: string) => inRange(parseRowDate(d), opts.from, opts.to);
+      const scopedAbsences = (absences ?? []).filter((a) => inWindow(a.date));
+      // Only approved leave counts as leave; a plain absence counts as absent.
+      const leaveDays = scopedAbsences.filter(
+        (a) => a.leave_type && a.status === "Approved",
+      ).length;
+      const absentDays = scopedAbsences.filter((a) => a.status === "Absent").length;
+
+      const tracked = presentDays + lateDays + absentDays;
+      const attendancePercentage =
+        tracked > 0 ? `${(((presentDays + lateDays) / tracked) * 100).toFixed(2)}%` : "0.00%";
+
+      return [
+        {
+          employeeId: employee.id,
+          employeeName: employee.name,
+          designation: employee.role,
+          branch: employee.branch,
+          totalPresent: presentDays,
+          totalAbsent: absentDays,
+          totalLate: lateDays,
+          totalLeave: leaveDays,
+          attendancePercentage,
+        },
+      ];
+    },
+  });
+}
+
 // Late arrivals come from two sources merged into one list:
 //   1. the seeded `late_arrivals` table (demo/back-office records), and
 //   2. real self-service check-ins in `employee_checkins` whose first check-in
 //      of the day is past the grace cutoff — these carry the *actual* check-in
 //      date, so the listing reflects live attendance instead of only stale seed
 //      rows. Search + date filtering happen client-side over the merged set.
-export function useLateArrivals(search?: string, branch?: string) {
+export function useLateArrivals(search?: string, branch?: string, employeeId?: string) {
   const allBranches = !branch || branch === "all";
   return useQuery({
-    queryKey: ["attendance", "late-arrivals", search ?? "", branch ?? "all"],
+    queryKey: ["attendance", "late-arrivals", search ?? "", branch ?? "all", employeeId ?? ""],
     queryFn: async (): Promise<LateArrival[]> => {
       let seedQuery = supabase
         .from("late_arrivals")
@@ -510,6 +599,7 @@ export function useLateArrivals(search?: string, branch?: string) {
           "id, date, employeeId:employee_id, employeeName:employee_name, checkInTime:check_in_time, latenessMinutes:lateness_minutes, branch, status",
         );
       if (!allBranches) seedQuery = seedQuery.eq("branch", branch);
+      if (employeeId) seedQuery = seedQuery.eq("employee_id", employeeId);
       const { data: seedRows, error } = await seedQuery;
       if (error) {
         console.error("Error fetching late arrivals from Supabase:", error);
@@ -521,6 +611,7 @@ export function useLateArrivals(search?: string, branch?: string) {
         .select("employee_id, employee_name, branch, check_date, check_type, check_time, status")
         .eq("check_type", "check-in");
       if (!allBranches) checkinQuery = checkinQuery.eq("branch", branch);
+      if (employeeId) checkinQuery = checkinQuery.eq("employee_id", employeeId);
       const { data: checkins, error: chkError } = await checkinQuery;
       if (chkError) throw chkError;
 
@@ -590,10 +681,10 @@ export function useLateArrivals(search?: string, branch?: string) {
   });
 }
 
-export function useAbsentRecords(search?: string, branch?: string) {
+export function useAbsentRecords(search?: string, branch?: string, employeeId?: string) {
   const allBranches = !branch || branch === "all";
   return useQuery({
-    queryKey: ["attendance", "absent-records", search ?? "", branch ?? "all"],
+    queryKey: ["attendance", "absent-records", search ?? "", branch ?? "all", employeeId ?? ""],
     queryFn: async (): Promise<AbsentRecord[]> => {
       let query = supabase
         .from("absent_records")
@@ -601,6 +692,7 @@ export function useAbsentRecords(search?: string, branch?: string) {
           "id, date, employeeId:employee_id, employeeName:employee_name, designation, branch, leaveType:leave_type, reason, status",
         );
       if (!allBranches) query = query.eq("branch", branch);
+      if (employeeId) query = query.eq("employee_id", employeeId);
       if (search)
         query = query.or(`employee_name.ilike.${like(search)},branch.ilike.${like(search)}`);
       const { data, error } = await query;
@@ -642,6 +734,38 @@ export function useCreateAbsentRecord() {
         status: "Absent",
       });
       if (error) throw error;
+      return input;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["attendance"] });
+    },
+  });
+}
+
+export type LeaveDecision = "Approved" | "Declined";
+
+/**
+ * Approve or decline a pending leave request. The row already exists in
+ * absent_records (written by useApplyLeaveRequest with status 'Pending');
+ * this only flips its status. Requires the UPDATE policy added in
+ * supabase/attendance/09_leave_approval.sql — without it RLS rejects the
+ * write silently.
+ */
+export function useDecideLeaveRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; decision: LeaveDecision }) => {
+      const { data, error } = await supabase
+        .from("absent_records")
+        .update({ status: input.decision })
+        .eq("id", input.id)
+        .select("id");
+      if (error) throw error;
+      // RLS rejections return no error but update zero rows — surface that
+      // instead of reporting a success that never happened.
+      if (!data || data.length === 0) {
+        throw new Error("Leave request could not be updated (no matching row or blocked by RLS).");
+      }
       return input;
     },
     onSuccess: () => {
@@ -718,7 +842,9 @@ export function useAttendanceReports(search?: string) {
     queryFn: async (): Promise<AttendanceReport[]> => {
       let query = supabase
         .from("attendance_reports")
-        .select("id, reportName:report_name, period, generatedOn:generated_on, format, status");
+        .select(
+          "id, reportName:report_name, period, generatedOn:generated_on, format, status, branch",
+        );
       if (search) query = query.ilike("report_name", like(search));
       const { data, error } = await query;
       if (error) {
@@ -731,7 +857,7 @@ export function useAttendanceReports(search?: string) {
   });
 }
 
-export function useCreateAttendanceReport() {
+export function useCreateAttendanceReport(branch?: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: { reportName: string; period: string; format: string }) => {
@@ -748,6 +874,7 @@ export function useCreateAttendanceReport() {
         generated_on: generatedOn,
         format: input.format,
         status: "Ready",
+        branch: branch || null,
       });
       if (error) throw error;
       return input;
@@ -836,6 +963,41 @@ export function useUpdateShiftConfig() {
         .eq("id", input.id);
       if (error) throw error;
       return input;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["attendance"] }),
+  });
+}
+
+export type ShiftConfigInput = Omit<ShiftConfig, "id">;
+
+export function useCreateShiftConfig() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: ShiftConfigInput) => {
+      const { error } = await supabase.from("shift_configs").insert({
+        shift_name: input.shiftName,
+        start_time: input.startTime,
+        end_time: input.endTime,
+        grace_period_minutes: input.gracePeriodMinutes,
+        geofence_radius: input.geofenceRadius,
+        requires_gps: input.requiresGPS,
+        requires_photo: input.requiresPhoto,
+        applicable_days: input.applicableDays,
+      });
+      if (error) throw error;
+      return input;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["attendance"] }),
+  });
+}
+
+export function useDeleteShiftConfig() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("shift_configs").delete().eq("id", id);
+      if (error) throw error;
+      return id;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["attendance"] }),
   });

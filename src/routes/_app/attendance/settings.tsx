@@ -22,6 +22,17 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -33,7 +44,9 @@ import { toast } from "sonner";
 import {
   useShiftConfigs,
   useAttendanceSettings,
+  useCreateShiftConfig,
   useUpdateShiftConfig,
+  useDeleteShiftConfig,
   useUpdateAttendanceSetting,
 } from "@/hooks/use-attendance";
 
@@ -57,12 +70,61 @@ function Page() {
     isLoading: settingsLoading,
     refetch: refetchSettings,
   } = useAttendanceSettings();
+  const createShiftMutation = useCreateShiftConfig();
   const updateShiftMutation = useUpdateShiftConfig();
+  const deleteShiftMutation = useDeleteShiftConfig();
   const updateSettingMutation = useUpdateAttendanceSetting();
 
   const [editingShift, setEditingShift] = useState<string | null>(null);
   const [editingSetting, setEditingSetting] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Record<string, string>>({});
+
+  const [addShiftOpen, setAddShiftOpen] = useState(false);
+  const emptyNewShift = {
+    shiftName: "",
+    startTime: "",
+    endTime: "",
+    gracePeriodMinutes: "15",
+    geofenceRadius: "100",
+  };
+  const [newShift, setNewShift] = useState(emptyNewShift);
+
+  const handleCreateShift = async () => {
+    if (!newShift.shiftName.trim() || !newShift.startTime || !newShift.endTime) {
+      toast.error("Please fill in the shift name, start time and end time");
+      return;
+    }
+    try {
+      await createShiftMutation.mutateAsync({
+        shiftName: newShift.shiftName,
+        startTime: newShift.startTime,
+        endTime: newShift.endTime,
+        gracePeriodMinutes: parseInt(newShift.gracePeriodMinutes) || 0,
+        geofenceRadius: parseInt(newShift.geofenceRadius) || 0,
+        requiresGPS: true,
+        requiresPhoto: true,
+        applicableDays: "Monday - Friday",
+      });
+      toast.success("Shift added successfully");
+      setNewShift(emptyNewShift);
+      setAddShiftOpen(false);
+      await refetchShifts();
+    } catch (error) {
+      toast.error("Failed to add shift");
+    }
+  };
+
+  const handleDeleteShift = async (id: string) => {
+    try {
+      await deleteShiftMutation.mutateAsync(id);
+      toast.success("Shift deleted successfully");
+      await refetchShifts();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to delete shift";
+      console.error("Delete shift error:", error);
+      toast.error(msg);
+    }
+  };
 
   const handleEditShift = (id: string) => {
     if (editingShift === id) {
@@ -169,7 +231,7 @@ function Page() {
                   <CardTitle className="text-base">Shift Configurations</CardTitle>
                   <CardDescription>Manage work shifts and their properties</CardDescription>
                 </div>
-                <Dialog>
+                <Dialog open={addShiftOpen} onOpenChange={setAddShiftOpen}>
                   <DialogTrigger asChild>
                     <Button
                       size="sm"
@@ -186,33 +248,65 @@ function Page() {
                     <div className="space-y-4">
                       <div>
                         <Label className="text-sm font-medium">Shift Name *</Label>
-                        <Input placeholder="e.g., Morning Shift" className="mt-1 h-10" />
+                        <Input
+                          placeholder="e.g., Morning Shift"
+                          className="mt-1 h-10"
+                          value={newShift.shiftName}
+                          onChange={(e) => setNewShift({ ...newShift, shiftName: e.target.value })}
+                        />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <Label className="text-sm font-medium">Start Time *</Label>
-                          <Input type="time" className="mt-1 h-10" />
+                          <Input
+                            type="time"
+                            className="mt-1 h-10"
+                            value={newShift.startTime}
+                            onChange={(e) =>
+                              setNewShift({ ...newShift, startTime: e.target.value })
+                            }
+                          />
                         </div>
                         <div>
                           <Label className="text-sm font-medium">End Time *</Label>
-                          <Input type="time" className="mt-1 h-10" />
+                          <Input
+                            type="time"
+                            className="mt-1 h-10"
+                            value={newShift.endTime}
+                            onChange={(e) => setNewShift({ ...newShift, endTime: e.target.value })}
+                          />
                         </div>
                       </div>
                       <div>
                         <Label className="text-sm font-medium">Grace Period (Minutes) *</Label>
-                        <Input type="number" placeholder="15" className="mt-1 h-10" />
+                        <Input
+                          type="number"
+                          placeholder="15"
+                          className="mt-1 h-10"
+                          value={newShift.gracePeriodMinutes}
+                          onChange={(e) =>
+                            setNewShift({ ...newShift, gracePeriodMinutes: e.target.value })
+                          }
+                        />
                       </div>
                       <div>
                         <Label className="text-sm font-medium">Geofence Radius (meters) *</Label>
-                        <Input type="number" placeholder="100" className="mt-1 h-10" />
+                        <Input
+                          type="number"
+                          placeholder="100"
+                          className="mt-1 h-10"
+                          value={newShift.geofenceRadius}
+                          onChange={(e) =>
+                            setNewShift({ ...newShift, geofenceRadius: e.target.value })
+                          }
+                        />
                       </div>
                       <Button
-                        onClick={() => {
-                          toast.success("Shift added successfully");
-                        }}
+                        onClick={handleCreateShift}
+                        disabled={createShiftMutation.isPending}
                         className="w-full bg-brand text-brand-foreground hover:bg-brand/90"
                       >
-                        Create Shift
+                        {createShiftMutation.isPending ? "Creating..." : "Create Shift"}
                       </Button>
                     </div>
                   </DialogContent>
@@ -347,15 +441,50 @@ function Page() {
                                 </Button>
                               </>
                             ) : (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="gap-1"
-                                onClick={() => handleEditShift(shift.id)}
-                              >
-                                <Edit className="h-3 w-3" />
-                                Edit
-                              </Button>
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-1"
+                                  onClick={() => handleEditShift(shift.id)}
+                                >
+                                  <Edit className="h-3 w-3" />
+                                  Edit
+                                </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="gap-1 text-destructive hover:text-destructive"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                      Delete
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>
+                                        Delete "{shift.shiftName}"?
+                                      </AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        This permanently removes the shift configuration. Employees
+                                        currently assigned to this shift will lose their shift
+                                        assignment. This action cannot be undone.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        className="bg-destructive text-white hover:bg-destructive/90"
+                                        onClick={() => handleDeleteShift(shift.id)}
+                                      >
+                                        Delete
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </>
                             )}
                           </TableCell>
                         </TableRow>

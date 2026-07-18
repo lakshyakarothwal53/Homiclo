@@ -23,21 +23,37 @@ export type NavGroup = {
   children?: NavLeaf[];
 };
 
+// Roles that get Attendance purely for self-service: they may mark their own
+// attendance but must not see the supervisory pages (daily logs, live
+// tracking, other people's absences, shift settings). Listing them in a leaf's
+// `hiddenFor` also blocks the URL — see canAccessPath's hiddenLeaf check.
+const SELF_SERVICE_ONLY = ["cashier", "inventory"];
+
+// Supervisory attendance pages — hidden from every non-supervisory role.
+// `employee` additionally keeps Daily Logs / History / Late Arrivals / Absent
+// Report (unlike SELF_SERVICE_ONLY roles), but those pages filter to the
+// signed-in employee's own rows via useSelfScope().
+const NO_SUPERVISORY = [...SELF_SERVICE_ONLY, "employee"];
+
 export const NAV: NavGroup[] = [
   { label: "Dashboard", icon: LayoutDashboard, to: "/" },
   {
     label: "Attendance",
     icon: Clock,
     children: [
-      { label: "Overview", to: "/attendance" },
-      { label: "My Check-in", to: "/attendance/employee-checkin", hiddenFor: ["super_admin"] },
-      { label: "Daily Logs", to: "/attendance/logs" },
-      { label: "History", to: "/attendance/history" },
-      { label: "Late Arrivals", to: "/attendance/late" },
-      { label: "Absent Report", to: "/attendance/absent" },
-      { label: "Live Tracking", to: "/attendance/live" },
-      { label: "Reports", to: "/attendance/reports" },
-      { label: "Settings", to: "/attendance/settings" },
+      { label: "Overview", to: "/attendance", hiddenFor: NO_SUPERVISORY },
+      {
+        label: "My Check-in",
+        to: "/attendance/employee-checkin",
+        hiddenFor: ["super_admin", "branch_admin"],
+      },
+      { label: "Daily Logs", to: "/attendance/logs", hiddenFor: SELF_SERVICE_ONLY },
+      { label: "History", to: "/attendance/history", hiddenFor: SELF_SERVICE_ONLY },
+      { label: "Late Arrivals", to: "/attendance/late", hiddenFor: SELF_SERVICE_ONLY },
+      { label: "Absent Report", to: "/attendance/absent", hiddenFor: SELF_SERVICE_ONLY },
+      { label: "Live Tracking", to: "/attendance/live", hiddenFor: NO_SUPERVISORY },
+      { label: "Reports", to: "/attendance/reports", hiddenFor: NO_SUPERVISORY },
+      { label: "Settings", to: "/attendance/settings", hiddenFor: NO_SUPERVISORY },
     ],
   },
   {
@@ -48,7 +64,7 @@ export const NAV: NavGroup[] = [
       {
         label: "Mark Attendance",
         to: "/attendance/employee-checkin",
-        hiddenFor: ["super_admin"],
+        hiddenFor: ["super_admin", "branch_admin"],
       },
       { label: "Employee List", to: "/employees" },
       { label: "Add Employee", to: "/employees/add" },

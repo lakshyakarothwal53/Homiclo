@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
+  useAbsentRecords,
   useApplyLeaveRequest,
   useEmployeeCheckins,
   useEmployeeMonthlySummary,
@@ -52,7 +53,37 @@ import {
   validateGeofence,
   calculateGeofenceDistance,
 } from "@/hooks/use-attendance";
+import { useEmployeeShift } from "@/hooks/use-employees";
 import { SelfieCapture, type SelfieResult } from "@/components/attendance/SelfieCapture";
+
+// "09:31 AM" or 24-hour "21:00" → minutes since midnight, or null if unparseable.
+function parseTimeToMinutes(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const m = raw.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const mer = m[3]?.toUpperCase();
+  if (mer === "PM" && h !== 12) h += 12;
+  if (mer === "AM" && h === 12) h = 0;
+  return h * 60 + min;
+}
+
+// Whether `nowMinutes` falls inside the shift's [start - grace, end] window,
+// wrapping past midnight for overnight shifts (e.g. 09:00 PM - 06:00 AM).
+function isWithinShiftWindow(
+  shift: { startTime: string; endTime: string; gracePeriodMinutes: number },
+  nowMinutes: number,
+): boolean {
+  const start = parseTimeToMinutes(shift.startTime);
+  const end = parseTimeToMinutes(shift.endTime);
+  if (start === null || end === null) return true;
+  const windowStart = (start - shift.gracePeriodMinutes + 1440) % 1440;
+  if (end <= windowStart) {
+    return nowMinutes >= windowStart || nowMinutes <= end;
+  }
+  return nowMinutes >= windowStart && nowMinutes <= end;
+}
 
 export const Route = createFileRoute("/_app/attendance/employee-checkin")({
   head: () => ({
@@ -85,11 +116,29 @@ function Page() {
   const { data: officeLocations = [] } = useOfficeLocations();
   const { data: employeeCheckins = [] } = useEmployeeCheckins(user?.id || "", checkDate);
   const { data: monthlySummary } = useEmployeeMonthlySummary(user?.id || "");
+  const { data: assignedShift, isLoading: shiftLoading } = useEmployeeShift(user?.id);
   const submitCheckin = useSubmitEmployeeCheckin();
+
+  // Live clock so the shift-window gate (and its message) updates on its own
+  // while the page is left open, without requiring a manual refresh.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(interval);
+  }, []);
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const withinShiftWindow = assignedShift ? isWithinShiftWindow(assignedShift, nowMinutes) : false;
 
   const applyLeave = useApplyLeaveRequest();
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaveForm, setLeaveForm] = useState({ date: checkDate, type: "", reason: "" });
+
+  // This employee's own leave requests, so they can see whether a manager has
+  // approved or declined what they submitted.
+  const { data: branchAbsences = [] } = useAbsentRecords(undefined, user?.branch);
+  const myLeaveRequests = branchAbsences
+    .filter((r) => r.employeeId === user?.id && r.leaveType)
+    .slice(0, 5);
 
   const handleApplyLeave = () => {
     if (!leaveForm.date || !leaveForm.type) {
@@ -166,6 +215,20 @@ function Page() {
   };
 
   const handleCheckIn = async (checkType: "check-in" | "check-out") => {
+    if (!assignedShift) {
+      toast.error(
+        "No shift assigned. Contact your admin to assign a shift before marking attendance.",
+      );
+      return;
+    }
+
+    if (!isWithinShiftWindow(assignedShift, new Date().getHours() * 60 + new Date().getMinutes())) {
+      toast.error(
+        `You can only mark attendance during your ${assignedShift.shiftName} window (${assignedShift.startTime} - ${assignedShift.endTime}).`,
+      );
+      return;
+    }
+
     if (!currentLocation) {
       toast.error("Please capture your location first");
       return;
@@ -296,6 +359,47 @@ function Page() {
           <Card className="border-border">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5 text-purple-600" />
+                Your Shift
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {shiftLoading ? (
+                <p className="text-sm text-muted-foreground">Loading your shift assignment…</p>
+              ) : !assignedShift ? (
+                <Alert className="border-red-200 bg-red-50 dark:bg-red-950">
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                  <AlertDescription className="text-red-800 dark:text-red-100">
+                    No shift assigned. Contact your admin to assign a shift before you can mark
+                    attendance.
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div>
+                    <p className="font-semibold">{assignedShift.shiftName}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {assignedShift.startTime} - {assignedShift.endTime} ·{" "}
+                      {assignedShift.gracePeriodMinutes} min grace
+                    </p>
+                  </div>
+                  {withinShiftWindow ? (
+                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
+                      Active now — you can mark attendance
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-700">
+                      Outside shift window
+                    </span>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
                 <MapPin className="h-5 w-5 text-blue-600" />
                 GPS Location Verification
               </CardTitle>
@@ -423,7 +527,9 @@ function Page() {
                     isUploading ||
                     !currentLocation ||
                     !selfie ||
-                    hasCheckedIn
+                    hasCheckedIn ||
+                    !assignedShift ||
+                    !withinShiftWindow
                   }
                   className="bg-green-600 hover:bg-green-700 text-white"
                 >
@@ -448,7 +554,9 @@ function Page() {
                     !currentLocation ||
                     !selfie ||
                     !hasCheckedIn ||
-                    hasCheckedOut
+                    hasCheckedOut ||
+                    !assignedShift ||
+                    !withinShiftWindow
                   }
                   className="bg-orange-600 hover:bg-orange-700 text-white"
                 >
@@ -687,6 +795,31 @@ function Page() {
                   </div>
                 </DialogContent>
               </Dialog>
+
+              {myLeaveRequests.length > 0 && (
+                <div className="space-y-2 border-t pt-3">
+                  <p className="text-xs font-medium text-muted-foreground">My recent requests</p>
+                  {myLeaveRequests.map((r) => (
+                    <div key={r.id} className="flex items-center justify-between gap-2 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{r.leaveType}</p>
+                        <p className="text-xs text-muted-foreground">{r.date}</p>
+                      </div>
+                      <span
+                        className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${
+                          r.status === "Approved"
+                            ? "bg-green-100 text-green-700"
+                            : r.status === "Pending"
+                              ? "bg-amber-100 text-amber-700"
+                              : "bg-gray-200 text-gray-700"
+                        }`}
+                      >
+                        {r.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 

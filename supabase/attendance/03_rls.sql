@@ -101,6 +101,10 @@ create policy shift_configs_update on shift_configs
   using (true)
   with check (true);
 
+create policy shift_configs_delete on shift_configs
+  for delete to anon, authenticated
+  using (true);
+
 -- Attendance Settings policies
 create policy attendance_settings_read on attendance_settings
   for select to anon, authenticated

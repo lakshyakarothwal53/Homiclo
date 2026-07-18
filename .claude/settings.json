@@ -59,7 +59,16 @@
       "Bash(taskkill //PID 15224 //F)",
       "Bash(mkdir -p \"C:\\\\Users\\\\Piyush Kumar\\\\.claude\\\\plans\" 2>/dev/null; echo ok)",
       "mcp__supabase__apply_migration",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8080/)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8080/)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(sleep 3 && cat /tmp/homiqlo-dev.log)",
+      "Bash(pkill -f \"vite dev\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8080/ --max-time 3)",
+      "Bash(python -)",
+      "Bash(cd \"d:\\\\project\\\\homiqlo-git\\\\Homiclo\" && sed -i 's/^            refundBranch,$/            refundBranch ?? undefined,/; s/^              refundBranch,$/              refundBranch ?? undefined,/' src/hooks/use-billing.ts && npx tsc --noEmit; echo \"EXIT:$?\")",
+      "Bash(node -e ' *)",
+      "Bash(echo \"DONE:$?\")",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('src/mocks/users.json','utf8'\\)\\); console.log\\('users.json is valid JSON'\\)\")"
     ],
     "deny": [
       "Bash(git push --force*)",

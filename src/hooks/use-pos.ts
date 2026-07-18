@@ -27,14 +27,46 @@ function like(value: string) {
 }
 
 export function usePosProducts(search?: string, branch?: string) {
+  const allBranches = !branch || branch === "all";
   return useQuery({
     queryKey: ["pos", "products", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<PosProduct[]> => {
-      // Product catalogue reads from the canonical products table (single source
-      // of truth) instead of the standalone pos_products cache, which had drifted
-      // (stale stock/price/name). products has no branch dimension, so the list
-      // is global regardless of the selected branch.
-      let query = supabase.from("products").select("sku, name, category, price, stock");
+      // Product FACTS (name, category, price) always come from the canonical
+      // products table — never from the retired pos_products cache, which had
+      // drifted. The only branch-varying fact is the quantity on hand, which
+      // lives in branch_inventory (supabase/17_branch_inventory.sql).
+      //
+      // A till can only sell what its own branch actually holds, so a
+      // branch-scoped session lists ONLY allocated SKUs, with that branch's
+      // quantity as `stock`. Super Admin ("all") sees the central catalogue.
+      if (!allBranches) {
+        const { data: allocations, error: allocError } = await supabase
+          .from("branch_inventory")
+          .select("sku, stock")
+          .eq("branch", branch);
+        if (allocError) throw allocError;
+        if (!allocations || allocations.length === 0) return [];
+
+        const stockBySku = new Map(allocations.map((a) => [a.sku as string, a.stock as number]));
+        let branchQuery = supabase
+          .from("products")
+          .select("sku, name, category, price, gstRate:gst_rate, mrp")
+          .in("sku", [...stockBySku.keys()]);
+        if (search)
+          branchQuery = branchQuery.or(`name.ilike.${like(search)},sku.ilike.${like(search)}`);
+        const { data: rows, error } = await branchQuery;
+        if (error) throw error;
+
+        return (rows ?? []).map((p) => ({
+          ...(p as Omit<PosProduct, "barcode" | "stock">),
+          stock: stockBySku.get(p.sku as string) ?? 0,
+          barcode: p.sku as string,
+        }));
+      }
+
+      let query = supabase
+        .from("products")
+        .select("sku, name, category, price, stock, gstRate:gst_rate, mrp");
       if (search) query = query.or(`name.ilike.${like(search)},sku.ilike.${like(search)}`);
       const { data, error } = await query;
       if (error) throw error;
@@ -182,6 +214,9 @@ export function useCreatePosTransaction() {
             qty: l.qty,
             unit_price: l.unitPrice,
             line_total: l.lineTotal,
+            gst_rate: l.gstRate ?? null,
+            gst_amount: l.gstAmount ?? null,
+            mrp: l.mrp ?? null,
           })),
         );
 
@@ -191,7 +226,9 @@ export function useCreatePosTransaction() {
         // stock hiccup must not surface as "Payment failed" — log and move on.
         if (input.status === "Completed") {
           try {
-            await applyStockMovement(input.lines, "out");
+            // Scoped to the selling branch so the sale draws down that
+            // branch's own allocation, not the central warehouse.
+            await applyStockMovement(input.lines, "out", input.branch);
           } catch (stockError) {
             console.error("Failed to decrement stock after sale:", stockError);
           }

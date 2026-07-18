@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
-import { fetchLowStockAlerts } from "@/lib/inventory-utils";
+import { calculateProductStatus, fetchLowStockAlerts } from "@/lib/inventory-utils";
 import type {
   Category,
   InventoryDashboard,
@@ -37,16 +37,60 @@ export function useInventoryDashboard() {
   });
 }
 
+/**
+ * The product list.
+ *
+ * `products` remains the single source of truth for every product FACT (name,
+ * category, price, min level, status) — those are never copied per branch.
+ * The only branch-varying fact is the quantity on hand, which lives in
+ * `branch_inventory` (see supabase/17_branch_inventory.sql).
+ *
+ * - No branch (Super Admin): `stock` is the CENTRAL warehouse quantity, i.e.
+ *   what is still available to send out to branches.
+ * - A branch selected: only products actually allocated to that branch are
+ *   listed, and `stock` is that branch's own quantity.
+ */
 export function useProducts(search?: string, branch?: string) {
+  const allBranches = !branch || branch === "all";
   return useQuery({
     queryKey: ["inventory", "products", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<Product[]> => {
-      // The products table is the single source of truth for the catalogue and
-      // has no branch dimension, so every branch sees the same list (the old
-      // products_branches twin was empty and is being retired).
+      if (!allBranches) {
+        const { data: allocations, error: allocError } = await supabase
+          .from("branch_inventory")
+          .select("sku, stock")
+          .eq("branch", branch)
+          .gt("stock", 0);
+        if (allocError) throw allocError;
+        if (!allocations || allocations.length === 0) return [];
+
+        const stockBySku = new Map(allocations.map((a) => [a.sku, a.stock as number]));
+        let branchQuery = supabase
+          .from("products")
+          .select("sku, name, category, price, minStock:min_stock, status, gstRate:gst_rate, mrp")
+          .in("sku", [...stockBySku.keys()]);
+        if (search)
+          branchQuery = branchQuery.or(`name.ilike.${like(search)},sku.ilike.${like(search)}`);
+        const { data: rows, error } = await branchQuery;
+        if (error) throw error;
+
+        return (rows ?? []).map((p) => {
+          const stock = stockBySku.get(p.sku) ?? 0;
+          return {
+            ...(p as Omit<Product, "barcode" | "stock">),
+            stock,
+            // Status reflects the BRANCH's own holding, not the central one.
+            status: calculateProductStatus(stock, (p as { minStock?: number }).minStock ?? 0),
+            barcode: p.sku,
+          } as Product;
+        });
+      }
+
       let query = supabase
         .from("products")
-        .select("sku, name, category, price, stock, minStock:min_stock, status");
+        .select(
+          "sku, name, category, price, stock, minStock:min_stock, status, gstRate:gst_rate, mrp",
+        );
       if (search) query = query.or(`name.ilike.${like(search)},sku.ilike.${like(search)}`);
       const { data, error } = await query;
       if (error) {
@@ -57,6 +101,100 @@ export function useProducts(search?: string, branch?: string) {
       // @/lib/inventory-utils, called when a product is created.
       return (data as Omit<Product, "barcode">[]).map((p) => ({ ...p, barcode: p.sku }));
     },
+  });
+}
+
+/** Per-branch holdings of one sku — powers the Super Admin allocation dialog. */
+export function useProductAllocations(sku?: string) {
+  return useQuery({
+    queryKey: ["inventory", "allocations", sku ?? ""],
+    enabled: !!sku,
+    queryFn: async (): Promise<{ branch: string; stock: number }[]> => {
+      if (!sku) return [];
+      const { data, error } = await supabase
+        .from("branch_inventory")
+        .select("branch, stock")
+        .eq("sku", sku)
+        .order("branch");
+      if (error) throw error;
+      return (data ?? []) as { branch: string; stock: number }[];
+    },
+  });
+}
+
+/**
+ * A branch's stock movement, from the allocation log: stock sent from the
+ * centre is inward for that branch, a recall is outward. The
+ * stock_inward_branches / stock_outward_branches tables only carry
+ * manually-recorded movements and are empty, so without this a branch's Stock
+ * Movement chart would render blank even after receiving stock.
+ */
+export function useBranchAllocationMovement(branch?: string) {
+  const scoped = !!branch && branch !== "all";
+  return useQuery({
+    queryKey: ["inventory", "allocation-movement", branch ?? "all"],
+    enabled: scoped,
+    queryFn: async (): Promise<{ date: string; inward: number; outward: number }[]> => {
+      if (!scoped) return [];
+      const { data, error } = await supabase
+        .from("product_allocations")
+        .select("quantity, direction, created_at")
+        .eq("branch", branch)
+        .order("created_at");
+      if (error) throw error;
+
+      const byDate = new Map<string, { date: string; inward: number; outward: number }>();
+      (data ?? []).forEach((r) => {
+        const date = String(r.created_at).slice(0, 10);
+        const cur = byDate.get(date) ?? { date, inward: 0, outward: 0 };
+        if (r.direction === "allocate") cur.inward += r.quantity ?? 0;
+        else cur.outward += r.quantity ?? 0;
+        byDate.set(date, cur);
+      });
+      return [...byDate.values()];
+    },
+  });
+}
+
+export type AllocationInput = { sku: string; branch: string; qty: number };
+
+/**
+ * Send units from central stock to a branch. Delegates to the
+ * allocate_product_to_branch RPC so the central decrement and the branch
+ * increment happen in ONE transaction — doing it as two client-side writes
+ * would duplicate or destroy stock if the second call failed. The RPC also
+ * refuses to over-allocate.
+ */
+export function useAllocateProduct() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ sku, branch, qty }: AllocationInput) => {
+      const { data, error } = await supabase.rpc("allocate_product_to_branch", {
+        p_sku: sku,
+        p_branch: branch,
+        p_qty: qty,
+      });
+      if (error) throw new Error(error.message);
+      return (data as { central_stock: number; branch_stock: number }[])?.[0];
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory"] }),
+  });
+}
+
+/** Pull units back from a branch into central stock. */
+export function useRecallProduct() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ sku, branch, qty }: AllocationInput) => {
+      const { data, error } = await supabase.rpc("recall_product_from_branch", {
+        p_sku: sku,
+        p_branch: branch,
+        p_qty: qty,
+      });
+      if (error) throw new Error(error.message);
+      return (data as { central_stock: number; branch_stock: number }[])?.[0];
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory"] }),
   });
 }
 
@@ -104,21 +242,44 @@ export function useCategories(search?: string, branch?: string) {
         });
       }
 
-      // No live products_branches data exists yet to aggregate from, so the
-      // branch-scoped path keeps reading the per-branch junction table.
-      let query = supabase
-        .from("category_branches")
-        .select(
-          "name:category, productCount:product_count, stockValue:stock_value, lastUpdated:last_updated",
-        )
-        .eq("branch", branch);
-      if (search) query = query.ilike("category", like(search));
-      const { data, error } = await query;
-      if (error) {
-        console.error("Error fetching category branches from Supabase:", error);
-        throw error;
-      }
-      return data as unknown as Category[];
+      // Branch view: aggregate live from what the branch actually holds
+      // (branch_inventory joined to products). The old category_branches
+      // junction is a hand-maintained snapshot that was never populated, so
+      // reading it showed every branch zero categories.
+      const { data: allocations, error: allocError } = await supabase
+        .from("branch_inventory")
+        .select("sku, stock")
+        .eq("branch", branch)
+        .gt("stock", 0);
+      if (allocError) throw allocError;
+      if (!allocations || allocations.length === 0) return [];
+
+      const stockBySku = new Map(allocations.map((a) => [a.sku as string, a.stock as number]));
+      const { data: products, error: prodError } = await supabase
+        .from("products")
+        .select("sku, category, price")
+        .in("sku", [...stockBySku.keys()]);
+      if (prodError) throw prodError;
+
+      const agg = new Map<string, { count: number; value: number }>();
+      (products ?? []).forEach((p) => {
+        const cat = (p.category && p.category.trim()) || "Uncategorized";
+        const cur = agg.get(cat) ?? { count: 0, value: 0 };
+        cur.count += 1;
+        cur.value += (p.price ?? 0) * (stockBySku.get(p.sku as string) ?? 0);
+        agg.set(cat, cur);
+      });
+
+      const q = search?.trim().toLowerCase();
+      return [...agg.entries()]
+        .filter(([name]) => !q || name.toLowerCase().includes(q))
+        .map(([name, a]) => ({
+          name,
+          productCount: a.count,
+          stockValue: formatStockValue(a.value),
+          lastUpdated: "—",
+        }))
+        .sort((a, b) => b.productCount - a.productCount);
     },
   });
 }
@@ -199,9 +360,9 @@ export function useLowStockAlerts(search?: string, branch?: string) {
     queryFn: async (): Promise<LowStockAlert[]> => {
       // Derived live from the products table (single source of truth) instead of
       // the standalone low_stock_alerts table, so an alert can never disagree
-      // with the product it is about. products has no branch dimension, so the
-      // list is global regardless of the selected branch.
-      const alerts = await fetchLowStockAlerts();
+      // with the product it is about. When a branch is given, the on-hand
+      // figure is that branch's allocated quantity (branch_inventory).
+      const alerts = await fetchLowStockAlerts(branch);
       if (!search) return alerts;
       const q = search.toLowerCase();
       return alerts.filter(
@@ -363,6 +524,10 @@ export function useCreateProduct() {
         stock: input.stock,
         min_stock: input.minStock ?? 10,
         status: input.status,
+        // null (not 0) when unset: null means "use the flat POS rate", whereas
+        // 0 would mean "this product is genuinely zero-rated".
+        gst_rate: input.gstRate ?? null,
+        mrp: input.mrp ?? null,
       };
       const { error } = await supabase.from("products").insert(row);
       if (error) throw error;
@@ -385,6 +550,8 @@ export function useUpdateProduct() {
         stock: product.stock,
         min_stock: product.minStock ?? 10,
         status: product.status,
+        gst_rate: product.gstRate ?? null,
+        mrp: product.mrp ?? null,
       };
       const { error } = await supabase.from("products").update(row).eq("sku", originalSku);
       if (error) throw error;

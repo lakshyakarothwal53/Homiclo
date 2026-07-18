@@ -23,6 +23,9 @@ import {
 import { generateSku } from "@/lib/inventory-utils";
 import type { Product } from "@/types/inventory";
 
+// The statutory Indian GST slabs.
+const GST_SLABS = [0, 5, 12, 18, 28] as const;
+
 export type ProductFormValues = {
   sku: string;
   name: string;
@@ -31,6 +34,10 @@ export type ProductFormValues = {
   stock: number;
   minStock: number;
   status: string;
+  /** GST percent; undefined = use the flat POS rate. */
+  gstRate?: number;
+  /** MRP printed on the pack — display-only. */
+  mrp?: number;
 };
 
 export type AddToStockInput = {
@@ -78,6 +85,8 @@ export function ProductFormDialog({
       stock: initial?.stock ?? 0,
       minStock: initial?.minStock ?? 10,
       status: initial?.status ?? "In Stock",
+      gstRate: initial?.gstRate,
+      mrp: initial?.mrp,
     };
   }
 
@@ -132,6 +141,8 @@ export function ProductFormDialog({
       stock: values.stock,
       minStock: values.minStock,
       status: values.status,
+      gstRate: values.gstRate,
+      mrp: values.mrp,
     };
     onSave(out);
     setOpen(false);
@@ -266,7 +277,7 @@ export function ProductFormDialog({
 
             {/* Price */}
             <div className="grid gap-1.5">
-              <Label htmlFor="product-price">Price (₹)</Label>
+              <Label htmlFor="product-price">Selling Price (₹, excl. GST)</Label>
               <Input
                 id="product-price"
                 type="number"
@@ -274,6 +285,53 @@ export function ProductFormDialog({
                 placeholder="499"
                 onChange={(e) => setValues((s) => ({ ...s, price: Number(e.target.value) || 0 }))}
               />
+              <p className="text-xs text-muted-foreground">
+                GST is added on top of this at checkout.
+              </p>
+            </div>
+
+            {/* MRP — printed on the bill so the customer sees their saving. */}
+            <div className="grid gap-1.5">
+              <Label htmlFor="product-mrp">MRP (₹)</Label>
+              <Input
+                id="product-mrp"
+                type="number"
+                value={values.mrp ?? ""}
+                placeholder="Optional — printed on the bill"
+                onChange={(e) =>
+                  setValues((s) => ({
+                    ...s,
+                    mrp: e.target.value === "" ? undefined : Number(e.target.value) || 0,
+                  }))
+                }
+              />
+            </div>
+
+            {/* GST slab */}
+            <div className="grid gap-1.5">
+              <Label htmlFor="product-gst">GST Rate</Label>
+              <Select
+                value={values.gstRate === undefined ? "default" : String(values.gstRate)}
+                onValueChange={(v) =>
+                  setValues((s) => ({ ...s, gstRate: v === "default" ? undefined : Number(v) }))
+                }
+              >
+                <SelectTrigger id="product-gst">
+                  <SelectValue placeholder="Select GST rate" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Use default POS rate</SelectItem>
+                  {GST_SLABS.map((r) => (
+                    <SelectItem key={r} value={String(r)}>
+                      {r}%
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Charged per product at checkout. "Default" falls back to the flat rate in POS
+                Settings.
+              </p>
             </div>
 
             {/* Stock and Minimum Stock */}

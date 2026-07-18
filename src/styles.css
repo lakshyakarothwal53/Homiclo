@@ -155,4 +155,19 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
   }
+
+  /* Chrome paints an opaque pale-blue background on autofilled inputs and it
+     survives clearing the value, so a field can LOOK pre-filled when it is
+     empty. The huge inset shadow is the only way to override it — the
+     background-color property itself is ignored on :-webkit-autofill. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 1000px var(--color-background) inset !important;
+    box-shadow: 0 0 0 1000px var(--color-background) inset !important;
+    -webkit-text-fill-color: var(--color-foreground) !important;
+    caret-color: var(--color-foreground);
+    transition: background-color 9999s ease-in-out 0s;
+  }
 }

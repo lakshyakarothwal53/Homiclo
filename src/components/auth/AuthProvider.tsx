@@ -10,7 +10,8 @@ import type { Role } from "@/lib/roles";
 type AuthContextValue = {
   user: SessionUser | null;
   role: Role | null;
-  signIn: (email: string, password: string) => Promise<SessionUser>;
+  /** `expectedRole` enforces the role picked on the login screen. */
+  signIn: (email: string, password: string, expectedRole?: Role) => Promise<SessionUser>;
   signOut: () => void;
 };
 
@@ -21,8 +22,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // and hydrated client state agree.
   const [user, setUser] = useState<SessionUser | null>(() => getSession());
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const next = await authSignIn(email, password);
+  const signIn = useCallback(async (email: string, password: string, expectedRole?: Role) => {
+    const next = await authSignIn(email, password, expectedRole);
     setUser(next);
     return next;
   }, []);

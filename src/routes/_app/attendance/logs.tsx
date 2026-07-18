@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useDailyLogs } from "@/hooks/use-attendance";
-import { useBranchScope } from "@/hooks/use-branch-scope";
+import { useBranchScope, useSelfScope } from "@/hooks/use-branch-scope";
 import { useBranches } from "@/hooks/use-inventory";
 import { BranchFilterSelect } from "@/components/common/BranchFilterSelect";
 import { usePagination } from "@/hooks/use-pagination";
@@ -94,10 +94,15 @@ function Page() {
   const [date, setDate] = useState("");
   const [month, setMonth] = useState("all");
   const { scoped, homeBranch } = useBranchScope();
+  const { employeeId } = useSelfScope();
   const [branchFilter, setBranchFilter] = useState("all");
   const { data: branches = [] } = useBranches();
   const effectiveBranch = scoped ? homeBranch : branchFilter;
-  const { data: allLogs = [], isLoading, refetch } = useDailyLogs(search, effectiveBranch);
+  const {
+    data: allLogs = [],
+    isLoading,
+    refetch,
+  } = useDailyLogs(search, effectiveBranch, employeeId);
 
   const monthOptions = useMemo(() => {
     const seen = new Map<string, string>();

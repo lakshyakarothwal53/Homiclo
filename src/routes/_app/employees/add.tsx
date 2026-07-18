@@ -16,6 +16,7 @@ import { AlertCircle, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useCreateEmployee } from "@/hooks/use-employees";
 import { useBranches } from "@/hooks/use-inventory";
+import { useShiftConfigs } from "@/hooks/use-attendance";
 import type { EmployeeRole, EmployeeStatus } from "@/types/employees";
 import { toast } from "sonner";
 
@@ -44,6 +45,7 @@ function AddEmployeePage() {
   const router = useRouter();
   const { mutate: createEmployee, isPending } = useCreateEmployee();
   const { data: branches = [] } = useBranches();
+  const { data: shifts = [] } = useShiftConfigs();
   const { scoped, homeBranch } = useBranchScope();
 
   const [formData, setFormData] = useState({
@@ -61,6 +63,7 @@ function AddEmployeePage() {
     salary: "",
     password: "",
     confirmPassword: "",
+    shiftId: "",
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -76,6 +79,7 @@ function AddEmployeePage() {
     if (!formData.phone.trim()) newErrors.phone = "Phone is required";
     if (!formData.role) newErrors.role = "Role is required";
     if (!formData.branch) newErrors.branch = "Branch is required";
+    if (!formData.shiftId) newErrors.shiftId = "Shift is required";
     if (!formData.salary.trim()) newErrors.salary = "Salary is required";
     if (!formData.password.trim()) newErrors.password = "Password is required";
     if (formData.password.length < 6) newErrors.password = "Password must be at least 6 characters";
@@ -103,6 +107,7 @@ function AddEmployeePage() {
         status: formData.status as EmployeeStatus,
         salary: formData.salary,
         password: formData.password,
+        shiftId: formData.shiftId,
       },
       {
         onSuccess: () => {
@@ -226,6 +231,29 @@ function AddEmployeePage() {
                   </SelectContent>
                 </Select>
                 {errors.branch && <p className="text-xs text-red-500">{errors.branch}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="shift">Shift *</Label>
+                <Select
+                  value={formData.shiftId}
+                  onValueChange={(value) => setFormData({ ...formData, shiftId: value })}
+                >
+                  <SelectTrigger className={errors.shiftId ? "border-red-500" : ""}>
+                    <SelectValue placeholder="Select shift" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {shifts.map((shift) => (
+                      <SelectItem key={shift.id} value={shift.id}>
+                        {shift.shiftName} ({shift.startTime} - {shift.endTime})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.shiftId && <p className="text-xs text-red-500">{errors.shiftId}</p>}
+                <p className="text-xs text-muted-foreground">
+                  The employee can only mark check-in / check-out during this shift's window.
+                </p>
               </div>
 
               <div className="space-y-2">

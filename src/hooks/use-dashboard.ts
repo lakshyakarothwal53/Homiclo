@@ -206,13 +206,16 @@ export function useDashboardStats(branch?: string) {
       const attendancePercentage =
         totalEmployees > 0 ? Math.round((presentCount / totalEmployees) * 100) : 0;
 
-      // 5. Stock alerts count + critical breakdown, derived live from products
-      // (products has no branch dimension, so this is global).
-      const stockAlertsData = await fetchLowStockAlerts();
+      // 5. Stock alerts, derived live. Branch-scoped sessions measure against
+      // the stock that branch actually holds (branch_inventory); Super Admin
+      // measures the central warehouse.
+      const stockAlertsData = await fetchLowStockAlerts(branch);
       const alertsCount = stockAlertsData.length;
       const criticalCount = stockAlertsData.filter((a) => a.status === "Critical").length;
 
-      // 6. Active discounts count + expiring within 7 days (global)
+      // 6. Active discounts count + expiring within 7 days. Deliberately GLOBAL:
+      // promos are company-wide in this data model (discount_promos_branches
+      // exists but is unpopulated), so a promo applies at every branch.
       const { data: activeDiscountsData } = await supabase
         .from("discount_promos")
         .select("id, valid_to")
@@ -374,67 +377,64 @@ export function useAttendanceChartData(branch?: string) {
   });
 }
 
-// Fetch inventory mix by categories - real data, branch-scoped when given.
+// Shared by both the central and the branch path so the two can't drift.
+// Percentages are rounded then reconciled to exactly 100 on the last slice.
+function toCategoryMix(rows: { category?: string | null }[]): CategoryData[] {
+  if (rows.length === 0) return [];
+  const counts: Record<string, number> = {};
+  rows.forEach((p) => {
+    const cat = (p.category && p.category.trim()) || "Uncategorized";
+    counts[cat] = (counts[cat] || 0) + 1;
+  });
+
+  const total = rows.length;
+  const mix = Object.entries(counts)
+    .map(([name, count]) => ({
+      name: `${name} (${count})`,
+      value: total > 0 ? Math.round((count / total) * 100) : 0,
+      count,
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  const sum = mix.reduce((s, i) => s + i.value, 0);
+  if (mix.length > 0 && sum !== 100) mix[mix.length - 1].value += 100 - sum;
+  return mix;
+}
+
+// Inventory mix by category.
+//   Super Admin  → the central catalogue.
+//   A branch     → only the products actually allocated to it, counted from
+//                  branch_inventory. (An earlier version read the
+//                  category_branches junction, which is unpopulated and so
+//                  showed every branch admin an empty chart; branch_inventory
+//                  is real allocation data — see supabase/17_branch_inventory.sql.)
 export function useInventoryMixData(branch?: string) {
   return useQuery({
     queryKey: ["dashboard", "inventory-mix", branch ?? "all"],
     queryFn: async (): Promise<CategoryData[]> => {
-      // Branch-scoped: read per-branch product_count from the category_branches
-      // junction (the established branch pattern) instead of counting products.
       if (isScoped(branch)) {
-        const { data: rows, error } = await supabase
-          .from("category_branches")
-          .select("category, product_count")
-          .eq("branch", branch);
-        if (error) throw error;
+        const { data: allocations, error: allocError } = await supabase
+          .from("branch_inventory")
+          .select("sku, stock")
+          .eq("branch", branch)
+          .gt("stock", 0);
+        if (allocError) throw allocError;
+        if (!allocations || allocations.length === 0) return [];
 
-        const withStock = (rows ?? []).filter((r) => r.product_count > 0);
-        const total = withStock.reduce((sum: number, r) => sum + r.product_count, 0);
-        const branchData = withStock
-          .map((r) => ({
-            name: `${r.category} (${r.product_count})`,
-            value: total > 0 ? Math.round((r.product_count / total) * 100) : 0,
-            count: r.product_count as number,
-          }))
-          .sort((a, b) => b.count - a.count);
-
-        if (branchData.length > 0) {
-          const sumPct = branchData.reduce((s, i) => s + i.value, 0);
-          if (sumPct !== 100) branchData[branchData.length - 1].value += 100 - sumPct;
-        }
-        return branchData;
+        const { data: rows, error: prodError } = await supabase
+          .from("products")
+          .select("sku, category")
+          .in(
+            "sku",
+            allocations.map((a) => a.sku),
+          );
+        if (prodError) throw prodError;
+        return toCategoryMix(rows ?? []);
       }
 
       const { data: products, error } = await supabase.from("products").select("sku, category");
       if (error) throw error;
-      if (!products || products.length === 0) return [];
-
-      // Count products by category
-      const categoryCount: Record<string, number> = {};
-      products.forEach((p: { category?: string }) => {
-        const cat = (p.category && p.category.trim()) || "Uncategorized";
-        categoryCount[cat] = (categoryCount[cat] || 0) + 1;
-      });
-
-      // Convert to percentages and sort by count (descending)
-      const total = products.length;
-      const categoryData = Object.entries(categoryCount)
-        .map(([name, count]) => ({
-          name: `${name} (${count})`,
-          value: total > 0 ? Math.round((count / total) * 100) : 0,
-          count,
-        }))
-        .sort((a, b) => b.count - a.count);
-
-      // Ensure percentages add up to 100 (adjust last item if needed)
-      if (categoryData.length > 0) {
-        const sumPercentages = categoryData.reduce((sum, item) => sum + item.value, 0);
-        if (sumPercentages !== 100) {
-          categoryData[categoryData.length - 1].value += 100 - sumPercentages;
-        }
-      }
-
-      return categoryData;
+      return toCategoryMix(products ?? []);
     },
     staleTime: 1000 * 60 * 10,
     refetchInterval: 1000 * 60 * 5,
@@ -491,11 +491,13 @@ export function useRecentTransactions(branch?: string) {
 }
 
 // Stock alerts, derived live from products (stock < min_stock).
-export function useStockAlertsData() {
+export function useStockAlertsData(branch?: string) {
   return useQuery({
-    queryKey: ["dashboard", "stock-alerts"],
+    queryKey: ["dashboard", "stock-alerts", branch ?? "all"],
     queryFn: async (): Promise<StockAlert[]> => {
-      const alerts = await fetchLowStockAlerts();
+      // Branch-scoped: alerts measured against that branch's own holding, so
+      // the widget agrees with the Stock Alerts KPI above it.
+      const alerts = await fetchLowStockAlerts(branch);
       return alerts.slice(0, 4).map((alert) => ({
         sku: alert.sku,
         name: alert.product,
