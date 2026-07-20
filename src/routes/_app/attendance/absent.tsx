@@ -34,6 +34,7 @@ import {
   useAbsentRecords,
   useCreateAbsentRecord,
   useDecideLeaveRequest,
+  useInferredAbsences,
   type LeaveDecision,
 } from "@/hooks/use-attendance";
 import { useAuth } from "@/components/auth/AuthProvider";
@@ -105,10 +106,22 @@ function Page() {
   const { selfOnly, employeeId } = useSelfScope();
   const { role } = useAuth();
   const {
-    data: allAbsentRecords = [],
+    data: explicitAbsentRecords = [],
     isLoading,
     refetch,
   } = useAbsentRecords(search, homeBranch, employeeId);
+  // Only meaningful for a single specific day — no defined "supposed to be
+  // present" concept exists across an arbitrary month/all-time range.
+  const { data: inferredAbsences = [] } = useInferredAbsences(
+    date || undefined,
+    homeBranch,
+    employeeId,
+    search,
+  );
+  const allAbsentRecords = useMemo(
+    () => (date ? [...explicitAbsentRecords, ...inferredAbsences] : explicitAbsentRecords),
+    [explicitAbsentRecords, inferredAbsences, date],
+  );
   const { data: employees = [] } = useEmployees(undefined, homeBranch);
   const createAbsent = useCreateAbsentRecord();
   const decideLeave = useDecideLeaveRequest();

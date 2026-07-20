@@ -60,7 +60,6 @@ export function useBillingDashboard(branch?: string) {
     queryFn: async (): Promise<BillingDashboard> => {
       const today = new Date();
       const todayIso = today.toISOString().slice(0, 10);
-      const nextDayIso = new Date(today.getTime() + 86400000).toISOString().slice(0, 10);
       const monthStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
       const lastMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
       const lastMonthStart = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, "0")}-01`;
@@ -101,18 +100,22 @@ export function useBillingDashboard(branch?: string) {
       }
 
       // POS checkout (useCreatePosTransaction) never writes to
-      // billing_sales_bills, so "today's revenue" would silently exclude
-      // every POS sale — and, for a branch-scoped viewer, would previously
-      // have summed every branch's POS sales together — without this.
+      // billing_sales_bills, so every bucket below (today/month/last month)
+      // would silently exclude every POS sale — and, for a branch-scoped
+      // viewer, would previously have summed every branch's POS sales
+      // together — without this. Fetched once from lastMonthStart onward and
+      // bucketed client-side alongside `bills`, same as the bills fetch above.
       let posQuery = supabase
         .from("pos_transactions")
-        .select("amount")
-        .gte("created_at", `${todayIso}T00:00:00.000Z`)
-        .lt("created_at", `${nextDayIso}T00:00:00.000Z`);
+        .select("amount, created_at")
+        .gte("created_at", `${lastMonthStart}T00:00:00.000Z`);
       if (!allBranches) posQuery = posQuery.eq("branch", branch);
-      const { data: posToday, error: posError } = await posQuery;
+      const { data: posRows, error: posError } = await posQuery;
       if (posError) throw posError;
-      const posTodayRevenue = (posToday ?? []).reduce((s, r) => s + parseAmountNum(r.amount), 0);
+      const posBuckets = (posRows ?? []).map((r) => ({
+        amountNum: parseAmountNum(r.amount),
+        dateIso: String(r.created_at).slice(0, 10),
+      }));
 
       const billsToday = bills.filter((b) => b.dateIso === todayIso);
       const pendingBills = bills.filter((b) => b.status === "Pending");
@@ -121,12 +124,22 @@ export function useBillingDashboard(branch?: string) {
         (b) => b.dateIso !== null && b.dateIso >= lastMonthStart && b.dateIso < monthStart,
       );
 
+      const posToday = posBuckets.filter((p) => p.dateIso === todayIso);
+      const posThisMonth = posBuckets.filter((p) => p.dateIso >= monthStart);
+      const posLastMonth = posBuckets.filter(
+        (p) => p.dateIso >= lastMonthStart && p.dateIso < monthStart,
+      );
+      const posTodayRevenue = posToday.reduce((s, p) => s + p.amountNum, 0);
+      const posThisMonthRevenue = posThisMonth.reduce((s, p) => s + p.amountNum, 0);
+      const posLastMonthRevenue = posLastMonth.reduce((s, p) => s + p.amountNum, 0);
+
       const billsTodaySum = billsToday.reduce((s, b) => s + b.amountNum, 0);
       const pendingPayments = pendingBills.reduce((s, b) => s + b.amountNum, 0);
-      const thisMonthRevenue = monthBills.reduce((s, b) => s + b.amountNum, 0);
-      const lastMonthRevenue = lastMonthBills.reduce((s, b) => s + b.amountNum, 0);
+      const thisMonthRevenue = monthBills.reduce((s, b) => s + b.amountNum, 0) + posThisMonthRevenue;
+      const lastMonthRevenue =
+        lastMonthBills.reduce((s, b) => s + b.amountNum, 0) + posLastMonthRevenue;
       const todayRevenue = billsTodaySum + posTodayRevenue;
-      const todayInvoiceCount = billsToday.length + (posToday?.length ?? 0);
+      const todayInvoiceCount = billsToday.length + posToday.length;
 
       // `*` so refund_date (added by 13_completion_pack.sql) is picked up
       // when present without erroring on older schemas. billing_refunds_branches
@@ -166,45 +179,63 @@ export function useBillingDashboard(branch?: string) {
   });
 }
 
-// billing_revenue_trend_live is a global SQL view with no branch dimension,
-// so branch-scoped viewers get a client-computed 14-day trend from their own
-// branch's billing_sales_bills_branches rows instead (matches the view's
-// window/shape so the chart renders identically either way).
+// billing_revenue_trend_live only ever summed billing_sales_bills — the
+// manual "Create Invoice" flow — so it went blank the moment a shop's real
+// revenue came entirely through POS checkout instead (POS never writes to
+// billing_sales_bills). Computed client-side now, from paid invoices AND POS
+// sales together, for both the all-branches and single-branch views.
 export function useBillingRevenueTrend(branch?: string) {
   const allBranches = !branch || branch === "all";
   return useQuery({
     queryKey: ["billing", "revenue-trend", branch ?? "all"],
     queryFn: async (): Promise<BillingRevenueTrend[]> => {
-      if (allBranches) {
-        const { data, error } = await supabase
-          .from("billing_revenue_trend_live")
-          .select("d, revenue")
-          .order("sort_key");
-        if (error) throw error;
-        return data as BillingRevenueTrend[];
-      }
-
       const since = new Date();
       since.setDate(since.getDate() - 13);
-      const { data, error } = await supabase
-        .from("billing_sales_bills_branches")
-        .select("amount, date, status")
-        .eq("branch", branch)
-        .eq("status", "Paid");
-      if (error) throw error;
+      const sinceIso = localDateIso(since);
 
       const byDate = new Map<string, number>();
-      (data ?? []).forEach((r) => {
-        const d = parseRowDate(r.date);
-        if (!d || d < since) return;
-        const sortKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-        byDate.set(sortKey, (byDate.get(sortKey) ?? 0) + parseAmountNum(r.amount));
+      const bump = (sortKey: string, amount: number) =>
+        byDate.set(sortKey, (byDate.get(sortKey) ?? 0) + amount);
+
+      if (allBranches) {
+        const { data, error } = await supabase
+          .from("billing_sales_bills")
+          .select("amount_num, bill_date, status")
+          .eq("status", "Paid")
+          .gte("bill_date", sinceIso);
+        if (error) throw error;
+        (data ?? []).forEach((r) => {
+          if (r.bill_date) bump(r.bill_date, r.amount_num ?? 0);
+        });
+      } else {
+        const { data, error } = await supabase
+          .from("billing_sales_bills_branches")
+          .select("amount, date, status")
+          .eq("branch", branch)
+          .eq("status", "Paid");
+        if (error) throw error;
+        (data ?? []).forEach((r) => {
+          const d = parseRowDate(r.date);
+          if (!d || d < since) return;
+          bump(localDateIso(d), parseAmountNum(r.amount));
+        });
+      }
+
+      let posQuery = supabase
+        .from("pos_transactions")
+        .select("amount, created_at")
+        .gte("created_at", since.toISOString());
+      if (!allBranches) posQuery = posQuery.eq("branch", branch);
+      const { data: posRows, error: posError } = await posQuery;
+      if (posError) throw posError;
+      (posRows ?? []).forEach((r) => {
+        bump(String(r.created_at).slice(0, 10), parseAmountNum(r.amount));
       });
 
       return [...byDate.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([sortKey, revenue]) => {
-          const d = new Date(sortKey);
+          const d = new Date(`${sortKey}T00:00:00`);
           const label = `${String(d.getDate()).padStart(2, "0")} ${d.toLocaleString("en-US", { month: "short" })}`;
           return { d: label, revenue: Math.round(revenue) };
         });
@@ -460,16 +491,67 @@ export function useBillingTaxInvoices(search?: string, branch?: string) {
   });
 }
 
-export function useBillingTallyLog() {
+// Past attempts (Synced/Failed) from billing_tally_log, PLUS a synthetic
+// "Pending" row for every real sales bill that's never been attempted at
+// all — otherwise this log only ever showed history and gave no visibility
+// into what "Sync Now" would actually push next. Bills come from both
+// billing_sales_bills (legacy manual invoices, Super Admin only — see below)
+// and pos_transactions (the real, live sales channel — see
+// useBillingSalesBills / posTxnToBill).
+//
+// Branch scoping: pos_transactions carries a branch column, so a Branch
+// Admin only ever sees their own branch's vouchers, synced or not — and
+// billing_tally_log has no branch column at all, so for a scoped caller it's
+// filtered down to just the references that belong to their branch. Super
+// Admin (no branch / "all") sees every branch's vouchers, same as before.
+// billing_sales_bills has no branch dimension either, so it's Super-Admin-only
+// — a Branch Admin syncing it would leak every other branch's legacy invoices.
+export function useBillingTallyLog(branch?: string) {
+  const allBranches = !branch || branch === "all";
   return useQuery({
-    queryKey: ["billing", "tally-log"],
+    queryKey: ["billing", "tally-log", branch ?? "all"],
     queryFn: async (): Promise<BillingTallyRow[]> => {
-      const { data, error } = await supabase
+      const { data: log, error } = await supabase
         .from("billing_tally_log")
         .select("time, voucher, reference, amount, status")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data as BillingTallyRow[];
+
+      let posQuery = supabase.from("pos_transactions").select("invoice, amount, time");
+      if (!allBranches) posQuery = posQuery.eq("branch", branch);
+      const { data: posRows } = await posQuery;
+
+      const legacyBills: { invoice: string; amount: string; bill_date: string | null }[] =
+        allBranches
+          ? ((await supabase.from("billing_sales_bills").select("invoice, amount, bill_date"))
+              .data ?? [])
+          : [];
+
+      const branchInvoices = new Set([
+        ...(posRows ?? []).map((r) => r.invoice),
+        ...legacyBills.map((b) => b.invoice),
+      ]);
+      const logRows = (
+        allBranches
+          ? (log ?? [])
+          : (log ?? []).filter((r) => branchInvoices.has(r.reference))
+      ) as BillingTallyRow[];
+
+      // Already-attempted invoices (Synced or Failed) get their real history
+      // row above — skip them here to avoid a duplicate entry for the same
+      // invoice.
+      const attemptedRefs = new Set(logRows.map((r) => r.reference));
+      const pendingRows: BillingTallyRow[] = [];
+      const seen = new Set<string>();
+      const addPending = (invoice: string, amount: string, time: string) => {
+        if (attemptedRefs.has(invoice) || seen.has(invoice)) return;
+        seen.add(invoice);
+        pendingRows.push({ time, voucher: "Sales", reference: invoice, amount, status: "Pending" });
+      };
+      legacyBills.forEach((b) => addPending(b.invoice, b.amount, b.bill_date ?? ""));
+      (posRows ?? []).forEach((r) => addPending(r.invoice, r.amount, r.time ?? ""));
+
+      return [...logRows, ...pendingRows];
     },
   });
 }
@@ -481,26 +563,46 @@ export type TallyStats = {
   failed: number;
 };
 
-// Live stats derived from the sync log + the bills that haven't been pushed yet.
-export function useTallyStats() {
+// Live stats derived from the sync log + the bills that haven't been pushed
+// yet, scoped to the caller's branch the same way useBillingTallyLog is (see
+// its comment for why). Sales bills now come from POS checkout (see
+// useBillingSalesBills) — billing_sales_bills is a legacy manual-invoice
+// table that's typically empty, so counting only its rows silently missed
+// every real POS sale.
+export function useTallyStats(branch?: string) {
+  const allBranches = !branch || branch === "all";
   return useQuery({
-    queryKey: ["billing", "tally-stats"],
+    queryKey: ["billing", "tally-stats", branch ?? "all"],
     queryFn: async (): Promise<TallyStats> => {
       const todayIso = new Date().toISOString().slice(0, 10);
       const { data: log, error } = await supabase
         .from("billing_tally_log")
         .select("reference, status, created_at");
       if (error) throw error;
-      const { data: bills } = await supabase.from("billing_sales_bills").select("invoice");
+
+      let posQuery = supabase.from("pos_transactions").select("invoice");
+      if (!allBranches) posQuery = posQuery.eq("branch", branch);
+      const { data: posTxns } = await posQuery;
+      const bills: { invoice: string }[] = allBranches
+        ? ((await supabase.from("billing_sales_bills").select("invoice")).data ?? [])
+        : [];
+
+      const allInvoices = new Set([
+        ...bills.map((b) => b.invoice),
+        ...(posTxns ?? []).map((p) => p.invoice),
+      ]);
+      const scopedLog = allBranches
+        ? (log ?? [])
+        : (log ?? []).filter((r) => allInvoices.has(r.reference));
 
       const syncedRefs = new Set(
-        (log ?? []).filter((r) => r.status === "Synced").map((r) => r.reference),
+        scopedLog.filter((r) => r.status === "Synced").map((r) => r.reference),
       );
-      const pending = (bills ?? []).filter((b) => !syncedRefs.has(b.invoice)).length;
-      const syncedToday = (log ?? []).filter(
+      const pending = [...allInvoices].filter((inv) => !syncedRefs.has(inv)).length;
+      const syncedToday = scopedLog.filter(
         (r) => r.status === "Synced" && String(r.created_at ?? "").startsWith(todayIso),
       ).length;
-      const failed = (log ?? []).filter((r) => r.status === "Failed").length;
+      const failed = scopedLog.filter((r) => r.status === "Failed").length;
 
       return { syncedToday, syncedTotal: syncedRefs.size, pending, failed };
     },
@@ -512,8 +614,14 @@ export type TallySyncResult = { pushed: number; failed: number };
 /**
  * Real sync: push every un-synced sales bill to the configured Tally HTTP
  * gateway as a Sales voucher and record each attempt in billing_tally_log.
+ * Pulls from pos_transactions (every completed POS sale — the real, live
+ * sales channel; see useBillingSalesBills / posTxnToBill), scoped to the
+ * caller's branch, plus billing_sales_bills (the legacy manual-invoice table,
+ * which has no branch column) for Super Admin only — a Branch Admin must
+ * never push another branch's bills to Tally.
  */
-export function useTallySync() {
+export function useTallySync(branch?: string) {
+  const allBranches = !branch || branch === "all";
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (): Promise<TallySyncResult> => {
@@ -527,12 +635,31 @@ export function useTallySync() {
         (log ?? []).filter((r) => r.status === "Synced").map((r) => r.reference),
       );
 
-      const { data: bills, error: billsError } = await supabase
-        .from("billing_sales_bills")
-        .select("invoice, date, customer, amount, payment, status, bill_date, amount_num");
-      if (billsError) throw billsError;
+      let legacyBills: BillingSalesBill[] = [];
+      if (allBranches) {
+        const { data, error: billsError } = await supabase
+          .from("billing_sales_bills")
+          .select("invoice, date, customer, amount, payment, status, bill_date, amount_num");
+        if (billsError) throw billsError;
+        legacyBills = data ?? [];
+      }
 
-      const unsynced = (bills ?? []).filter((b) => !syncedRefs.has(b.invoice));
+      let posQuery = supabase
+        .from("pos_transactions")
+        .select(
+          "invoice, amount, payment, status, total, created_at, customer_name, invoice_date",
+        );
+      if (!allBranches) posQuery = posQuery.eq("branch", branch);
+      const { data: posRows, error: posError } = await posQuery;
+      if (posError) throw posError;
+      const posBills = (posRows ?? []).map((r) => posTxnToBill(r as PosTxnBillRow));
+
+      const seen = new Set<string>();
+      const unsynced = [...legacyBills, ...posBills].filter((b) => {
+        if (syncedRefs.has(b.invoice) || seen.has(b.invoice)) return false;
+        seen.add(b.invoice);
+        return true;
+      });
       if (unsynced.length === 0) return { pushed: 0, failed: 0 };
 
       let pushed = 0;
@@ -564,15 +691,18 @@ export function useTallySync() {
   });
 }
 
-export function useBillingReports(search?: string, branch?: string) {
-  const allBranches = !branch || branch === "all";
+// Report definitions (Daily Sales Summary, Tax Summary, etc.) always come
+// from the global billing_reports table regardless of which branch is
+// selected — they're the same catalog of report types everywhere, only the
+// downloaded CONTENT differs by branch (see opts()/fetchNamedBillingReport
+// in reports.tsx). billing_reports_branches is completely empty — nothing
+// has ever actually been created with a branch attached — so switching the
+// filter to any branch used to show zero reports instead of the same 4.
+export function useBillingReports(search?: string) {
   return useQuery({
-    queryKey: ["billing", "reports", search ?? "", branch ?? "all"],
+    queryKey: ["billing", "reports", search ?? ""],
     queryFn: async (): Promise<BillingReport[]> => {
-      let query = (
-        allBranches ? supabase.from("billing_reports") : supabase.from("billing_reports_branches")
-      ).select("report, period, generated, format");
-      if (!allBranches) query = query.eq("branch", branch);
+      let query = supabase.from("billing_reports").select("report, period, generated, format");
       if (search) query = query.ilike("report", like(search));
       const { data, error } = await query;
       if (error) throw error;
@@ -588,25 +718,19 @@ function realBranch(branch?: string): string | null {
   return branch && branch !== "all" ? branch : null;
 }
 
+// Only writes to the global table — billing_reports_branches is dead (see
+// useBillingReports above), so there's nothing to dual-write.
 export function useCreateBillingReport() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: BillingReport & { branch?: string }): Promise<BillingReport> => {
-      const row = {
+    mutationFn: async (input: BillingReport): Promise<BillingReport> => {
+      const { error } = await supabase.from("billing_reports").insert({
         report: input.report,
         period: input.period,
         generated: input.generated,
         format: input.format,
-      };
-      const { error } = await supabase.from("billing_reports").insert(row);
+      });
       if (error) throw error;
-      const branch = realBranch(input.branch);
-      if (branch) {
-        const { error: branchError } = await supabase
-          .from("billing_reports_branches")
-          .insert({ ...row, branch });
-        if (branchError) throw branchError;
-      }
       return input;
     },
     onSuccess: () => {

@@ -103,7 +103,13 @@ function Page() {
   const { homeBranch } = useBranchScope();
   const { selfOnly, employeeId } = useSelfScope();
   const [search, setSearch] = useState("");
-  const [period, setPeriod] = useState<PeriodOption>({ key: "all", label: "All time" });
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [period, setPeriod] = useState<PeriodOption>({
+    key: "today",
+    from: todayIso,
+    to: todayIso,
+    label: "Today",
+  });
 
   // An employee sees only their own row, derived from live check-ins (see
   // useSelfAttendanceSummary for why employee_attendance can't answer this).

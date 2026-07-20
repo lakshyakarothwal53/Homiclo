@@ -24,20 +24,24 @@ import { ArrowLeft, Download, Edit2, Trash2 } from "lucide-react";
 import { useEmployeeProfile, useDeleteEmployee, useUpdateEmployee } from "@/hooks/use-employees";
 import { useBranches } from "@/hooks/use-inventory";
 import { useShiftConfigs } from "@/hooks/use-attendance";
+import { useRoles } from "@/hooks/use-settings";
 import { fetchEmployeeAttendanceSummary } from "@/lib/report-data";
 import { buildTablePdf, downloadPdf } from "@/lib/pdf-utils";
 import type { EmployeeRole, EmployeeStatus } from "@/types/employees";
 import { toast } from "sonner";
 
-const ROLES = ["Cashier", "Floor Manager", "Inventory", "Supervisor", "Admin", "HR", "Employee"];
 const STATUSES = ["Active", "Inactive", "Suspended"];
 
-function editFields(branches: string[], shifts: { value: string; label: string }[]): EntityField[] {
+function editFields(
+  branches: string[],
+  shifts: { value: string; label: string }[],
+  roles: string[],
+): EntityField[] {
   return [
     { key: "name", label: "Name", required: true },
     { key: "email", label: "Email", required: true },
     { key: "phone", label: "Phone", required: true },
-    { key: "role", label: "Role", type: "select", options: ROLES, required: true },
+    { key: "role", label: "Role", type: "select", options: roles, required: true },
     { key: "branch", label: "Branch", type: "select", options: branches, required: true },
     // Stored value is the shift's id; the label shows its name and hours.
     { key: "shiftId", label: "Shift", type: "select", options: shifts, required: true },
@@ -80,6 +84,10 @@ function EmployeeProfilePage() {
   const { mutate: updateEmployee } = useUpdateEmployee();
   const { data: branches = [] } = useBranches();
   const { data: shifts = [] } = useShiftConfigs();
+  // Super Admin is a system access level held by a single reserved account,
+  // not an assignable job position — exclude it from onboarding.
+  const { data: roles = [] } = useRoles();
+  const roleOptions = roles.filter((r) => r.role !== "Super Admin").map((r) => r.role);
   const shiftOptions = shifts.map((s) => ({
     value: s.id,
     label: `${s.shiftName} (${s.startTime} - ${s.endTime})`,
@@ -224,7 +232,7 @@ function EmployeeProfilePage() {
         mode="edit"
         title="Edit Employee"
         description="Update this employee's details."
-        fields={editFields(branches, shiftOptions)}
+        fields={editFields(branches, shiftOptions, roleOptions)}
         initial={profile}
         open={editOpen}
         onOpenChange={setEditOpen}

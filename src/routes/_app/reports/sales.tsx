@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ReportListPage } from "@/components/reports/ReportListPage";
+import { Page as BillingReportsPage } from "@/routes/_app/billing/reports";
 
+// Deliberately renders the exact same page as Billing › Reports (not a
+// separate ReportListPage-backed implementation) so the two never drift —
+// same real data, same Generate/View/Download behavior.
 export const Route = createFileRoute("/_app/reports/sales")({
   head: () => ({
     meta: [
@@ -8,16 +11,5 @@ export const Route = createFileRoute("/_app/reports/sales")({
       { name: "description", content: "Revenue breakdown across channels." },
     ],
   }),
-  component: Page,
+  component: BillingReportsPage,
 });
-
-function Page() {
-  return (
-    <ReportListPage
-      eyebrow="Reports › Sales"
-      title="Sales Reports"
-      description="Sales overview and controls."
-      category="sales"
-    />
-  );
-}

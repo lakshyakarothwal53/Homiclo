@@ -1,13 +1,7 @@
 export type EmployeeStatus = "Active" | "Inactive" | "Suspended";
-export type EmployeeRole =
-  | "Cashier"
-  | "Floor Manager"
-  | "Inventory"
-  | "Supervisor"
-  | "Admin"
-  | "HR"
-  | "Employee"
-  | "Salesman";
+// Roles are managed dynamically in Settings › Roles & Permissions (the `roles`
+// table), not a fixed set — see useRoles() in use-settings.ts.
+export type EmployeeRole = string;
 export type LoginStatus = "online" | "idle" | "offline";
 
 export interface Employee {

@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Download, FileText, RefreshCw } from "lucide-react";
+import { Download, Eye, FileText, RefreshCw, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -32,9 +43,47 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { useAttendanceReports, useCreateAttendanceReport } from "@/hooks/use-attendance";
-import { buildTablePdf, downloadCsv, downloadPdf } from "@/lib/pdf-utils";
-import { fetchReportData, fetchMonthlyAttendanceSummary } from "@/lib/report-data";
+import {
+  useAttendanceReports,
+  useCreateAttendanceReport,
+  useDeleteAttendanceReport,
+} from "@/hooks/use-attendance";
+import { buildTablePdf, downloadCsv, downloadPdf, openPdf } from "@/lib/pdf-utils";
+import {
+  fetchReportData,
+  fetchWeeklyAttendanceSummary,
+  fetchMonthlyAttendanceSummary,
+  fetchQuarterlyAttendanceSummary,
+  fetchAnnualAttendanceSummary,
+  fetchAttendanceSummary,
+  attendancePeriodLabel,
+  type ReportData,
+} from "@/lib/report-data";
+
+// Custom-range reports embed their exact bounds in the stored period label
+// ("Custom · 2026-07-01 to 2026-07-15") since, unlike the preset periods,
+// there's no "last completed X" rule to recompute them from at download time.
+const CUSTOM_RANGE_RE = /(\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2})/;
+
+// Shared by handleView/handleDownload so both always agree on which
+// calculator a report name maps to. Returns null when a Custom report's
+// bounds can't be parsed back out of its stored period label.
+async function fetchDataForReport(
+  reportName: string,
+  periodLabel: string,
+  branch?: string,
+): Promise<ReportData | null> {
+  if (reportName === "Weekly Attendance Summary") return fetchWeeklyAttendanceSummary(branch);
+  if (reportName === "Monthly Attendance Summary") return fetchMonthlyAttendanceSummary(branch);
+  if (reportName === "Quarterly Attendance Summary") return fetchQuarterlyAttendanceSummary(branch);
+  if (reportName === "Annual Attendance Summary") return fetchAnnualAttendanceSummary(branch);
+  if (reportName === "Custom Attendance Summary") {
+    const match = CUSTOM_RANGE_RE.exec(periodLabel);
+    if (!match) return null;
+    return fetchAttendanceSummary(branch, match[1], match[2]);
+  }
+  return fetchReportData("attendance", { branch });
+}
 
 export const Route = createFileRoute("/_app/attendance/reports")({
   head: () => ({
@@ -49,14 +98,24 @@ export const Route = createFileRoute("/_app/attendance/reports")({
   component: Page,
 });
 
-function Page() {
+export function Page() {
   const { role, user } = useAuth();
   const [search, setSearch] = useState("");
   const [period, setPeriod] = useState("monthly");
   const [format, setFormat] = useState("pdf");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const { data: reports = [], isLoading, refetch } = useAttendanceReports(search);
   const createReport = useCreateAttendanceReport(user?.branch);
+  const deleteReport = useDeleteAttendanceReport();
   const isGenerating = createReport.isPending;
+
+  const handleDelete = (id: string, reportName: string) => {
+    deleteReport.mutate(id, {
+      onSuccess: () => toast.success(`${reportName} deleted.`),
+      onError: (e) => toast.error(e instanceof Error ? e.message : "Could not delete report."),
+    });
+  };
 
   // Filter reports by branch for non-super-admin users
   // Branch Admin cannot see "Branch-wise Attendance" report
@@ -76,10 +135,44 @@ function Page() {
   };
 
   const handleGenerateReport = () => {
-    const periodLabel = `${period.charAt(0).toUpperCase()}${period.slice(1)} · ${new Date().toLocaleString(
-      "en-US",
-      { month: "long", year: "numeric" },
-    )}`;
+    if (period === "custom") {
+      if (!fromDate || !toDate) {
+        toast.error("Pick both a from date and a to date.");
+        return;
+      }
+      if (fromDate > toDate) {
+        toast.error("From date must be before the to date.");
+        return;
+      }
+      const fromLabel = new Date(`${fromDate}T00:00:00`).toLocaleDateString("en-US", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+      const toLabel = new Date(`${toDate}T00:00:00`).toLocaleDateString("en-US", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+      createReport.mutate(
+        {
+          reportName: "Custom Attendance Summary",
+          period: `Custom · ${fromLabel} - ${toLabel} (${fromDate} to ${toDate})`,
+          format: format.toUpperCase(),
+        },
+        {
+          onSuccess: (r) => toast.success(`${r.reportName} generated (${r.format}).`),
+          onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to generate report"),
+        },
+      );
+      return;
+    }
+
+    // Every preset period reports its last COMPLETED span, never the current
+    // still-in-progress one — see attendancePeriodLabel / fetch*AttendanceSummary.
+    const periodLabel = attendancePeriodLabel(
+      period as "weekly" | "monthly" | "quarterly" | "annual",
+    );
     createReport.mutate(
       {
         reportName: `${period.charAt(0).toUpperCase()}${period.slice(1)} Attendance Summary`,
@@ -100,11 +193,10 @@ function Page() {
     branch?: string,
   ) => {
     try {
-      let data;
-      if (reportName === "Monthly Attendance Summary") {
-        data = await fetchMonthlyAttendanceSummary(branch);
-      } else {
-        data = await fetchReportData("attendance", { branch });
+      const data = await fetchDataForReport(reportName, periodLabel, branch);
+      if (!data) {
+        toast.error("Could not read this report's date range.");
+        return;
       }
       if (data.rows.length === 0) {
         toast.error("No attendance data available.");
@@ -119,6 +211,25 @@ function Page() {
       toast.success(`Downloaded ${reportName}.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not download report.");
+    }
+  };
+
+  // Always previews as PDF regardless of the row's own stored format (Excel
+  // rows still get a readable on-screen preview before download).
+  const handleView = async (reportName: string, periodLabel: string, branch?: string) => {
+    try {
+      const data = await fetchDataForReport(reportName, periodLabel, branch);
+      if (!data) {
+        toast.error("Could not read this report's date range.");
+        return;
+      }
+      if (data.rows.length === 0) {
+        toast.error("No attendance data available.");
+        return;
+      }
+      openPdf(buildTablePdf({ title: reportName, subtitle: periodLabel, ...data }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not open report.");
     }
   };
 
@@ -166,9 +277,38 @@ function Page() {
                         <SelectItem value="monthly">Monthly</SelectItem>
                         <SelectItem value="quarterly">Quarterly</SelectItem>
                         <SelectItem value="annual">Annual</SelectItem>
+                        <SelectItem value="custom">Custom Range</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
+                  {period === "custom" && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="from-date" className="text-sm font-medium">
+                          From Date
+                        </Label>
+                        <Input
+                          id="from-date"
+                          type="date"
+                          value={fromDate}
+                          onChange={(e) => setFromDate(e.target.value)}
+                          className="mt-1 h-10"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="to-date" className="text-sm font-medium">
+                          To Date
+                        </Label>
+                        <Input
+                          id="to-date"
+                          type="date"
+                          value={toDate}
+                          onChange={(e) => setToDate(e.target.value)}
+                          className="mt-1 h-10"
+                        />
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <Label htmlFor="format" className="text-sm font-medium">
                       Format
@@ -259,22 +399,68 @@ function Page() {
                         </span>
                       </TableCell>
                       <TableCell className="py-3 text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="gap-1"
-                          onClick={() =>
-                            handleDownload(
-                              report.reportName,
-                              report.format,
-                              report.period,
-                              isSuperAdmin ? undefined : userBranch,
-                            )
-                          }
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                          Download
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="gap-1"
+                            onClick={() =>
+                              handleView(
+                                report.reportName,
+                                report.period,
+                                isSuperAdmin ? undefined : userBranch,
+                              )
+                            }
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            View
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="gap-1"
+                            onClick={() =>
+                              handleDownload(
+                                report.reportName,
+                                report.format,
+                                report.period,
+                                isSuperAdmin ? undefined : userBranch,
+                              )
+                            }
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            Download
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="gap-1 text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Delete
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete "{report.reportName}"?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This removes the report entry from the list. This can't be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-brand text-brand-foreground hover:bg-brand/90"
+                                  onClick={() => handleDelete(report.id, report.reportName)}
+                                >
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))

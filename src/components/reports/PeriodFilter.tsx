@@ -17,7 +17,11 @@ export type PeriodOption = { key: string; from?: string; to?: string; label: str
  */
 export function buildPeriodOptions(): PeriodOption[] {
   const now = new Date();
-  const options: PeriodOption[] = [{ key: "all", label: "All time" }];
+  const todayIso = now.toISOString().slice(0, 10);
+  const options: PeriodOption[] = [
+    { key: "today", from: todayIso, to: todayIso, label: "Today" },
+    { key: "all", label: "All time" },
+  ];
   for (let yearOffset = 0; yearOffset >= -1; yearOffset--) {
     const year = now.getFullYear() + yearOffset;
     for (let m = 11; m >= 0; m--) {

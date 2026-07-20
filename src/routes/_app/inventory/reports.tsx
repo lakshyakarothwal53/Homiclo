@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { Download } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Download, Eye } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/common/PageHeader";
@@ -17,10 +17,29 @@ import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
-import { useBranches, useCreateInventoryReport, useInventoryReports } from "@/hooks/use-inventory";
-import { buildTablePdf, downloadCsv, downloadPdf } from "@/lib/pdf-utils";
-import { fetchNamedInventoryReport } from "@/lib/report-data";
+import {
+  useBranches,
+  useCreateInventoryReport,
+  useInventoryReports,
+  useRefreshInventoryReport,
+} from "@/hooks/use-inventory";
+import { buildTablePdf, downloadCsv, downloadPdf, openPdf } from "@/lib/pdf-utils";
+import { fetchNamedInventoryReport, inRange, parseRowDate } from "@/lib/report-data";
 import type { InventoryReport } from "@/types/inventory";
+
+// Each report's period label is either "<Mon> <year>" (monthly) or
+// "Q<n> <year>" (quarterly) — inferred from whatever style the row already
+// uses, so a refresh keeps its cadence instead of guessing one.
+function currentPeriodLabel(existing: string, now: Date): string {
+  if (/^Q\d/.test(existing)) {
+    return `Q${Math.floor(now.getMonth() / 3) + 1} ${now.getFullYear()}`;
+  }
+  return now.toLocaleString("en-US", { month: "short", year: "numeric" });
+}
+
+function todayGeneratedLabel(now: Date): string {
+  return `${String(now.getDate()).padStart(2, "0")} ${now.toLocaleString("en-US", { month: "short" })} ${now.getFullYear()}`;
+}
 
 export const Route = createFileRoute("/_app/inventory/reports")({
   head: () => ({
@@ -40,9 +59,55 @@ const COLUMNS: Column[] = [
   { key: "action", label: "", align: "right" },
 ];
 
+// The only report names fetchNamedInventoryReport (report-data.ts) actually
+// recognizes with their own live calculator — picking from this list instead
+// of free-typing a name is what stops "Download" from ever landing on an
+// unrecognized report that falls back to the generic product dump.
+const REPORT_NAMES = [
+  "Stock Valuation Report",
+  "Fast Moving Items",
+  "Slow Moving Items",
+  "Stock Ageing",
+  "Low Stock Summary",
+  "Category Performance",
+];
+
+// Some of these report types run monthly ("Jul 2026"), others quarterly
+// ("Q3 2026") — see currentPeriodLabel's inference. Rather than guess which
+// cadence the picked Report Name wants (EntityFormDialog's fields are static,
+// so Period can't depend on the Report Name selection), the dropdown offers
+// both: the last 6 months and the last 4 quarters.
+function buildPeriodOptions(): string[] {
+  const now = new Date();
+  const months = Array.from({ length: 6 }, (_, i) =>
+    new Date(now.getFullYear(), now.getMonth() - i, 1).toLocaleString("en-US", {
+      month: "short",
+      year: "numeric",
+    }),
+  );
+  const quarterStart = Math.floor(now.getMonth() / 3) * 3;
+  const quarters = Array.from({ length: 4 }, (_, i) => {
+    const d = new Date(now.getFullYear(), quarterStart - i * 3, 1);
+    return `Q${Math.floor(d.getMonth() / 3) + 1} ${d.getFullYear()}`;
+  });
+  return [...months, ...quarters];
+}
+
 const GENERATE_FIELDS: EntityField[] = [
-  { key: "report", label: "Report Name", required: true, placeholder: "Fast Moving Items" },
-  { key: "period", label: "Period", required: true, placeholder: "Jul 2026" },
+  {
+    key: "report",
+    label: "Report Name",
+    type: "select",
+    options: REPORT_NAMES,
+    required: true,
+  },
+  {
+    key: "period",
+    label: "Period",
+    type: "select",
+    options: buildPeriodOptions(),
+    required: true,
+  },
   {
     key: "format",
     label: "Format",
@@ -52,18 +117,41 @@ const GENERATE_FIELDS: EntityField[] = [
   },
 ];
 
-const longDate = (d: Date) =>
-  `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })} ${d.getFullYear()}`;
-
-function Page() {
+export function Page() {
   const { scoped, homeBranch } = useBranchScope();
   const [search, setSearch] = useState("");
   const [branch, setBranch] = useState(homeBranch);
   const [period, setPeriod] = useState<PeriodOption>({ key: "all", label: "All time" });
   const [addOpen, setAddOpen] = useState(false);
-  const { data = [], isLoading } = useInventoryReports(search, branch);
+  const { data: allReports = [], isLoading } = useInventoryReports(search);
   const { data: branches = [] } = useBranches();
   const createReport = useCreateInventoryReport();
+  const refreshReport = useRefreshInventoryReport();
+
+  // Beyond the manual "Generate" button below, the moment this catalog of
+  // report rows notices one has fallen behind (its period isn't the current
+  // month/quarter), it also rolls that row forward automatically — so
+  // between generations the list never shows a permanently stale entry.
+  useEffect(() => {
+    if (allReports.length === 0) return;
+    const now = new Date();
+    const generated = todayGeneratedLabel(now);
+    allReports.forEach((r) => {
+      const current = currentPeriodLabel(r.period, now);
+      if (r.period !== current) {
+        refreshReport.mutate({ id: r.id, period: current, generated });
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allReports]);
+
+  // Filter the visible report rows by the same Day/Month/All-time selection
+  // that scopes what Download actually pulls, using each row's own
+  // "Generated" date — not just a display label with no effect on the list.
+  const data = useMemo(
+    () => allReports.filter((r) => inRange(parseRowDate(r.generated), period.from, period.to)),
+    [allReports, period.from, period.to],
+  );
   const { page, setPage, totalPages, pageItems } = usePagination(data);
 
   const opts = () => ({
@@ -92,17 +180,19 @@ function Page() {
     }
   }
 
-  async function handleExport() {
+  // Always previews as PDF regardless of the row's own stored format (CSV/
+  // Excel rows still get a readable on-screen preview before download).
+  async function handleView(r: InventoryReport) {
     try {
-      const live = await fetchNamedInventoryReport("Stock Valuation Report", opts());
+      const live = await fetchNamedInventoryReport(r.report, opts());
       if (live.rows.length === 0) {
-        toast.error("No inventory data to export.");
+        toast.error("No inventory data available for this period.");
         return;
       }
-      downloadCsv("inventory-export", live.columns, live.rows);
-      toast.success(`Exported ${live.rows.length} products.`);
+      const subtitle = period.key === "all" ? r.period : `${r.period} · ${period.label}`;
+      openPdf(buildTablePdf({ title: r.report, subtitle, ...live }));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Export failed.");
+      toast.error(e instanceof Error ? e.message : "Could not open report.");
     }
   }
 
@@ -111,18 +201,13 @@ function Page() {
       {
         report: String(v.report),
         period: String(v.period),
-        generated: longDate(new Date()),
+        generated: todayGeneratedLabel(new Date()),
         format: v.format === "Excel" ? "Excel" : "PDF",
-        branch,
       },
       {
         onSuccess: () => toast.success(`Report "${v.report}" generated.`),
         onError: (e) =>
-          toast.error(
-            e instanceof Error
-              ? `${e.message} — run supabase/13_completion_pack.sql to enable report writes.`
-              : "Could not generate report.",
-          ),
+          toast.error(e instanceof Error ? e.message : "Could not generate report."),
       },
     );
   }
@@ -142,7 +227,6 @@ function Page() {
             searchPlaceholder="Search reports…"
             primaryLabel="Generate"
             onPrimary={() => setAddOpen(true)}
-            onExport={handleExport}
             {...(scoped ? {} : { branches, branch, onBranchChange: setBranch })}
           />
         </div>
@@ -174,14 +258,24 @@ function Page() {
               <Badge variant="secondary">{r.format}</Badge>
             </TableCell>
             <TableCell className="px-5 py-3 text-right">
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => handleDownload(r)}
-              >
-                <Download className="h-4 w-4" /> Download
-              </Button>
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => handleView(r)}
+                >
+                  <Eye className="h-4 w-4" /> View
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => handleDownload(r)}
+                >
+                  <Download className="h-4 w-4" /> Download
+                </Button>
+              </div>
             </TableCell>
           </TableRow>
         ))}

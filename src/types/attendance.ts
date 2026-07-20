@@ -107,7 +107,7 @@ export interface AttendanceStats {
 export interface AttendanceDashboard {
   stats: AttendanceStats;
   recentLateArrivals: LateArrival[];
-  departmentAttendance: Array<{ department: string; percentage: string }>;
+  departmentAttendance: Array<{ department: string; count: number }>;
 }
 
 export interface CheckInLog {

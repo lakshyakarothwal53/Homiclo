@@ -5,6 +5,7 @@ export type BarcodeProduct = {
   barcode?: string;
   name: string;
   price?: number;
+  mrp?: number;
 };
 
 /** Render a CODE128 barcode for a SKU and return it as an SVG markup string. */
@@ -38,10 +39,15 @@ export function printBarcodes(products: BarcodeProduct[]) {
         typeof p.price === "number"
           ? `<div class="price">₹${p.price.toLocaleString("en-IN")}</div>`
           : "";
+      const mrp =
+        typeof p.mrp === "number" && (typeof p.price !== "number" || p.mrp > p.price)
+          ? `<div class="mrp">MRP <span class="strike">₹${p.mrp.toLocaleString("en-IN")}</span></div>`
+          : "";
       return `<div class="label">
         <div class="name">${p.name}</div>
         ${svg}
         ${price}
+        ${mrp}
       </div>`;
     })
     .join("");
@@ -60,6 +66,8 @@ export function printBarcodes(products: BarcodeProduct[]) {
   .label { border: 1px dashed #bbb; border-radius: 8px; padding: 10px 14px; text-align: center; width: 220px; box-sizing: border-box; }
   .name { font-size: 12px; font-weight: 600; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .price { font-size: 12px; font-weight: 700; margin-top: 2px; }
+  .mrp { font-size: 10px; color: #666; margin-top: 1px; }
+  .strike { text-decoration: line-through; }
   svg { max-width: 100%; }
   @media print { .toolbar { display: none; } .label { break-inside: avoid; } }
 </style>

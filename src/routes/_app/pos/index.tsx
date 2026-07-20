@@ -143,6 +143,13 @@ function Page() {
     },
     { key: "price", header: "Price", render: (r) => formatINR(r.price) },
     {
+      key: "mrp",
+      header: "MRP",
+      render: (r) => (
+        <span className="text-muted-foreground">{r.mrp != null ? formatINR(r.mrp) : "—"}</span>
+      ),
+    },
+    {
       key: "stock",
       header: "Stock",
       render: (r) => (
@@ -375,6 +382,9 @@ function Page() {
                     </div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
                       {formatINR(l.product.price)} each
+                      {l.product.mrp != null && l.product.mrp > l.product.price && (
+                        <span className="ml-1.5 line-through">{formatINR(l.product.mrp)}</span>
+                      )}
                     </div>
                     <div className="mt-1.5 flex items-center gap-1.5">
                       <Button

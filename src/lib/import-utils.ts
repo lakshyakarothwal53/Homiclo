@@ -77,6 +77,9 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
+// Every column from the export (see exportProductsToCSV) is required here —
+// a row with ANY field blank is rejected outright rather than silently
+// defaulted, so an incomplete catalogue entry never sneaks in through import.
 export function validateImportRow(
   row: Record<string, string>,
   rowNumber: number,
@@ -84,32 +87,46 @@ export function validateImportRow(
   const sku = row.sku?.trim();
   const name = row.product?.trim();
   const category = row.category?.trim();
-  const price = Number(row["price (₹)"] || row.price || 0);
-  const stock = Number(row.stock || 0);
-  const minStock = Number(row["minimum stock"] || row["min stock"] || 10);
+  const priceRaw = (row["price (₹)"] || row.price || "").trim();
+  const mrpRaw = (row["mrp (₹)"] || row.mrp || "").trim();
+  const purchaseRateRaw = (row["purchase rate (₹)"] || row["purchase rate"] || "").trim();
+  const gstRateRaw = (row["gst rate (%)"] || row["gst rate"] || "").trim();
+  const stockRaw = (row.stock || "").trim();
+  const minStockRaw = (row["minimum stock"] || row["min stock"] || "").trim();
 
-  // Validate required fields
-  if (!sku) {
-    return { valid: false, error: "SKU is required" };
+  if (!sku) return { valid: false, error: "SKU is required" };
+  if (!name) return { valid: false, error: "Product name is required" };
+  if (!category) return { valid: false, error: "Category is required" };
+  if (!priceRaw) return { valid: false, error: "Price is required" };
+  if (!mrpRaw) return { valid: false, error: "MRP is required" };
+  if (!purchaseRateRaw) return { valid: false, error: "Purchase Rate is required" };
+  if (!gstRateRaw) return { valid: false, error: "GST Rate is required" };
+  if (!stockRaw) return { valid: false, error: "Stock is required" };
+  if (!minStockRaw) return { valid: false, error: "Minimum Stock is required" };
+
+  const price = Number(priceRaw);
+  const mrp = Number(mrpRaw);
+  const purchaseRate = Number(purchaseRateRaw);
+  const gstRate = Number(gstRateRaw);
+  const stock = Number(stockRaw);
+  const minStock = Number(minStockRaw);
+
+  if (!Number.isFinite(price) || price < 0) {
+    return { valid: false, error: "Price must be a valid non-negative number" };
   }
-
-  if (!name) {
-    return { valid: false, error: "Product name is required" };
+  if (!Number.isFinite(mrp) || mrp < 0) {
+    return { valid: false, error: "MRP must be a valid non-negative number" };
   }
-
-  if (!category) {
-    return { valid: false, error: "Category is required" };
+  if (!Number.isFinite(purchaseRate) || purchaseRate < 0) {
+    return { valid: false, error: "Purchase Rate must be a valid non-negative number" };
   }
-
-  if (price < 0) {
-    return { valid: false, error: "Price must be a valid positive number" };
+  if (!Number.isFinite(gstRate) || gstRate < 0 || gstRate > 100) {
+    return { valid: false, error: "GST Rate must be a valid number between 0 and 100" };
   }
-
-  if (stock < 0) {
+  if (!Number.isFinite(stock) || stock < 0) {
     return { valid: false, error: "Stock must be a valid non-negative number" };
   }
-
-  if (minStock < 0) {
+  if (!Number.isFinite(minStock) || minStock < 0) {
     return { valid: false, error: "Minimum Stock must be a valid non-negative number" };
   }
 
@@ -128,6 +145,9 @@ export function validateImportRow(
       name,
       category,
       price,
+      mrp,
+      purchaseRate,
+      gstRate,
       stock,
       minStock,
       status,

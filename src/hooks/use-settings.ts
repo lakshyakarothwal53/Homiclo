@@ -93,19 +93,41 @@ export function useUpdateRole() {
   });
 }
 
+// Role definitions (Cashier, Manager, etc.) always come from the global
+// `roles` table regardless of which branch is selected — role_branches is
+// never written to (useCreateRole/useUpdateRole only ever insert into
+// `roles`) and is empty, so switching the filter to a specific branch used
+// to show zero roles instead of the same 5 positions every branch has.
+// "Users" is a live headcount from the real `employees` roster, not the
+// static number typed into Add/Edit Role — that field is just a manually
+// entered seed value, so it silently drifted the moment someone was actually
+// hired or reassigned into that role. That count DOES scope to the selected
+// branch.
 export function useRoles(search?: string, branch?: string) {
   const allBranches = !branch || branch === "all";
   return useQuery({
     queryKey: ["settings", "roles", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<Role[]> => {
-      let query = (allBranches ? supabase.from("roles") : supabase.from("role_branches")).select(
-        "role, users, description, permissions",
-      );
-      if (!allBranches) query = query.eq("branch", branch);
+      let query = supabase.from("roles").select("role, users, description, permissions");
       if (search) query = query.or(`role.ilike.${like(search)},description.ilike.${like(search)}`);
       const { data, error } = await query;
       if (error) throw error;
-      return data as Role[];
+      const roles = data as Role[];
+
+      let empQuery = supabase.from("employees").select("role");
+      if (!allBranches) empQuery = empQuery.eq("branch", branch);
+      const { data: employees, error: empError } = await empQuery;
+      if (empError) throw empError;
+      const countByRole = new Map<string, number>();
+      (employees ?? []).forEach((e) => {
+        // Branch-admin accounts (created via Settings › Branches' admin
+        // shortcut) are stored with role "Admin", not "Super Admin" — treat
+        // them as the same position here so they're actually counted.
+        const role = e.role === "Admin" ? "Super Admin" : e.role;
+        countByRole.set(role, (countByRole.get(role) ?? 0) + 1);
+      });
+
+      return roles.map((r) => ({ ...r, users: countByRole.get(r.role) ?? 0 }));
     },
   });
 }

@@ -67,7 +67,9 @@ export function useProducts(search?: string, branch?: string) {
         const stockBySku = new Map(allocations.map((a) => [a.sku, a.stock as number]));
         let branchQuery = supabase
           .from("products")
-          .select("sku, name, category, price, minStock:min_stock, status, gstRate:gst_rate, mrp")
+          .select(
+            "sku, name, category, price, minStock:min_stock, status, gstRate:gst_rate, mrp, purchaseRate:purchase_rate",
+          )
           .in("sku", [...stockBySku.keys()]);
         if (search)
           branchQuery = branchQuery.or(`name.ilike.${like(search)},sku.ilike.${like(search)}`);
@@ -89,7 +91,7 @@ export function useProducts(search?: string, branch?: string) {
       let query = supabase
         .from("products")
         .select(
-          "sku, name, category, price, stock, minStock:min_stock, status, gstRate:gst_rate, mrp",
+          "sku, name, category, price, stock, minStock:min_stock, status, gstRate:gst_rate, mrp, purchaseRate:purchase_rate",
         );
       if (search) query = query.or(`name.ilike.${like(search)},sku.ilike.${like(search)}`);
       const { data, error } = await query;
@@ -123,31 +125,32 @@ export function useProductAllocations(sku?: string) {
 }
 
 /**
- * A branch's stock movement, from the allocation log: stock sent from the
- * centre is inward for that branch, a recall is outward. The
- * stock_inward_branches / stock_outward_branches tables only carry
- * manually-recorded movements and are empty, so without this a branch's Stock
- * Movement chart would render blank even after receiving stock.
+ * Stock movement from the allocation log (product_allocations). Direction is
+ * relative to whichever side is being viewed, so it flips depending on scope:
+ * viewing a single branch, stock arriving from the centre ("allocate") is
+ * inward and a "recall" back to the centre is outward; viewing the central,
+ * all-branches dashboard it's the mirror image — an "allocate" is stock
+ * LEAVING central stock (outward) and a "recall" is stock returning to it
+ * (inward). The stock_inward_branches / stock_outward_branches tables only
+ * carry manually-recorded movements and are empty, so without this a Stock
+ * Movement chart would render blank even after allocating stock to a branch.
  */
 export function useBranchAllocationMovement(branch?: string) {
-  const scoped = !!branch && branch !== "all";
+  const allBranches = !branch || branch === "all";
   return useQuery({
     queryKey: ["inventory", "allocation-movement", branch ?? "all"],
-    enabled: scoped,
     queryFn: async (): Promise<{ date: string; inward: number; outward: number }[]> => {
-      if (!scoped) return [];
-      const { data, error } = await supabase
-        .from("product_allocations")
-        .select("quantity, direction, created_at")
-        .eq("branch", branch)
-        .order("created_at");
+      let query = supabase.from("product_allocations").select("quantity, direction, created_at");
+      if (!allBranches) query = query.eq("branch", branch);
+      const { data, error } = await query.order("created_at");
       if (error) throw error;
 
       const byDate = new Map<string, { date: string; inward: number; outward: number }>();
       (data ?? []).forEach((r) => {
         const date = String(r.created_at).slice(0, 10);
         const cur = byDate.get(date) ?? { date, inward: 0, outward: 0 };
-        if (r.direction === "allocate") cur.inward += r.quantity ?? 0;
+        const isInward = allBranches ? r.direction === "recall" : r.direction === "allocate";
+        if (isInward) cur.inward += r.quantity ?? 0;
         else cur.outward += r.quantity ?? 0;
         byDate.set(date, cur);
       });
@@ -372,17 +375,18 @@ export function useLowStockAlerts(search?: string, branch?: string) {
   });
 }
 
-export function useInventoryReports(search?: string, branch?: string) {
-  const allBranches = !branch || branch === "all";
+// Report definitions (Stock Valuation, Fast Moving Items, etc.) always come
+// from the global inventory_reports table regardless of which branch is
+// selected — they're the same catalog of report types everywhere, only the
+// downloaded CONTENT differs by branch (see opts()/fetchNamedInventoryReport
+// in reports.tsx). inventory_reports_branches is never written to (nothing
+// creates rows there anymore) and is completely empty, so switching the
+// filter to any branch used to show zero reports instead of the same 6.
+export function useInventoryReports(search?: string) {
   return useQuery({
-    queryKey: ["inventory", "reports", search ?? "", branch ?? "all"],
+    queryKey: ["inventory", "reports", search ?? ""],
     queryFn: async (): Promise<InventoryReport[]> => {
-      let query = (
-        allBranches
-          ? supabase.from("inventory_reports")
-          : supabase.from("inventory_reports_branches")
-      ).select("report, period, generated, format");
-      if (!allBranches) query = query.eq("branch", branch);
+      let query = supabase.from("inventory_reports").select("id, report, period, generated, format");
       if (search) query = query.ilike("report", like(search));
       const { data, error } = await query;
       if (error) throw error;
@@ -391,25 +395,48 @@ export function useInventoryReports(search?: string, branch?: string) {
   });
 }
 
+/**
+ * Registers a new report row (Report Name / Period / Format come from the
+ * "Generate" dialog; the generated date is stamped automatically). Only
+ * writes to the global inventory_reports table — inventory_reports_branches
+ * is dead (see useInventoryReports above), so there's nothing to dual-write.
+ */
 export function useCreateInventoryReport() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: InventoryReport & { branch?: string }): Promise<InventoryReport> => {
-      const row = {
+    mutationFn: async (
+      input: Omit<InventoryReport, "id">,
+    ): Promise<Omit<InventoryReport, "id">> => {
+      const { error } = await supabase.from("inventory_reports").insert({
         report: input.report,
         period: input.period,
         generated: input.generated,
         format: input.format,
-      };
-      const { error } = await supabase.from("inventory_reports").insert(row);
+      });
       if (error) throw error;
-      const branch = input.branch && input.branch !== "all" ? input.branch : null;
-      if (branch) {
-        const { error: branchError } = await supabase
-          .from("inventory_reports_branches")
-          .insert({ ...row, branch });
-        if (branchError) throw branchError;
-      }
+      return input;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventory", "reports"] });
+    },
+  });
+}
+
+/**
+ * Silently rolls a report row's period/generated-date forward to the
+ * current month or quarter — called automatically whenever the Inventory
+ * Reports page notices a row has gone stale, so the catalog stays current
+ * even between manual "Generate" clicks.
+ */
+export function useRefreshInventoryReport() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; period: string; generated: string }) => {
+      const { error } = await supabase
+        .from("inventory_reports")
+        .update({ period: input.period, generated: input.generated })
+        .eq("id", input.id);
+      if (error) throw error;
       return input;
     },
     onSuccess: () => {
@@ -528,6 +555,7 @@ export function useCreateProduct() {
         // 0 would mean "this product is genuinely zero-rated".
         gst_rate: input.gstRate ?? null,
         mrp: input.mrp ?? null,
+        purchase_rate: input.purchaseRate ?? null,
       };
       const { error } = await supabase.from("products").insert(row);
       if (error) throw error;
@@ -552,6 +580,7 @@ export function useUpdateProduct() {
         status: product.status,
         gst_rate: product.gstRate ?? null,
         mrp: product.mrp ?? null,
+        purchase_rate: product.purchaseRate ?? null,
       };
       const { error } = await supabase.from("products").update(row).eq("sku", originalSku);
       if (error) throw error;

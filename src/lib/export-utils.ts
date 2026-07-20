@@ -1,32 +1,48 @@
 import type { Product } from "@/types/inventory";
 import type { BillingPayment, BillingSalesBill } from "@/types/billing";
 
+// Wraps a cell in quotes (doubling any embedded quotes) whenever it contains
+// a comma, quote, or newline — CSV-spec escaping. Applied to BOTH header and
+// row cells: a header with a raw comma (e.g. an earlier "Price (₹, excl.
+// GST)") silently split into two columns and misaligned everything after it,
+// since only row cells were being escaped before.
+function escapeCsvCell(cell: string): string {
+  if (cell.includes(",") || cell.includes('"') || cell.includes("\n")) {
+    return `"${cell.replace(/"/g, '""')}"`;
+  }
+  return cell;
+}
+
 export function exportProductsToCSV(products: Product[], filename = "products.csv") {
-  const headers = ["SKU", "Product", "Category", "Price (₹)", "Stock", "Minimum Stock", "Status"];
+  const headers = [
+    "SKU",
+    "Product",
+    "Category",
+    "Price (₹)",
+    "MRP (₹)",
+    "Purchase Rate (₹)",
+    "GST Rate (%)",
+    "Stock",
+    "Minimum Stock",
+    "Status",
+  ];
 
   const rows = products.map((p) => [
     p.sku,
     p.name,
     p.category,
     p.price.toString(),
+    p.mrp != null ? p.mrp.toString() : "",
+    p.purchaseRate != null ? p.purchaseRate.toString() : "",
+    p.gstRate != null ? p.gstRate.toString() : "",
     p.stock.toString(),
     p.minStock.toString(),
     p.status,
   ]);
 
   const csvContent = [
-    headers.join(","),
-    ...rows.map((row) =>
-      row
-        .map((cell) => {
-          // Escape quotes and wrap in quotes if contains comma
-          if (cell.includes(",") || cell.includes('"')) {
-            return `"${cell.replace(/"/g, '""')}"`;
-          }
-          return cell;
-        })
-        .join(","),
-    ),
+    headers.map(escapeCsvCell).join(","),
+    ...rows.map((row) => row.map(escapeCsvCell).join(",")),
   ].join("\n");
 
   // Create blob and download

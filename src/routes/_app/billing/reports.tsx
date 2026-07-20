@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Download } from "lucide-react";
+import { Download, Eye } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Card } from "@/components/ui/card";
 import { FilterBar } from "@/components/billing/FilterBar";
@@ -16,7 +16,7 @@ import {
 import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import { useBillingBranches, useBillingReports, useCreateBillingReport } from "@/hooks/use-billing";
-import { buildTablePdf, downloadCsv, downloadPdf } from "@/lib/pdf-utils";
+import { buildTablePdf, downloadCsv, downloadPdf, openPdf } from "@/lib/pdf-utils";
 import { fetchNamedBillingReport, matchesDate } from "@/lib/report-data";
 import type { BillingReport } from "@/types/billing";
 
@@ -30,9 +30,54 @@ export const Route = createFileRoute("/_app/billing/reports")({
   component: Page,
 });
 
+// The only report names fetchNamedBillingReport (report-data.ts) actually
+// recognizes with their own live calculator — picking from this list instead
+// of free-typing a name is what stops "Download" from ever landing on an
+// unrecognized report that falls back to the generic sales/financial dump.
+const REPORT_NAMES = [
+  "Daily Sales Summary",
+  "Tax Summary (GST)",
+  "Outstanding Payments",
+  "Refund Summary",
+];
+
+const displayDate = (d: Date) =>
+  `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })} ${d.getFullYear()}`;
+
+// These reports run either daily ("12 Nov 2024") or monthly ("Nov 2024") —
+// EntityFormDialog's fields are static, so Period can't dynamically follow
+// whichever Report Name is picked. Offer both cadences: the last 7 days and
+// the last 6 months.
+function buildPeriodOptions(): string[] {
+  const now = new Date();
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    return displayDate(d);
+  });
+  const months = Array.from({ length: 6 }, (_, i) =>
+    new Date(now.getFullYear(), now.getMonth() - i, 1).toLocaleString("en-US", {
+      month: "short",
+      year: "numeric",
+    }),
+  );
+  return [...days, ...months];
+}
+
 const REPORT_FIELDS: EntityField[] = [
-  { key: "report", label: "Report Name", required: true, placeholder: "Daily Sales Summary" },
-  { key: "period", label: "Period", required: true, placeholder: "Jul 2026" },
+  {
+    key: "report",
+    label: "Report Name",
+    type: "select",
+    options: REPORT_NAMES,
+    required: true,
+  },
+  {
+    key: "period",
+    label: "Period",
+    type: "select",
+    options: buildPeriodOptions(),
+    required: true,
+  },
   {
     key: "format",
     label: "Format",
@@ -42,17 +87,14 @@ const REPORT_FIELDS: EntityField[] = [
   },
 ];
 
-const displayDate = (d: Date) =>
-  `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })} ${d.getFullYear()}`;
-
-function Page() {
+export function Page() {
   const { scoped, homeBranch } = useBranchScope();
   const [search, setSearch] = useState("");
   const [date, setDate] = useState("");
   const [branch, setBranch] = useState(homeBranch);
   const [period, setPeriod] = useState<PeriodOption>({ key: "all", label: "All time" });
   const [addOpen, setAddOpen] = useState(false);
-  const { data: allReports = [] } = useBillingReports(search, branch);
+  const { data: allReports = [] } = useBillingReports(search);
   const { data: branches = [] } = useBillingBranches();
   const createReport = useCreateBillingReport();
   const reports = useMemo(
@@ -87,6 +129,22 @@ function Page() {
     }
   }
 
+  // Always previews as PDF regardless of the row's own stored format (CSV
+  // rows still get a readable on-screen preview before download).
+  async function handleView(r: BillingReport) {
+    try {
+      const data = await fetchNamedBillingReport(r.report, opts());
+      if (data.rows.length === 0) {
+        toast.error("No data available for this report and period.");
+        return;
+      }
+      const subtitle = period.key === "all" ? r.period : `${r.period} · ${period.label}`;
+      openPdf(buildTablePdf({ title: r.report, subtitle, ...data }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not open report.");
+    }
+  }
+
   function handleExport() {
     if (reports.length === 0) {
       toast.error("Nothing to export.");
@@ -107,7 +165,6 @@ function Page() {
         period: String(v.period),
         generated: displayDate(new Date()),
         format: String(v.format),
-        branch,
       },
       {
         onSuccess: () => toast.success(`Report "${v.report}" added.`),
@@ -147,12 +204,20 @@ function Page() {
       header: "",
       align: "right",
       render: (r) => (
-        <button
-          onClick={() => handleDownload(r)}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-secondary"
-        >
-          <Download className="h-3.5 w-3.5" /> Download
-        </button>
+        <div className="flex items-center justify-end gap-2">
+          <button
+            onClick={() => handleView(r)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-secondary"
+          >
+            <Eye className="h-3.5 w-3.5" /> View
+          </button>
+          <button
+            onClick={() => handleDownload(r)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-secondary"
+          >
+            <Download className="h-3.5 w-3.5" /> Download
+          </button>
+        </div>
       ),
     },
   ];

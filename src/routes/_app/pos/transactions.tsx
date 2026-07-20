@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { Printer } from "lucide-react";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ import {
   usePosTransactions,
 } from "@/hooks/use-pos";
 import { printReceipt } from "@/lib/receipt-utils";
+import { matchesDate, parseRowDate } from "@/lib/report-data";
 import type { PosSettings, PosTransaction } from "@/types/pos";
 
 export const Route = createFileRoute("/_app/pos/transactions")({
@@ -107,11 +108,29 @@ function Page() {
   const { settings } = usePosSettings();
   const [search, setSearch] = useState("");
   const [branch, setBranch] = useState(homeBranch);
-  const { data: txns = [] } = usePosTransactions(search, branch);
+  const [date, setDate] = useState("");
+  const { data: allTxns = [] } = usePosTransactions(search, branch);
+  const txns = useMemo(
+    () => allTxns.filter((t) => matchesDate(date, t.createdAt)),
+    [allTxns, date],
+  );
   const { data: branches = [] } = usePosBranches();
   const { page, setPage, totalPages, pageItems } = usePagination(txns);
 
   const columns: Column<PosTransaction>[] = [
+    {
+      key: "date",
+      header: "Date",
+      render: (r) => (
+        <span className="text-muted-foreground">
+          {parseRowDate(r.createdAt)?.toLocaleDateString("en-IN", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          }) ?? "—"}
+        </span>
+      ),
+    },
     {
       key: "time",
       header: "Time",
@@ -164,6 +183,8 @@ function Page() {
         searchPlaceholder="Search invoice or cashier..."
         addLabel="Add New"
         onAdd={() => router.navigate({ to: "/pos" })}
+        date={date}
+        onDateChange={setDate}
         {...(scoped ? { showBranch: false } : { branches, branch, onBranchChange: setBranch })}
       />
       <Card className="overflow-hidden border-border">

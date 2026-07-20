@@ -38,6 +38,8 @@ export type ProductFormValues = {
   gstRate?: number;
   /** MRP printed on the pack — display-only. */
   mrp?: number;
+  /** Cost price paid to the supplier — display-only, never charged to the customer. */
+  purchaseRate?: number;
 };
 
 export type AddToStockInput = {
@@ -87,6 +89,7 @@ export function ProductFormDialog({
       status: initial?.status ?? "In Stock",
       gstRate: initial?.gstRate,
       mrp: initial?.mrp,
+      purchaseRate: initial?.purchaseRate,
     };
   }
 
@@ -143,6 +146,7 @@ export function ProductFormDialog({
       status: values.status,
       gstRate: values.gstRate,
       mrp: values.mrp,
+      purchaseRate: values.purchaseRate,
     };
     onSave(out);
     setOpen(false);
@@ -305,6 +309,26 @@ export function ProductFormDialog({
                   }))
                 }
               />
+            </div>
+
+            {/* Purchase Rate — cost price, for margin/valuation only. */}
+            <div className="grid gap-1.5">
+              <Label htmlFor="product-purchase-rate">Purchase Rate (₹)</Label>
+              <Input
+                id="product-purchase-rate"
+                type="number"
+                value={values.purchaseRate ?? ""}
+                placeholder="Optional — cost price from supplier"
+                onChange={(e) =>
+                  setValues((s) => ({
+                    ...s,
+                    purchaseRate: e.target.value === "" ? undefined : Number(e.target.value) || 0,
+                  }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Never charged to the customer — used for margin and stock valuation only.
+              </p>
             </div>
 
             {/* GST slab */}

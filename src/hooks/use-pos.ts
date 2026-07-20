@@ -77,7 +77,7 @@ export function usePosProducts(search?: string, branch?: string) {
   });
 }
 
-const BASE_TXN_COLS = "time, invoice, items, amount, payment, cashier, status";
+const BASE_TXN_COLS = "createdAt:created_at, time, invoice, items, amount, payment, cashier, status";
 const FULL_TXN_COLS =
   `${BASE_TXN_COLS}, subtotal, discount, gst, total, upiRef:upi_ref, ` +
   "customerName:customer_name, customerMobile:customer_mobile, customerDob:customer_dob, " +
@@ -94,10 +94,10 @@ export function usePosTransactions(search?: string, branch?: string) {
             ? supabase.from("pos_transactions")
             : supabase.from("pos_transactions_branches")
         ).select(cols);
-        // Latest transaction first. The global table has created_at; the branch
-        // table doesn't, so fall back to the (monotonic) invoice number there.
-        if (allBranches) q = q.order("created_at", { ascending: false });
-        else q = q.eq("branch", branch).order("invoice", { ascending: false });
+        // Latest transaction first — both tables carry created_at (see
+        // supabase/pos/09_branch_created_at.sql for the branch table).
+        q = q.order("created_at", { ascending: false });
+        if (!allBranches) q = q.eq("branch", branch);
         if (search) q = q.or(`invoice.ilike.${like(search)},cashier.ilike.${like(search)}`);
         return q;
       }

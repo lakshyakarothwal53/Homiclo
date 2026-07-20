@@ -16,22 +16,26 @@ import { Download, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { useEmployeeReports } from "@/hooks/use-employees";
 import { buildTablePdf, downloadPdf, openPdf } from "@/lib/pdf-utils";
-import { fetchMonthlyPayroll, fetchReportData } from "@/lib/report-data";
+import {
+  fetchMonthlyPayroll,
+  fetchPerformanceReview,
+  fetchEmployeeActivityReport,
+  fetchReportData,
+} from "@/lib/report-data";
 import type { ReportData } from "@/lib/report-data";
-import type { ReportCategory } from "@/types/reports";
 
-// Pick the live dataset a report renders from, based on its name. Payroll
-// gets its own real calculator (base salary × attendance); "sales" only
-// matches actual sales-named reports so "Performance Review" (an HR
-// evaluation, unrelated to invoices) doesn't get routed to billing data.
+// Pick the live dataset a report renders from, based on its name — each
+// heading gets the calculator that actually matches it, not a generic
+// category dump: Payroll → base salary × attendance; Performance Review →
+// attendance-based ranking (fetchPerformanceReview); Activity Report → the
+// real employee_activity log (same table Activity Tracking reads); Sales →
+// billing data; anything else falls back to the plain employee roster.
 async function fetchForReport(reportName: string): Promise<ReportData> {
   if (/payroll/i.test(reportName)) return fetchMonthlyPayroll();
-  const category: ReportCategory = /attendance/i.test(reportName)
-    ? "attendance"
-    : /sales/i.test(reportName)
-      ? "sales"
-      : "employee";
-  return fetchReportData(category);
+  if (/performance review/i.test(reportName)) return fetchPerformanceReview();
+  if (/activity/i.test(reportName)) return fetchEmployeeActivityReport();
+  if (/sales/i.test(reportName)) return fetchReportData("sales");
+  return fetchReportData("employee");
 }
 
 async function buildReportPdf(reportName: string, period: string) {
@@ -52,7 +56,7 @@ export const Route = createFileRoute("/_app/employees/reports")({
 
 const ITEMS_PER_PAGE = 10;
 
-function ReportsPage() {
+export function ReportsPage() {
   const [currentPage, setCurrentPage] = useState(1);
 
   const { data = [], isLoading } = useEmployeeReports();

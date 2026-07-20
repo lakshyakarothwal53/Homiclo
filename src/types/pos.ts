@@ -13,6 +13,9 @@ export type PosProduct = {
 };
 
 export type PosTransaction = {
+  /** ISO timestamp of when the sale was recorded — use for date display/filtering.
+   *  Populated by the DB on read; absent on the checkout submission payload. */
+  createdAt?: string;
   time: string;
   invoice: string;
   items: number;

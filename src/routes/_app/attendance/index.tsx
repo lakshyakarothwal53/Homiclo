@@ -97,12 +97,23 @@ function Page() {
     toast.success("Data refreshed successfully");
   };
 
-  const departmentData = (dashboard?.departmentAttendance ?? []).map((dept) => ({
-    name: dept.department,
-    value: parseInt(dept.percentage),
+  const departmentTotals = dashboard?.departmentAttendance ?? [];
+  const totalHeadcount = departmentTotals.reduce((sum, dept) => sum + dept.count, 0);
+  const departmentData = departmentTotals.map((dept) => ({
+    name: `${dept.department} (${dept.count})`,
+    value: totalHeadcount > 0 ? Math.round((dept.count / totalHeadcount) * 100) : 0,
   }));
 
-  const COLORS = ["#22c55e", "#f97316", "#ef4444", "#3b82f6"];
+  const COLORS = [
+    "#FE0000",
+    "#2563EB",
+    "#22C55E",
+    "#F59E0B",
+    "#8B5CF6",
+    "#0EA5E9",
+    "#6B7280",
+    "#EC4899",
+  ];
 
   return (
     <>
@@ -179,29 +190,36 @@ function Page() {
         </Card>
 
         <Card className="border-border">
-          <CardHeader>
+          <CardHeader className="pb-2">
             <CardTitle className="text-base">Department Breakdown</CardTitle>
+            <p className="text-xs text-muted-foreground">By headcount share</p>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={departmentData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={(entry) => `${entry.name}: ${entry.value}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {departmentData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+          <CardContent className="h-72">
+            {departmentData.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                No roster data available
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={departmentData}
+                    innerRadius={55}
+                    outerRadius={85}
+                    paddingAngle={2}
+                    dataKey="value"
+                  >
+                    {departmentData.map((_, index) => (
+                      <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: 8, border: "1px solid #E5E7EB", fontSize: 12 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -1,7 +1,8 @@
 import { type ReactNode, useState } from "react";
-import { Upload, AlertCircle, CheckCircle } from "lucide-react";
+import { Upload, AlertCircle, CheckCircle2, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,7 +14,46 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { parseCSVFile, validateImportRow, type ImportResult } from "@/lib/import-utils";
+import { cn } from "@/lib/utils";
 import type { Product } from "@/types/inventory";
+
+const REQUIRED_COLUMNS = [
+  "SKU",
+  "Product",
+  "Category",
+  "Price (₹)",
+  "MRP (₹)",
+  "Purchase Rate (₹)",
+  "GST Rate (%)",
+  "Stock",
+  "Minimum Stock",
+  "Status",
+];
+
+const EXAMPLE_CSV = `SKU,Product,Category,Price (₹),MRP (₹),Purchase Rate (₹),GST Rate (%),Stock,Minimum Stock,Status
+SKU-1001,Laptop,Electronics,50000,54999,42000,18,5,10,Low Stock
+SKU-1002,Mouse,Electronics,500,699,350,18,100,20,In Stock
+SKU-1003,Keyboard,Electronics,1500,1999,1100,18,0,25,Out of Stock`;
+
+/** Every column, listed as compact pills in a fixed grid instead of a
+ * ragged flex-wrap (whose last row was left short and uneven) or a long
+ * comma-separated sentence. */
+function RequiredColumns() {
+  return (
+    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+      {REQUIRED_COLUMNS.map((c) => (
+        <Badge
+          key={c}
+          variant="secondary"
+          className="justify-start truncate font-normal"
+          title={c}
+        >
+          {c}
+        </Badge>
+      ))}
+    </div>
+  );
+}
 
 export function ImportProductsDialog({
   trigger,
@@ -110,16 +150,29 @@ export function ImportProductsDialog({
         </DialogHeader>
 
         {importResult ? (
-          <div className="space-y-4 py-4">
-            <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">
-              <CheckCircle className="h-5 w-5 text-green-600" />
+          <div className="space-y-4 py-2">
+            <div
+              className={cn(
+                "flex items-start gap-3 rounded-lg border p-4",
+                importResult.success > 0
+                  ? "border-[color-mix(in_oklab,var(--success)_35%,transparent)] bg-[color-mix(in_oklab,var(--success)_8%,transparent)]"
+                  : "border-destructive/30 bg-destructive/5",
+              )}
+            >
+              {importResult.success > 0 ? (
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[color:var(--success)]" />
+              ) : (
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+              )}
               <div>
-                <p className="font-medium text-green-900">
-                  {importResult.success} products imported successfully
+                <p className="text-sm font-medium text-foreground">
+                  {importResult.success} product{importResult.success === 1 ? "" : "s"} imported
+                  successfully
                 </p>
                 {importResult.failed > 0 && (
-                  <p className="text-sm text-green-800 mt-1">
-                    {importResult.failed} products failed
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    {importResult.failed} row{importResult.failed === 1 ? "" : "s"} failed —
+                    see below
                   </p>
                 )}
               </div>
@@ -127,68 +180,68 @@ export function ImportProductsDialog({
 
             {importResult.errors.length > 0 && (
               <div className="space-y-2">
-                <p className="text-sm font-medium text-red-900">Errors:</p>
-                <div className="max-h-64 overflow-y-auto space-y-2">
+                <p className="text-sm font-medium text-foreground">Errors</p>
+                <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-border p-1.5">
                   {importResult.errors.map((error, idx) => (
                     <div
                       key={idx}
-                      className="flex gap-2 p-3 bg-red-50 border border-red-200 rounded text-sm"
+                      className="flex items-start gap-2 rounded-md bg-destructive/5 px-3 py-2 text-sm"
                     >
-                      <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-medium text-red-900">Row {error.row}</p>
-                        <p className="text-red-800">
-                          {error.sku}: {error.error}
-                        </p>
-                      </div>
+                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+                      <p className="text-foreground">
+                        <span className="font-medium">Row {error.row}</span>
+                        <span className="text-muted-foreground"> · {error.sku} — </span>
+                        {error.error}
+                      </p>
                     </div>
                   ))}
                 </div>
+
+                <div className="space-y-2 rounded-lg border border-border bg-secondary/30 p-3">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Required columns — every one needs a value
+                  </p>
+                  <RequiredColumns />
+                </div>
               </div>
             )}
-
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <p className="text-sm text-blue-900">
-                <strong>CSV Format Required:</strong> SKU, Product, Category, Price (₹), Stock,
-                Minimum Stock, Status
-              </p>
-            </div>
           </div>
         ) : (
-          <div className="space-y-4 py-8">
-            <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
-              <Upload className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-              <label className="cursor-pointer">
-                <p className="text-sm font-medium mb-2">
-                  Click to select CSV file or drag and drop
-                </p>
-                <input
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileImport}
-                  disabled={isLoading}
-                  className="hidden"
-                />
-              </label>
-              <p className="text-xs text-muted-foreground mt-2">
-                CSV files only. Same format as export.
+          <div className="space-y-4 py-2">
+            <label
+              className={cn(
+                "flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed border-border p-8 text-center transition",
+                "hover:border-brand/50 hover:bg-secondary/30",
+                isLoading && "pointer-events-none opacity-60",
+              )}
+            >
+              <Upload className="mb-2 h-9 w-9 text-muted-foreground" />
+              <p className="text-sm font-medium text-foreground">
+                Click to select a CSV file, or drag and drop
               </p>
+              <p className="text-xs text-muted-foreground">Same format as export · .csv only</p>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleFileImport}
+                disabled={isLoading}
+                className="hidden"
+              />
+            </label>
+
+            <div className="space-y-2 rounded-lg border border-border bg-secondary/30 p-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                Required columns — every one needs a value, or the row is rejected
+              </p>
+              <RequiredColumns />
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-              <p className="text-sm text-amber-900">
-                <strong>Expected CSV columns:</strong> SKU, Product, Category, Price (₹), Stock,
-                Minimum Stock, Status
+            <div className="space-y-1.5">
+              <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <FileSpreadsheet className="h-3.5 w-3.5" /> Example CSV content
               </p>
-            </div>
-
-            <div className="space-y-2 text-sm">
-              <p className="font-medium">Example CSV content:</p>
-              <pre className="bg-secondary p-3 rounded text-xs overflow-x-auto">
-                {`SKU,Product,Category,Price (₹),Stock,Minimum Stock,Status
-SKU-1001,Laptop,Electronics,50000,5,10,Low Stock
-SKU-1002,Mouse,Electronics,500,100,20,In Stock
-SKU-1003,Keyboard,Electronics,1500,0,25,Out of Stock`}
+              <pre className="overflow-x-auto rounded-lg border border-border bg-secondary/30 p-3 font-mono text-xs leading-relaxed text-foreground">
+                {EXAMPLE_CSV}
               </pre>
             </div>
           </div>
@@ -205,7 +258,7 @@ SKU-1003,Keyboard,Electronics,1500,0,25,Out of Stock`}
                 className="gap-2 bg-brand text-brand-foreground hover:bg-brand/90"
               >
                 <Upload className="h-4 w-4" />
-                Select CSV File
+                {isLoading ? "Importing…" : "Select CSV File"}
               </Button>
               <input
                 type="file"

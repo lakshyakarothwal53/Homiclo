@@ -13,6 +13,7 @@ import {
 
 import { supabase } from "@/lib/supabase";
 import { fetchLowStockAlerts } from "@/lib/inventory-utils";
+import { LATE_CUTOFF_MINUTES, SHIFT_START_MINUTES, parseTimeToMinutes } from "@/lib/report-data";
 import type { AlertItem } from "@/types/notifications";
 
 // Alerts are derived live from the module tables (stock, attendance, billing,
@@ -40,37 +41,64 @@ async function stockAlerts(): Promise<AlertItem[]> {
   );
 }
 
+// Derived entirely from real employees + their own employee_checkins/
+// absent_records rows — late_arrivals is a demo table with zero real
+// employees in it (every row is a seeded EMP0xx code), and employee_checkins/
+// absent_records themselves mix in that same demo data alongside real rows,
+// so both are filtered down to the real `employees` roster first.
 async function attendanceAlerts(): Promise<AlertItem[]> {
-  const [late, absent, checkins] = await Promise.all([
-    supabase
-      .from("late_arrivals")
-      .select("id, date, employee_name, check_in_time, lateness_minutes")
-      .order("date", { ascending: false })
-      .limit(10),
-    supabase
-      .from("absent_records")
-      .select("id, date, employee_name, leave_type, reason")
-      .order("date", { ascending: false })
-      .limit(10),
+  const { data: employees, error: empError } = await supabase.from("employees").select("id, name");
+  if (empError) throw empError;
+  const realIds = (employees ?? []).map((e) => e.id);
+  if (realIds.length === 0) return [];
+  const nameById = new Map((employees ?? []).map((e) => [e.id, e.name]));
+
+  const [checkins, absent] = await Promise.all([
     supabase
       .from("employee_checkins")
-      .select("id, employee_name, check_type, check_time, check_date")
-      .order("created_at", { ascending: false })
-      .limit(5),
+      .select("id, employee_id, employee_name, check_type, check_time, check_date, status")
+      .in("employee_id", realIds)
+      .eq("check_type", "check-in")
+      .order("check_date", { ascending: false })
+      .limit(20),
+    supabase
+      .from("absent_records")
+      .select("id, date, employee_id, employee_name, leave_type, reason")
+      .in("employee_id", realIds)
+      .order("date", { ascending: false })
+      .limit(10),
   ]);
 
-  return [
-    ...(late.data ?? []).map(
-      (l): AlertItem => ({
-        id: `late-${l.id}`,
-        title: `${l.employee_name} arrived late (${l.lateness_minutes} min)`,
-        description: `Checked in at ${l.check_in_time}.`,
-        time: l.date,
+  // Earliest check-in per employee per day decides late-vs-on-time, same
+  // cutoff useAttendanceDashboard/useEmployeeAttendance use.
+  const firstByEmployeeDate = new Map<string, { time: string; mins: number }>();
+  (checkins.data ?? [])
+    .filter((c) => !c.status || c.status === "success")
+    .forEach((c) => {
+      const mins = parseTimeToMinutes(c.check_time);
+      if (mins === null) return;
+      const key = `${c.employee_id}|${c.check_date}`;
+      const prev = firstByEmployeeDate.get(key);
+      if (!prev || mins < prev.mins) firstByEmployeeDate.set(key, { time: c.check_time, mins });
+    });
+
+  const lateAlerts: AlertItem[] = [...firstByEmployeeDate.entries()]
+    .filter(([, v]) => v.mins > LATE_CUTOFF_MINUTES)
+    .map(([key, v]) => {
+      const [employeeId, date] = key.split("|");
+      return {
+        id: `late-${key}`,
+        title: `${nameById.get(employeeId) ?? "Employee"} arrived late (${v.mins - SHIFT_START_MINUTES} min)`,
+        description: `Checked in at ${v.time}.`,
+        time: date,
         tone: "warning",
         icon: Clock,
         category: "attendance",
-      }),
-    ),
+      } satisfies AlertItem;
+    });
+
+  return [
+    ...lateAlerts,
     ...(absent.data ?? []).map(
       (a): AlertItem => ({
         id: `absent-${a.id}`,
@@ -82,10 +110,10 @@ async function attendanceAlerts(): Promise<AlertItem[]> {
         category: "attendance",
       }),
     ),
-    ...(checkins.data ?? []).map(
+    ...(checkins.data ?? []).slice(0, 5).map(
       (c): AlertItem => ({
         id: `checkin-${c.id}`,
-        title: `${c.employee_name} ${c.check_type === "check-in" ? "checked in" : "checked out"}`,
+        title: `${c.employee_name} checked in`,
         description: `At ${c.check_time}.`,
         time: c.check_date,
         tone: "info",
@@ -96,31 +124,36 @@ async function attendanceAlerts(): Promise<AlertItem[]> {
   ];
 }
 
+// Payments are the money side of a POS sale (see useBillingPayments in
+// use-billing.ts) — billing_payments is a legacy table that's mostly old
+// seed rows plus a couple of manually-typed test entries, not the real
+// payment ledger, so it's read straight from pos_transactions instead.
 async function paymentAlerts(): Promise<AlertItem[]> {
   const [payments, refunds] = await Promise.all([
     supabase
-      .from("billing_payments")
-      .select("receipt, date, customer, invoice, amount, mode, status, pay_date")
-      .order("pay_date", { ascending: false })
+      .from("pos_transactions")
+      .select("invoice, amount, payment, status, customer_name, invoice_date, created_at")
+      .order("created_at", { ascending: false })
       .limit(10),
     supabase
       .from("billing_refunds")
       .select("refund, invoice, customer, amount, reason, status")
+      .order("refund_date", { ascending: false })
       .limit(5),
   ]);
 
   return [
     ...(payments.data ?? []).map(
       (p): AlertItem => ({
-        id: `pay-${p.receipt}`,
+        id: `pay-${p.invoice}`,
         title:
-          p.status === "Received"
+          p.status === "Completed"
             ? `Payment ${p.amount} received`
             : `Payment pending: ${p.invoice}`,
-        description: `${p.invoice} · ${p.customer} via ${p.mode}`,
-        time: p.date,
-        tone: p.status === "Received" ? "success" : "warning",
-        icon: p.status === "Received" ? TrendingUp : Clock,
+        description: `${p.invoice} · ${p.customer_name || "Walk-in"} via ${p.payment}`,
+        time: p.invoice_date || String(p.created_at ?? "").slice(0, 10),
+        tone: p.status === "Completed" ? "success" : "warning",
+        icon: p.status === "Completed" ? TrendingUp : Clock,
         category: "payment",
       }),
     ),

@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/billing/StatusBadge";
 import { cn } from "@/lib/utils";
 import { usePagination } from "@/hooks/use-pagination";
 import { useBillingTallyLog, useTallyStats, useTallySync } from "@/hooks/use-billing";
+import { useBranchScope } from "@/hooks/use-branch-scope";
 import type { BillingTallyRow } from "@/types/billing";
 
 export const Route = createFileRoute("/_app/billing/tally-sync")({
@@ -82,9 +83,10 @@ function SyncStat({
 }
 
 function Page() {
-  const { data: stats } = useTallyStats();
-  const { data: log = [] } = useBillingTallyLog();
-  const tallySync = useTallySync();
+  const { homeBranch } = useBranchScope();
+  const { data: stats } = useTallyStats(homeBranch);
+  const { data: log = [] } = useBillingTallyLog(homeBranch);
+  const tallySync = useTallySync(homeBranch);
   const syncing = tallySync.isPending;
   const { page, setPage, totalPages, pageItems } = usePagination(log);
 

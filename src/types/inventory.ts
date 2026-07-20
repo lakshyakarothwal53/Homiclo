@@ -19,6 +19,8 @@ export interface Product {
   gstRate?: number;
   /** Maximum Retail Price printed on the pack. Display-only; never used in totals. */
   mrp?: number;
+  /** Cost price paid to the supplier, GST-EXCLUSIVE — never charged to the customer; used for margin/valuation only. */
+  purchaseRate?: number;
 }
 
 export interface Category {
@@ -66,6 +68,7 @@ export interface LowStockAlert {
 }
 
 export interface InventoryReport {
+  id: string;
   report: string;
   period: string;
   generated: string;

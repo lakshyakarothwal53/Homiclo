@@ -73,6 +73,9 @@ function toProduct(v: ProductFormValues): Product {
     stock: v.stock,
     minStock: v.minStock,
     status: status,
+    gstRate: v.gstRate,
+    mrp: v.mrp,
+    purchaseRate: v.purchaseRate,
   };
 }
 

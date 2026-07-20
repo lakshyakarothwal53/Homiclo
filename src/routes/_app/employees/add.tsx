@@ -17,6 +17,7 @@ import { useBranchScope } from "@/hooks/use-branch-scope";
 import { useCreateEmployee } from "@/hooks/use-employees";
 import { useBranches } from "@/hooks/use-inventory";
 import { useShiftConfigs } from "@/hooks/use-attendance";
+import { useRoles } from "@/hooks/use-settings";
 import type { EmployeeRole, EmployeeStatus } from "@/types/employees";
 import { toast } from "sonner";
 
@@ -30,22 +31,15 @@ export const Route = createFileRoute("/_app/employees/add")({
   component: AddEmployeePage,
 });
 
-const ROLES: EmployeeRole[] = [
-  "Cashier",
-  "Floor Manager",
-  "Inventory",
-  "Supervisor",
-  "Admin",
-  "HR",
-  "Employee",
-  "Salesman",
-];
-
 function AddEmployeePage() {
   const router = useRouter();
   const { mutate: createEmployee, isPending } = useCreateEmployee();
   const { data: branches = [] } = useBranches();
   const { data: shifts = [] } = useShiftConfigs();
+  // Super Admin is a system access level held by a single reserved account,
+  // not an assignable job position — exclude it from onboarding.
+  const { data: roles = [] } = useRoles();
+  const assignableRoles = roles.filter((r) => r.role !== "Super Admin");
   const { scoped, homeBranch } = useBranchScope();
 
   const [formData, setFormData] = useState({
@@ -202,9 +196,9 @@ function AddEmployeePage() {
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
                   <SelectContent>
-                    {ROLES.map((role) => (
-                      <SelectItem key={role} value={role}>
-                        {role}
+                    {assignableRoles.map((r) => (
+                      <SelectItem key={r.role} value={r.role}>
+                        {r.role}
                       </SelectItem>
                     ))}
                   </SelectContent>
