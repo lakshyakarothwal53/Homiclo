@@ -80,7 +80,24 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:8080 --max-time 5)",
       "Bash(xargs grep -l \"trigger\\\\|function\")",
       "Bash(curl -s http://localhost:8083/reports/sales --max-time 10)",
-      "Bash(curl -s -o /tmp/sales.html -w \"%{http_code} %{url_effective}\\\\n\" http://localhost:8083/reports/sales --max-time 10)"
+      "Bash(curl -s -o /tmp/sales.html -w \"%{http_code} %{url_effective}\\\\n\" http://localhost:8083/reports/sales --max-time 10)",
+      "Bash(curl -m 5 -s -o /dev/null -w \"ip:9000 -> HTTP %{http_code} \\(connect: %{exitcode}\\)\\\\n\" http://103.197.122.199:9000)",
+      "Bash(curl -m 5 -s -o /dev/null -w \"malformed-url -> HTTP %{http_code}\\\\n\" \"http://103.197.122.199/software/html5.html:9000\")",
+      "Bash(curl -m 6 -s -o /dev/null -w \"103.197.122.199:9234 -> HTTP %{http_code}\\\\n\" http://103.197.122.199:9234)",
+      "Bash(curl -m 8 -s -i -X POST -H \"Content-Type: text/xml\" --data-binary @- http://103.197.122.199:9234)",
+      "Bash(curl -m 10 -s -o /dev/null -w \"root: HTTP %{http_code}\\\\n\" http://localhost:8081/)",
+      "Bash(curl -m 10 -s -o /dev/null -w \"settings/tally: HTTP %{http_code}\\\\n\" http://localhost:8081/settings/tally)",
+      "Bash(powershell -Command \"Stop-Process -Id 6304 -Force\")",
+      "Bash(curl -m 6 -s -o /dev/null -w \"HTTP %{http_code} \\(exit %{exitcode}\\)\\\\n\" http://103.197.122.199:9000)",
+      "Bash(curl -m 6 -s -o /dev/null -w \"HTTP %{http_code} \\(exit %{exitcode}\\)\\\\n\" http://103.197.122.199:9234)",
+      "Bash(curl -m 12 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/ledgers.xml http://103.197.122.199:9234)",
+      "Bash(curl -m 15 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/testvoucher.xml http://103.197.122.199:9234)",
+      "Bash(curl -m 15 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/delvoucher.xml http://103.197.122.199:9234)",
+      "Bash(curl -m 15 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/daybook.xml http://103.197.122.199:9234)",
+      "Bash(awk 'BEGIN{RS=\"<VOUCHER \"} /TRONICA STORE SALES/ { *)",
+      "Bash(curl -m 20 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/daybook2.xml http://103.197.122.199:9234)",
+      "Bash(curl -m 20 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/vchcol.xml http://103.197.122.199:9234)",
+      "Bash(curl -m 15 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/del2.xml http://103.197.122.199:9234)"
     ],
     "deny": [
       "Bash(git push --force*)",
@@ -89,7 +106,8 @@
       "Bash(rm -rf*)"
     ],
     "additionalDirectories": [
-      "C:\\Users\\Piyush Kumar\\.claude\\plans"
+      "C:\\Users\\Piyush Kumar\\.claude\\plans",
+      "\\tmp"
     ]
   }
 }

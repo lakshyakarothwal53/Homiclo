@@ -93,7 +93,7 @@ function Page() {
   const syncNow = () => {
     toast.loading("Syncing with Tally...", { id: "tally" });
     tallySync.mutate(undefined, {
-      onSuccess: ({ pushed, failed }) => {
+      onSuccess: ({ pushed, failed, sampleError }) => {
         if (pushed === 0 && failed === 0) {
           toast.success("Everything already synced — no pending vouchers.", { id: "tally" });
         } else if (failed === 0) {
@@ -102,7 +102,7 @@ function Page() {
           });
         } else {
           toast.warning(
-            `${pushed} pushed, ${failed} failed — check the Tally server in Settings › Tally.`,
+            `${pushed} pushed, ${failed} failed — ${sampleError ?? "check the Tally server in Settings › Tally."}`,
             { id: "tally" },
           );
         }

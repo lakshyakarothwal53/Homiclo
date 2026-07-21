@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { supabase } from "@/lib/supabase";
 import { applyStockMovement } from "@/lib/inventory-utils";
-import { loadTallyConfig, pushToTally, salesVoucherXml } from "@/lib/tally";
+import { loadTallyConfig, pushToTally, salesVoucherXmlBatch } from "@/lib/tally";
 import { localDateIso } from "@/lib/utils";
 import { parseRowDate } from "@/lib/report-data";
 import type {
@@ -609,16 +609,17 @@ export function useTallyStats(branch?: string) {
   });
 }
 
-export type TallySyncResult = { pushed: number; failed: number };
+export type TallySyncResult = { pushed: number; failed: number; sampleError?: string };
 
 /**
  * Real sync: push every un-synced sales bill to the configured Tally HTTP
- * gateway as a Sales voucher and record each attempt in billing_tally_log.
- * Pulls from pos_transactions (every completed POS sale — the real, live
- * sales channel; see useBillingSalesBills / posTxnToBill), scoped to the
- * caller's branch, plus billing_sales_bills (the legacy manual-invoice table,
- * which has no branch column) for Super Admin only — a Branch Admin must
- * never push another branch's bills to Tally.
+ * gateway as a Sales voucher, batched one XML request per calendar month
+ * (bill_date), and record each attempt in billing_tally_log. Pulls from
+ * pos_transactions (every completed POS sale — the real, live sales channel;
+ * see useBillingSalesBills / posTxnToBill), scoped to the caller's branch,
+ * plus billing_sales_bills (the legacy manual-invoice table, which has no
+ * branch column) for Super Admin only — a Branch Admin must never push
+ * another branch's bills to Tally.
  */
 export function useTallySync(branch?: string) {
   const allBranches = !branch || branch === "all";
@@ -662,28 +663,56 @@ export function useTallySync(branch?: string) {
       });
       if (unsynced.length === 0) return { pushed: 0, failed: 0 };
 
+      // Batch by calendar month (bill_date's YYYY-MM prefix) so a full
+      // historical backfill sends one XML request per month instead of one
+      // per voucher — bills with no bill_date land in a single "unknown"
+      // bucket rather than being dropped.
+      const monthBuckets = new Map<string, BillingSalesBill[]>();
+      for (const bill of unsynced) {
+        const key = bill.bill_date ? bill.bill_date.slice(0, 7) : "unknown";
+        const bucket = monthBuckets.get(key);
+        if (bucket) bucket.push(bill);
+        else monthBuckets.set(key, [bill]);
+      }
+
       let pushed = 0;
       let failed = 0;
+      let sampleError: string | undefined;
       const timeLabel = new Date().toLocaleTimeString("en-IN", {
         hour: "2-digit",
         minute: "2-digit",
       });
 
-      for (const bill of unsynced) {
-        const ok = await pushToTally(config, salesVoucherXml(bill, config.company));
-        const { error: insertError } = await supabase.from("billing_tally_log").insert({
-          time: timeLabel,
-          voucher: "Sales",
-          reference: bill.invoice,
-          amount: bill.amount,
-          status: ok ? "Synced" : "Failed",
-        });
+      for (const monthBills of monthBuckets.values()) {
+        const result = await pushToTally(
+          config,
+          salesVoucherXmlBatch(
+            monthBills,
+            config.company,
+            config.salesLedgerName,
+            config.defaultCustomerLedger,
+          ),
+        );
+        const status = result.ok ? "Synced" : "Failed";
+        const { error: insertError } = await supabase.from("billing_tally_log").insert(
+          monthBills.map((bill) => ({
+            time: timeLabel,
+            voucher: "Sales",
+            reference: bill.invoice,
+            amount: bill.amount,
+            status,
+          })),
+        );
         if (insertError) throw insertError;
-        if (ok) pushed++;
-        else failed++;
+        if (result.ok) {
+          pushed += monthBills.length;
+        } else {
+          failed += monthBills.length;
+          if (!sampleError && result.message) sampleError = result.message;
+        }
       }
 
-      return { pushed, failed };
+      return { pushed, failed, sampleError };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["billing"] });

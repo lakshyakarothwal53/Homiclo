@@ -64,13 +64,17 @@ function Page() {
   async function handleTest() {
     setTesting(true);
     toast.loading(`Testing http://${form.serverIp}:${form.port}…`, { id: "tally-test" });
-    const ok = await testTallyConnection(form);
+    const result = await testTallyConnection(form);
     setTesting(false);
-    if (ok) {
-      toast.success("Tally server reachable.", { id: "tally-test" });
+    if (result.ok) {
+      toast.success(`Tally server reachable${result.message ? ` (${result.message})` : ""}.`, {
+        id: "tally-test",
+      });
     } else {
       toast.error(
-        "Could not reach the Tally server — check the IP/port and that Tally's HTTP gateway is on.",
+        result.message
+          ? `Could not reach the Tally server — ${result.message}`
+          : "Could not reach the Tally server — check the IP/port and that Tally's HTTP gateway is on.",
         { id: "tally-test" },
       );
     }
@@ -131,6 +135,32 @@ function Page() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="sales-ledger">Sales Ledger Name in Tally</Label>
+              <Input
+                id="sales-ledger"
+                value={form.salesLedgerName}
+                onChange={(e) => set({ salesLedgerName: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Must exactly match a ledger already in your Tally chart of accounts (e.g. "Sale"
+                vs "Sales") — Tally rejects vouchers referencing an unknown ledger name.
+              </p>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="customer-ledger">Default Customer Ledger (POS sales)</Label>
+              <Input
+                id="customer-ledger"
+                value={form.defaultCustomerLedger}
+                onChange={(e) => set({ defaultCustomerLedger: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Every POS sale is booked against this one party ledger instead of the walk-in
+                customer's name — must already exist in Tally (e.g. "Cash Sales" or "Walk-in
+                Customer").
+              </p>
             </div>
           </div>
 
