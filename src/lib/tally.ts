@@ -117,42 +117,142 @@ function parseTallyResponseText(text: string): TallyPushResult {
   return { ok: true };
 }
 
+// Cloudflare Workers' fetch() silently strips non-standard ports in production,
+// so a deployed Worker cannot reach Tally on :9234 via fetch (it would hit :80).
+// The TCP connect() sockets API can reach arbitrary ports, so on the Worker we
+// speak HTTP/1.1 over a raw socket instead. Only runs when navigator identifies
+// the Cloudflare Workers runtime; localhost/Node keeps using fetch().
+const ON_WORKER =
+  typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
+
+async function httpOverTcp(
+  host: string,
+  port: string,
+  method: "GET" | "POST",
+  body?: string,
+  timeoutMs = 6000,
+): Promise<{ status: number; body: string }> {
+  const { connect } = await import(/* @vite-ignore */ "cloudflare:sockets");
+  const socket = connect({ hostname: host, port: Number(port) });
+
+  const encoder = new TextEncoder();
+  const bodyBytes = body ? encoder.encode(body) : undefined;
+  const head =
+    `${method} / HTTP/1.1\r\n` +
+    `Host: ${host}:${port}\r\n` +
+    (bodyBytes
+      ? `Content-Type: text/xml\r\nContent-Length: ${bodyBytes.length}\r\n`
+      : "") +
+    `Connection: close\r\n\r\n`;
+
+  const readAll = async () => {
+    const writer = socket.writable.getWriter();
+    await writer.write(encoder.encode(head));
+    if (bodyBytes) await writer.write(bodyBytes);
+    writer.releaseLock();
+
+    const reader = socket.readable.getReader();
+    const decoder = new TextDecoder();
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        received += value.length;
+      }
+      // Tally responses are a few hundred bytes; decode the whole buffer each
+      // read and stop once the full Content-Length body has arrived.
+      const raw = decoder.decode(concatBytes(chunks, received));
+      const sep = raw.indexOf("\r\n\r\n");
+      if (sep >= 0) {
+        const cl = raw.slice(0, sep).match(/content-length:\s*(\d+)/i);
+        if (cl && raw.length - (sep + 4) >= Number(cl[1])) break;
+      }
+    }
+
+    const raw = decoder.decode(concatBytes(chunks, received));
+    const status = Number(raw.match(/^HTTP\/\d\.\d\s+(\d+)/)?.[1] ?? 0);
+    const sep = raw.indexOf("\r\n\r\n");
+    return { status, body: sep >= 0 ? raw.slice(sep + 4) : "" };
+  };
+
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("Tally connection timed out.")), timeoutMs),
+  );
+
+  try {
+    return await Promise.race([readAll(), timeout]);
+  } finally {
+    try {
+      await socket.close();
+    } catch {
+      /* already closed */
+    }
+  }
+}
+
+function concatBytes(chunks: Uint8Array[], total: number): Uint8Array {
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.length;
+  }
+  return out;
+}
+
 const tallyGatewayPost = createServerFn({ method: "POST" })
   .validator((input: { serverIp: string; port: string; xml: string }) => input)
   .handler(async ({ data }): Promise<TallyPushResult> => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 6000);
     try {
-      const res = await fetch(`http://${data.serverIp}:${data.port}`, {
-        method: "POST",
-        headers: { "Content-Type": "text/xml" },
-        body: data.xml,
-        signal: controller.signal,
-      });
-      if (!res.ok) return { ok: false, message: `Tally server responded HTTP ${res.status}.` };
-      return parseTallyResponseText(await res.text());
+      if (ON_WORKER) {
+        const { status, body } = await httpOverTcp(data.serverIp, data.port, "POST", data.xml);
+        if (status !== 200) return { ok: false, message: `Tally server responded HTTP ${status}.` };
+        return parseTallyResponseText(body);
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
+      try {
+        const res = await fetch(`http://${data.serverIp}:${data.port}`, {
+          method: "POST",
+          headers: { "Content-Type": "text/xml" },
+          body: data.xml,
+          signal: controller.signal,
+        });
+        if (!res.ok) return { ok: false, message: `Tally server responded HTTP ${res.status}.` };
+        return parseTallyResponseText(await res.text());
+      } finally {
+        clearTimeout(timer);
+      }
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : "Unreachable." };
-    } finally {
-      clearTimeout(timer);
     }
   });
 
 const tallyGatewayProbe = createServerFn({ method: "POST" })
   .validator((input: { serverIp: string; port: string }) => input)
   .handler(async ({ data }): Promise<TallyPushResult> => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);
     try {
-      const res = await fetch(`http://${data.serverIp}:${data.port}`, {
-        method: "GET",
-        signal: controller.signal,
-      });
-      return { ok: res.ok, message: `HTTP ${res.status}` };
+      if (ON_WORKER) {
+        const { status } = await httpOverTcp(data.serverIp, data.port, "GET", undefined, 4000);
+        return { ok: status >= 200 && status < 400, message: `HTTP ${status}` };
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      try {
+        const res = await fetch(`http://${data.serverIp}:${data.port}`, {
+          method: "GET",
+          signal: controller.signal,
+        });
+        return { ok: res.ok, message: `HTTP ${res.status}` };
+      } finally {
+        clearTimeout(timer);
+      }
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : "Unreachable." };
-    } finally {
-      clearTimeout(timer);
     }
   });
 
