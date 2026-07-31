@@ -1,6 +1,5 @@
-import { createIsomorphicFn } from "@tanstack/react-start";
+import { createIsomorphicFn, createServerFn } from "@tanstack/react-start";
 import { getCookie } from "@tanstack/react-start/server";
-import usersData from "@/mocks/users.json";
 import { ROLE_LABEL, type Role } from "@/lib/roles";
 
 const COOKIE_NAME = "homiqlo_session";
@@ -15,19 +14,11 @@ export type SessionUser = {
   branch: string;
 };
 
-type StoredUser = SessionUser & { passwordHash: string };
-const USERS = usersData as StoredUser[];
-
 async function sha256(text: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-}
-
-function sanitize(u: StoredUser): SessionUser {
-  const { passwordHash: _omit, ...rest } = u;
-  return rest;
 }
 
 function parseSession(raw: string | undefined | null): SessionUser | null {
@@ -61,7 +52,8 @@ const readSessionCookie = createIsomorphicFn()
  *   getSession -> supabase.auth.getSession() (+ role from a `profiles` row/claim)
  *   signOut -> supabase.auth.signOut()
  * ROLE_ACCESS, the _app route guard, the Sidebar filter and the Topbar are
- * untouched by the swap. users.json and its passwordHash field then disappear.
+ * untouched by the swap. super_admins and verify_super_admin() (supabase/20_super_admins.sql)
+ * then disappear along with the rest of this file's custom checks.
  * ──────────────────────────────────────────────────────────────────────── */
 
 // employees.role stores the display strings offered on the Add Employee form,
@@ -80,6 +72,17 @@ function toSessionRole(dbRole: string | null | undefined): Role {
   return EMPLOYEE_ROLE_MAP[(dbRole ?? "").trim().toLowerCase()] ?? "employee";
 }
 
+// Runs server-side only — createServerFn splits this handler (and everything
+// it closes over: the Supabase super_admins RPC call, the employees query)
+// into a server-only chunk. The browser bundle only ever gets a thin RPC stub.
+const verifyCredentials = createServerFn({ method: "POST" })
+  .validator((input: { email: string; password: string }) => input)
+  .handler(async ({ data }): Promise<SessionUser | null> => {
+    const hash = await sha256(data.password);
+    const normalizedEmail = data.email.trim().toLowerCase();
+    return resolveUser(normalizedEmail, hash);
+  });
+
 /**
  * Authenticate and open a session.
  *
@@ -94,10 +97,7 @@ export async function signIn(
   password: string,
   expectedRole?: Role,
 ): Promise<SessionUser> {
-  const hash = await sha256(password);
-  const normalizedEmail = email.trim().toLowerCase();
-
-  const resolved = await resolveUser(normalizedEmail, hash);
+  const resolved = await verifyCredentials({ data: { email, password } });
   if (!resolved) throw new Error("Invalid email or password");
 
   if (expectedRole && resolved.role !== expectedRole) {
@@ -114,18 +114,23 @@ export async function signIn(
 /**
  * Resolve credentials to a user without opening a session.
  *
- * Real accounts live in the Supabase `employees` table — created through
- * Employees → Add Employee. src/mocks/users.json is NOT demo data any more: it
- * holds exactly one break-glass Super Admin, because `employees` has no role
- * that maps to super_admin (see EMPLOYEE_ROLE_MAP — "Admin" is a BRANCH admin),
- * so without it nobody could manage the catalogue or allocate stock to
- * branches. Do not re-add demo logins here.
+ * Two Supabase-backed sources, checked in order:
+ * - `super_admins` via the verify_super_admin() RPC — the break-glass Super
+ *   Admin account. The table has no RLS policies at all; the RPC is
+ *   SECURITY DEFINER so it can read it, and returns only sanitized fields —
+ *   the password hash never leaves the database. `employees` has no role
+ *   that maps to super_admin (see EMPLOYEE_ROLE_MAP — "Admin" is a BRANCH
+ *   admin), so without this nobody could manage the catalogue or allocate
+ *   stock to branches.
+ * - `employees` — real accounts, created through Employees → Add Employee.
  */
 async function resolveUser(normalizedEmail: string, hash: string): Promise<SessionUser | null> {
-  const match = USERS.find(
-    (u) => u.email.toLowerCase() === normalizedEmail && u.passwordHash === hash,
-  );
-  if (match) return sanitize(match);
+  try {
+    const superAdminMatch = await findSuperAdmin(normalizedEmail, hash);
+    if (superAdminMatch) return superAdminMatch;
+  } catch (error) {
+    console.error("Error checking Supabase for super admin:", error);
+  }
 
   try {
     const employeeMatch = await findEmployeeByEmail(normalizedEmail, hash);
@@ -147,6 +152,28 @@ async function resolveUser(normalizedEmail: string, hash: string): Promise<Sessi
     console.error("Error checking Supabase for employee:", error);
   }
   return null;
+}
+
+async function findSuperAdmin(email: string, passwordHash: string): Promise<SessionUser | null> {
+  try {
+    const { supabase } = await import("@/lib/supabase");
+    const { data, error } = await supabase.rpc("verify_super_admin", {
+      p_email: email,
+      p_password_hash: passwordHash,
+    });
+    if (error || !data || data.length === 0) return null;
+    const row = data[0];
+    return {
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      initials: row.initials,
+      role: "super_admin",
+      branch: row.branch,
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function findEmployeeByEmail(email: string, passwordHash: string) {

@@ -15,7 +15,7 @@ dist-ssr
 .tanstack/**
 .nitro
 *.local
-
+.temp
 # Local env (keep .env.example committed as the template)
 .env
 .env.*
