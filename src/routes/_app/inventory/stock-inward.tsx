@@ -1,8 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Package } from "lucide-react";
 
 import { PageHeader } from "@/components/common/PageHeader";
+import { StatCard } from "@/components/common/StatCard";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTableCard, type Column } from "@/components/inventory/DataTableCard";
 import { DeleteConfirm } from "@/components/inventory/DeleteConfirm";
 import {
@@ -20,6 +23,7 @@ import {
   useDeleteStockInward,
   useStockInward,
   useUpdateStockInward,
+  useProducts,
 } from "@/hooks/use-inventory";
 import type { StockInwardEntry } from "@/types/inventory";
 
@@ -39,7 +43,8 @@ const COLUMNS: Column[] = [
   { key: "product", label: "Product" },
   { key: "supplier", label: "Supplier" },
   { key: "qty", label: "Qty", align: "right" },
-  { key: "cost", label: "Cost", align: "right" },
+  { key: "unitCost", label: "Unit Cost", align: "right" },
+  { key: "totalCost", label: "Total Cost", align: "right" },
   { key: "receivedBy", label: "Received By" },
   { key: "action", label: "", align: "right" },
 ];
@@ -72,8 +77,23 @@ function Page() {
   const [branch, setBranch] = useState(homeBranch);
   const [addOpen, setAddOpen] = useState(false);
   const { data = [], isLoading } = useStockInward(search, branch);
+  const { data: products = [] } = useProducts(undefined, branch);
   const { data: branches = [] } = useBranches();
   const { page, setPage, totalPages, pageItems } = usePagination(data);
+
+  const productMap = useMemo(() => new Map(products.map((p) => [p.sku, p])), [products]);
+
+  const summary = useMemo(() => {
+    let totalQty = 0;
+    let totalValue = 0;
+    data.forEach((entry) => {
+      const product = productMap.get(entry.product);
+      totalQty += entry.qty || 0;
+      const cost = parseFloat(entry.cost) || 0;
+      totalValue += cost;
+    });
+    return { totalQty, totalValue };
+  }, [data, productMap]);
 
   const createEntry = useCreateStockInward();
   const updateEntry = useUpdateStockInward();
@@ -118,6 +138,15 @@ function Page() {
         title="Stock Inward"
         description="Stock Inward overview and controls."
       />
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 mb-6">
+        <StatCard label="Total Units Received" value={summary.totalQty} icon={Package} />
+        <StatCard
+          label="Total Cost Value"
+          value={`₹${summary.totalValue.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
+        />
+      </div>
+
       <FilterBar
         search={search}
         onSearchChange={setSearch}
@@ -145,15 +174,23 @@ function Page() {
         totalPages={totalPages}
         onPageChange={setPage}
       >
-        {pageItems.map((r) => (
-          <TableRow key={r.grn} className="border-t border-border">
-            <TableCell className="px-5 py-3 whitespace-nowrap">{r.date}</TableCell>
-            <TableCell className="px-5 py-3 font-mono text-xs">{r.grn}</TableCell>
-            <TableCell className="px-5 py-3 font-medium">{r.product}</TableCell>
-            <TableCell className="px-5 py-3 text-muted-foreground">{r.supplier}</TableCell>
-            <TableCell className="px-5 py-3 text-right">{r.qty}</TableCell>
-            <TableCell className="px-5 py-3 text-right">{r.cost}</TableCell>
-            <TableCell className="px-5 py-3">{r.receivedBy}</TableCell>
+        {pageItems.map((r) => {
+          const unitCost = r.qty ? (parseFloat(r.cost) || 0) / r.qty : 0;
+          const totalCost = parseFloat(r.cost) || 0;
+          return (
+            <TableRow key={r.grn} className="border-t border-border">
+              <TableCell className="px-5 py-3 whitespace-nowrap">{r.date}</TableCell>
+              <TableCell className="px-5 py-3 font-mono text-xs">{r.grn}</TableCell>
+              <TableCell className="px-5 py-3 font-medium">{r.product}</TableCell>
+              <TableCell className="px-5 py-3 text-muted-foreground">{r.supplier}</TableCell>
+              <TableCell className="px-5 py-3 text-right">{r.qty}</TableCell>
+              <TableCell className="px-5 py-3 text-right">
+                ₹{unitCost.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+              </TableCell>
+              <TableCell className="px-5 py-3 text-right">
+                ₹{totalCost.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+              </TableCell>
+              <TableCell className="px-5 py-3">{r.receivedBy}</TableCell>
             <TableCell className="px-5 py-3 text-right">
               <div className="flex items-center justify-end gap-4">
                 <EntityFormDialog
@@ -170,7 +207,8 @@ function Page() {
               </div>
             </TableCell>
           </TableRow>
-        ))}
+          );
+        })}
       </DataTableCard>
     </>
   );

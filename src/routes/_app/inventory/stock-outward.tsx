@@ -1,8 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ShoppingCart, AlertTriangle, Zap } from "lucide-react";
 
 import { PageHeader } from "@/components/common/PageHeader";
+import { StatCard } from "@/components/common/StatCard";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTableCard, type Column } from "@/components/inventory/DataTableCard";
 import { DeleteConfirm } from "@/components/inventory/DeleteConfirm";
 import {
@@ -20,6 +23,7 @@ import {
   useDeleteStockOutward,
   useStockOutward,
   useUpdateStockOutward,
+  useProducts,
 } from "@/hooks/use-inventory";
 import type { StockOutwardEntry } from "@/types/inventory";
 
@@ -39,6 +43,7 @@ const COLUMNS: Column[] = [
   { key: "product", label: "Product" },
   { key: "type", label: "Type" },
   { key: "qty", label: "Qty", align: "right" },
+  { key: "value", label: "Est. Value", align: "right" },
   { key: "reference", label: "Reference" },
   { key: "by", label: "By" },
   { key: "action", label: "", align: "right" },
@@ -78,8 +83,32 @@ function Page() {
   const [branch, setBranch] = useState(homeBranch);
   const [addOpen, setAddOpen] = useState(false);
   const { data = [], isLoading } = useStockOutward(search, branch);
+  const { data: products = [] } = useProducts(undefined, branch);
   const { data: branches = [] } = useBranches();
   const { page, setPage, totalPages, pageItems } = usePagination(data);
+
+  const productMap = useMemo(() => new Map(products.map((p) => [p.sku, p])), [products]);
+
+  const summary = useMemo(() => {
+    let totalQty = 0;
+    let totalValue = 0;
+    let salesQty = 0;
+    let damageQty = 0;
+    let theftQty = 0;
+
+    data.forEach((entry) => {
+      const product = productMap.get(entry.product);
+      const price = product?.price || 0;
+      totalQty += entry.qty || 0;
+      totalValue += (entry.qty || 0) * price;
+
+      if (entry.type === "Sale") salesQty += entry.qty || 0;
+      if (entry.type === "Damage") damageQty += entry.qty || 0;
+      if (entry.type === "Transfer") theftQty += entry.qty || 0;
+    });
+
+    return { totalQty, totalValue, salesQty, damageQty, theftQty };
+  }, [data, productMap]);
 
   const createEntry = useCreateStockOutward();
   const updateEntry = useUpdateStockOutward();
@@ -124,6 +153,14 @@ function Page() {
         title="Stock Outward"
         description="Stock Outward overview and controls."
       />
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4 mb-6">
+        <StatCard label="Total Units Out" value={summary.totalQty} icon={ShoppingCart} />
+        <StatCard label="Sales" value={summary.salesQty} icon={ShoppingCart} />
+        <StatCard label="Damage/Loss" value={summary.damageQty} icon={AlertTriangle} />
+        <StatCard label="Transfers" value={summary.theftQty} icon={Zap} />
+      </div>
+
       <FilterBar
         search={search}
         onSearchChange={setSearch}
@@ -151,15 +188,21 @@ function Page() {
         totalPages={totalPages}
         onPageChange={setPage}
       >
-        {pageItems.map((r) => (
-          <TableRow key={r.ref} className="border-t border-border">
-            <TableCell className="px-5 py-3 whitespace-nowrap">{r.date}</TableCell>
-            <TableCell className="px-5 py-3 font-mono text-xs">{r.ref}</TableCell>
-            <TableCell className="px-5 py-3 font-medium">{r.product}</TableCell>
-            <TableCell className="px-5 py-3 text-muted-foreground">{r.type}</TableCell>
-            <TableCell className="px-5 py-3 text-right">{r.qty}</TableCell>
-            <TableCell className="px-5 py-3 font-mono text-xs">{r.reference}</TableCell>
-            <TableCell className="px-5 py-3">{r.by}</TableCell>
+        {pageItems.map((r) => {
+          const product = productMap.get(r.product);
+          const value = (r.qty || 0) * (product?.price || 0);
+          return (
+            <TableRow key={r.ref} className="border-t border-border">
+              <TableCell className="px-5 py-3 whitespace-nowrap">{r.date}</TableCell>
+              <TableCell className="px-5 py-3 font-mono text-xs">{r.ref}</TableCell>
+              <TableCell className="px-5 py-3 font-medium">{r.product}</TableCell>
+              <TableCell className="px-5 py-3 text-muted-foreground">{r.type}</TableCell>
+              <TableCell className="px-5 py-3 text-right">{r.qty}</TableCell>
+              <TableCell className="px-5 py-3 text-right">
+                ₹{value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+              </TableCell>
+              <TableCell className="px-5 py-3 font-mono text-xs">{r.reference}</TableCell>
+              <TableCell className="px-5 py-3">{r.by}</TableCell>
             <TableCell className="px-5 py-3 text-right">
               <div className="flex items-center justify-end gap-4">
                 <EntityFormDialog
@@ -175,8 +218,9 @@ function Page() {
                 <DeleteConfirm label={r.ref} onConfirm={() => handleDelete(r.ref)} />
               </div>
             </TableCell>
-          </TableRow>
-        ))}
+            </TableRow>
+          );
+        })}
       </DataTableCard>
     </>
   );
