@@ -85,7 +85,9 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
           <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-brand" />
         </Button>
         <div className="hidden sm:flex flex-col items-end leading-tight">
-          <span className="text-sm font-semibold">{user?.name ?? "—"}</span>
+          <span className="text-sm font-semibold">
+            {role === "super_admin" ? "Super Admin" : user?.name ?? "—"}
+          </span>
           <span className="text-[11px] text-muted-foreground">{role ? ROLE_LABEL[role] : ""}</span>
         </div>
         <div className="grid h-9 w-9 place-items-center rounded-full bg-foreground text-background text-sm font-semibold">

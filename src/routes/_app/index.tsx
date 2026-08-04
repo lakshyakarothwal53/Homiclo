@@ -122,7 +122,7 @@ function DashboardPage() {
     <>
       <PageHeader
         eyebrow="Overview"
-        title={`Good morning, ${user?.name?.split(" ")[0] ?? "there"}`}
+        title={`Good morning, ${user?.role === "super_admin" ? "Super Admin" : user?.name?.split(" ")[0] ?? "there"}`}
         description={
           branch
             ? `Here's what's happening at ${branch} today.`
