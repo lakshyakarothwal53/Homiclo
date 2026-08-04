@@ -71,7 +71,6 @@ export const NAV: NavGroup[] = [
       { label: "Profile", to: "/employees/profile" },
       { label: "Login Monitoring", to: "/employees/login-monitoring" },
       { label: "Activity Tracking", to: "/employees/activity" },
-      { label: "Location Tracking", to: "/employees/location" },
       { label: "Reports", to: "/employees/reports" },
     ],
   },

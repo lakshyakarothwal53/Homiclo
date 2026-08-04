@@ -62,7 +62,6 @@ import { Route as AppEmployeesReportsRouteImport } from './routes/_app/employees
 import { Route as AppEmployeesProfileDetailRouteImport } from './routes/_app/employees/profile-detail'
 import { Route as AppEmployeesProfileRouteImport } from './routes/_app/employees/profile'
 import { Route as AppEmployeesLoginMonitoringRouteImport } from './routes/_app/employees/login-monitoring'
-import { Route as AppEmployeesLocationRouteImport } from './routes/_app/employees/location'
 import { Route as AppEmployeesAddRouteImport } from './routes/_app/employees/add'
 import { Route as AppEmployeesActivityRouteImport } from './routes/_app/employees/activity'
 import { Route as AppDiscountsUsageReportsRouteImport } from './routes/_app/discounts/usage-reports'
@@ -358,11 +357,6 @@ const AppEmployeesLoginMonitoringRoute =
     path: '/login-monitoring',
     getParentRoute: () => AppEmployeesRoute,
   } as any)
-const AppEmployeesLocationRoute = AppEmployeesLocationRouteImport.update({
-  id: '/location',
-  path: '/location',
-  getParentRoute: () => AppEmployeesRoute,
-} as any)
 const AppEmployeesAddRoute = AppEmployeesAddRouteImport.update({
   id: '/add',
   path: '/add',
@@ -508,7 +502,6 @@ export interface FileRoutesByFullPath {
   '/discounts/usage-reports': typeof AppDiscountsUsageReportsRoute
   '/employees/activity': typeof AppEmployeesActivityRoute
   '/employees/add': typeof AppEmployeesAddRoute
-  '/employees/location': typeof AppEmployeesLocationRoute
   '/employees/login-monitoring': typeof AppEmployeesLoginMonitoringRoute
   '/employees/profile': typeof AppEmployeesProfileRoute
   '/employees/profile-detail': typeof AppEmployeesProfileDetailRoute
@@ -578,7 +571,6 @@ export interface FileRoutesByTo {
   '/discounts/usage-reports': typeof AppDiscountsUsageReportsRoute
   '/employees/activity': typeof AppEmployeesActivityRoute
   '/employees/add': typeof AppEmployeesAddRoute
-  '/employees/location': typeof AppEmployeesLocationRoute
   '/employees/login-monitoring': typeof AppEmployeesLoginMonitoringRoute
   '/employees/profile': typeof AppEmployeesProfileRoute
   '/employees/profile-detail': typeof AppEmployeesProfileDetailRoute
@@ -657,7 +649,6 @@ export interface FileRoutesById {
   '/_app/discounts/usage-reports': typeof AppDiscountsUsageReportsRoute
   '/_app/employees/activity': typeof AppEmployeesActivityRoute
   '/_app/employees/add': typeof AppEmployeesAddRoute
-  '/_app/employees/location': typeof AppEmployeesLocationRoute
   '/_app/employees/login-monitoring': typeof AppEmployeesLoginMonitoringRoute
   '/_app/employees/profile': typeof AppEmployeesProfileRoute
   '/_app/employees/profile-detail': typeof AppEmployeesProfileDetailRoute
@@ -736,7 +727,6 @@ export interface FileRouteTypes {
     | '/discounts/usage-reports'
     | '/employees/activity'
     | '/employees/add'
-    | '/employees/location'
     | '/employees/login-monitoring'
     | '/employees/profile'
     | '/employees/profile-detail'
@@ -806,7 +796,6 @@ export interface FileRouteTypes {
     | '/discounts/usage-reports'
     | '/employees/activity'
     | '/employees/add'
-    | '/employees/location'
     | '/employees/login-monitoring'
     | '/employees/profile'
     | '/employees/profile-detail'
@@ -884,7 +873,6 @@ export interface FileRouteTypes {
     | '/_app/discounts/usage-reports'
     | '/_app/employees/activity'
     | '/_app/employees/add'
-    | '/_app/employees/location'
     | '/_app/employees/login-monitoring'
     | '/_app/employees/profile'
     | '/_app/employees/profile-detail'
@@ -1308,13 +1296,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppEmployeesLoginMonitoringRouteImport
       parentRoute: typeof AppEmployeesRoute
     }
-    '/_app/employees/location': {
-      id: '/_app/employees/location'
-      path: '/location'
-      fullPath: '/employees/location'
-      preLoaderRoute: typeof AppEmployeesLocationRouteImport
-      parentRoute: typeof AppEmployeesRoute
-    }
     '/_app/employees/add': {
       id: '/_app/employees/add'
       path: '/add'
@@ -1551,7 +1532,6 @@ const AppDiscountsRouteWithChildren = AppDiscountsRoute._addFileChildren(
 interface AppEmployeesRouteChildren {
   AppEmployeesActivityRoute: typeof AppEmployeesActivityRoute
   AppEmployeesAddRoute: typeof AppEmployeesAddRoute
-  AppEmployeesLocationRoute: typeof AppEmployeesLocationRoute
   AppEmployeesLoginMonitoringRoute: typeof AppEmployeesLoginMonitoringRoute
   AppEmployeesProfileRoute: typeof AppEmployeesProfileRoute
   AppEmployeesProfileDetailRoute: typeof AppEmployeesProfileDetailRoute
@@ -1562,7 +1542,6 @@ interface AppEmployeesRouteChildren {
 const AppEmployeesRouteChildren: AppEmployeesRouteChildren = {
   AppEmployeesActivityRoute: AppEmployeesActivityRoute,
   AppEmployeesAddRoute: AppEmployeesAddRoute,
-  AppEmployeesLocationRoute: AppEmployeesLocationRoute,
   AppEmployeesLoginMonitoringRoute: AppEmployeesLoginMonitoringRoute,
   AppEmployeesProfileRoute: AppEmployeesProfileRoute,
   AppEmployeesProfileDetailRoute: AppEmployeesProfileDetailRoute,
