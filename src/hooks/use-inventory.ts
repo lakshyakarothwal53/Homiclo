@@ -791,10 +791,20 @@ export function useSubmitStockAdjustment() {
         if (prodError) throw prodError;
       }
 
+      // Fetch current stock to calculate the actual change for history
+      const { data: current } = await supabase
+        .from(branch ? "branch_inventory" : "products")
+        .select("stock")
+        .eq(branch ? "branch" : "sku", branch || input.sku)
+        .eq("sku", input.sku);
+
+      const previousStock = current?.[0]?.stock ?? 0;
+      const changeAmount = input.adjustedStock - previousStock;
+
       const historyRow = {
         datetime: input.date,
         product: input.sku,
-        change: input.adjustedStock,
+        change: changeAmount,
         type: "Adjustment",
         balance: input.adjustedStock,
         by: "Admin",

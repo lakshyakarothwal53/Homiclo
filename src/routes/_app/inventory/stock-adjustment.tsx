@@ -42,9 +42,9 @@ const REASONS = ["Damage", "Audit Correction", "Theft", "Return", "Other"] as co
 
 const schema = z.object({
   sku: z.string().min(1, "Select a product"),
-  adjustedStock: z.coerce
+  changeAmount: z.coerce
     .number({ invalid_type_error: "Enter a number" })
-    .min(0, "Cannot be negative"),
+    .int("Must be a whole number"),
   reason: z.enum(REASONS, { required_error: "Select a reason" }),
   date: z.string().min(1, "Pick a date"),
   notes: z.string().optional(),
@@ -59,19 +59,28 @@ function Page() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { sku: "", adjustedStock: 0, date: "", notes: "" },
+    defaultValues: { sku: "", changeAmount: 0, date: "", notes: "" },
   });
 
   const selectedSku = form.watch("sku");
   const currentStock = products.find((p) => p.sku === selectedSku)?.stock;
 
   function onSubmit(values: FormValues) {
+    const newStock = (currentStock ?? 0) + values.changeAmount;
+    if (newStock < 0) {
+      toast.error("Adjustment would result in negative stock");
+      return;
+    }
     submit.mutate(
-      { ...values, branch: homeBranch },
+      { ...values, adjustedStock: newStock, branch: homeBranch },
       {
         onSuccess: () => {
           const product = products.find((p) => p.sku === values.sku);
-          toast.success(`Stock adjusted for ${product?.name ?? values.sku}`);
+          const operation = values.changeAmount > 0 ? "added" : "removed";
+          const amount = Math.abs(values.changeAmount);
+          toast.success(
+            `${amount} unit${amount !== 1 ? "s" : ""} ${operation} for ${product?.name ?? values.sku}`,
+          );
           form.reset();
         },
         onError: (error) => {
@@ -132,13 +141,20 @@ function Page() {
 
                 <FormField
                   control={form.control}
-                  name="adjustedStock"
+                  name="changeAmount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Adjusted Stock</FormLabel>
+                      <FormLabel>Stock Change</FormLabel>
                       <FormControl>
-                        <Input type="number" min={0} {...field} />
+                        <Input
+                          type="number"
+                          placeholder="e.g., +5 to add, -3 to remove"
+                          {...field}
+                        />
                       </FormControl>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        New stock will be: {currentStock ?? 0} + {field.value || 0} = {(currentStock ?? 0) + (field.value ? parseInt(field.value) : 0)}
+                      </p>
                       <FormMessage />
                     </FormItem>
                   )}
