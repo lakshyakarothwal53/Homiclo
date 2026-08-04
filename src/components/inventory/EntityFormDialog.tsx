@@ -120,27 +120,27 @@ export function EntityFormDialog({
       }}
     >
       {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          {description ? <DialogDescription>{description}</DialogDescription> : null}
+      <DialogContent className="max-w-full sm:max-w-lg mx-2 sm:mx-auto max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="text-left">
+          <DialogTitle className="text-lg sm:text-xl">{title}</DialogTitle>
+          {description ? <DialogDescription className="text-xs sm:text-sm">{description}</DialogDescription> : null}
         </DialogHeader>
 
-        <div className="grid gap-4 py-2 sm:grid-cols-2">
+        <div className="grid gap-4 py-2 sm:grid-cols-2 max-h-[calc(90vh-140px)] overflow-y-auto pr-2">
           {fields.map((f) => (
-            <div key={f.key} className="grid gap-1.5">
-              <Label htmlFor={`ef-${f.key}`}>{f.label}</Label>
+            <div key={f.key} className="grid gap-2">
+              <Label htmlFor={`ef-${f.key}`} className="text-xs sm:text-sm font-medium">{f.label}</Label>
               {f.type === "select" ? (
                 <Select
                   value={values[f.key] ?? ""}
                   onValueChange={(v) => setValues((s) => ({ ...s, [f.key]: v }))}
                 >
-                  <SelectTrigger id={`ef-${f.key}`}>
+                  <SelectTrigger id={`ef-${f.key}`} className="h-9 sm:h-8 text-sm">
                     <SelectValue placeholder="Select…" />
                   </SelectTrigger>
                   <SelectContent>
                     {(f.options ?? []).map((o) => (
-                      <SelectItem key={optionValue(o)} value={optionValue(o)}>
+                      <SelectItem key={optionValue(o)} value={optionValue(o)} className="text-sm">
                         {optionLabel(o)}
                       </SelectItem>
                     ))}
@@ -153,17 +153,18 @@ export function EntityFormDialog({
                   value={values[f.key] ?? ""}
                   placeholder={f.placeholder}
                   onChange={(e) => setValues((s) => ({ ...s, [f.key]: e.target.value }))}
+                  className="h-9 sm:h-8 text-sm"
                 />
               )}
             </div>
           ))}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+        <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-3">
+          <Button variant="outline" onClick={() => setOpen(false)} className="w-full sm:w-auto h-9 sm:h-8">
             Cancel
           </Button>
-          <Button className="bg-brand text-brand-foreground hover:bg-brand/90" onClick={submit}>
+          <Button className="w-full sm:w-auto h-9 sm:h-8 bg-brand text-brand-foreground hover:bg-brand/90" onClick={submit}>
             {mode === "add" ? "Add" : "Save changes"}
           </Button>
         </DialogFooter>

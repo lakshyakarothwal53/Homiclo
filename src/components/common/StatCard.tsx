@@ -19,18 +19,18 @@ export function StatCard({
 }) {
   return (
     <Card className="border-border">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+      <CardContent className="p-3 sm:p-5">
+        <div className="flex items-start justify-between gap-2 sm:gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] sm:text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground line-clamp-2">
               {label}
             </div>
-            <div className="mt-2 text-2xl font-bold tracking-tight text-foreground">{value}</div>
+            <div className="mt-2 text-xl sm:text-2xl font-bold tracking-tight text-foreground break-words">{value}</div>
             {hint && <div className="mt-1 text-xs text-muted-foreground">{hint}</div>}
           </div>
           {Icon && (
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-secondary text-foreground">
-              <Icon className="h-4 w-4" />
+            <div className="grid h-8 sm:h-9 w-8 sm:w-9 shrink-0 place-items-center rounded-md bg-secondary text-foreground">
+              <Icon className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
             </div>
           )}
         </div>
