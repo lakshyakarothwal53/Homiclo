@@ -74,6 +74,10 @@ function Page() {
           toast.success(`Stock adjusted for ${product?.name ?? values.sku}`);
           form.reset();
         },
+        onError: (error) => {
+          console.error("Stock adjustment failed:", error);
+          toast.error(`Failed to adjust stock: ${error.message}`);
+        },
       },
     );
   }

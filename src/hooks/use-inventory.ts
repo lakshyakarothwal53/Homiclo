@@ -772,7 +772,6 @@ export function useSubmitStockAdjustment() {
         reason: input.reason,
         date: input.date,
         notes: input.notes,
-        branch: branch || null,
       });
       if (adjError) throw adjError;
 
