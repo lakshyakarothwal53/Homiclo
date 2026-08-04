@@ -38,14 +38,21 @@ export const Route = createFileRoute("/_app/inventory/stock-adjustment")({
   component: Page,
 });
 
-const REASONS = ["Damage", "Audit Correction", "Theft", "Return", "Other"] as const;
+const TYPES = ["Loss", "Correction", "Return", "Transfer"] as const;
+const REASONS_BY_TYPE: Record<string, readonly string[]> = {
+  Loss: ["Damage", "Theft", "Expiry", "Spoilage"],
+  Correction: ["Audit Correction", "Data Error", "System Error"],
+  Return: ["Customer Return", "Vendor Return"],
+  Transfer: ["Inter-Branch Transfer"],
+} as const;
 
 const schema = z.object({
   sku: z.string().min(1, "Select a product"),
   changeAmount: z.coerce
     .number({ invalid_type_error: "Enter a number" })
     .int("Must be a whole number"),
-  reason: z.enum(REASONS, { required_error: "Select a reason" }),
+  type: z.enum(TYPES, { required_error: "Select adjustment type" }),
+  reason: z.string().min(1, "Select a reason"),
   date: z.string().min(1, "Pick a date"),
   notes: z.string().optional(),
 });
@@ -59,11 +66,13 @@ function Page() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { sku: "", changeAmount: 0, date: "", notes: "" },
+    defaultValues: { sku: "", changeAmount: 0, type: "Loss", reason: "", date: "", notes: "" },
   });
 
   const selectedSku = form.watch("sku");
+  const selectedType = form.watch("type");
   const currentStock = products.find((p) => p.sku === selectedSku)?.stock;
+  const reasonOptions = REASONS_BY_TYPE[selectedType] || [];
 
   function onSubmit(values: FormValues) {
     const newStock = (currentStock ?? 0) + values.changeAmount;
@@ -76,10 +85,10 @@ function Page() {
       {
         onSuccess: () => {
           const product = products.find((p) => p.sku === values.sku);
-          const operation = values.changeAmount > 0 ? "added" : "removed";
           const amount = Math.abs(values.changeAmount);
+          const operation = values.changeAmount > 0 ? "added" : "removed";
           toast.success(
-            `${amount} unit${amount !== 1 ? "s" : ""} ${operation} for ${product?.name ?? values.sku}`,
+            `${amount} unit${amount !== 1 ? "s" : ""} ${operation} (${values.reason}) for ${product?.name ?? values.sku}`,
           );
           form.reset();
         },
@@ -128,6 +137,31 @@ function Page() {
                 )}
               />
 
+              <FormField
+                control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Adjustment Type</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {TYPES.map((t) => (
+                          <SelectItem key={t} value={t}>
+                            {t}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Current Stock</Label>
@@ -142,22 +176,26 @@ function Page() {
                 <FormField
                   control={form.control}
                   name="changeAmount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Stock Change</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          placeholder="e.g., +5 to add, -3 to remove"
-                          {...field}
-                        />
-                      </FormControl>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        New stock will be: {currentStock ?? 0} + {field.value || 0} = {(currentStock ?? 0) + (field.value ? parseInt(field.value) : 0)}
-                      </p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    const hint =
+                      selectedType === "Loss"
+                        ? "Enter negative value to decrease (e.g., -5 for 5 damaged units)"
+                        : selectedType === "Correction"
+                          ? "Positive or negative to correct count"
+                          : "Enter value (positive to add, negative to remove)";
+                    return (
+                      <FormItem>
+                        <FormLabel>Stock Change</FormLabel>
+                        <FormControl>
+                          <Input type="number" placeholder={hint} {...field} />
+                        </FormControl>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          New stock: {currentStock ?? 0} + {field.value || 0} = {(currentStock ?? 0) + (field.value ? parseInt(field.value) : 0)}
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
               </div>
 
@@ -175,11 +213,17 @@ function Page() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {REASONS.map((r) => (
-                            <SelectItem key={r} value={r}>
-                              {r}
+                          {reasonOptions.length > 0 ? (
+                            reasonOptions.map((r) => (
+                              <SelectItem key={r} value={r}>
+                                {r}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem disabled value="">
+                              Select a type first
                             </SelectItem>
-                          ))}
+                          )}
                         </SelectContent>
                       </Select>
                       <FormMessage />
