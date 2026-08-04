@@ -1,12 +1,9 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Mail } from "lucide-react";
-import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AlertList, type AlertCategory } from "@/components/notifications/alerts";
-import { useEmailAlertsToAdmin, useNotifications } from "@/hooks/use-notifications";
+import { useNotifications } from "@/hooks/use-notifications";
 
 export const Route = createFileRoute("/_app/notifications/")({
   head: () => ({
@@ -31,24 +28,6 @@ const TABS: { key: TabKey; label: string }[] = [
 function Page() {
   const [tab, setTab] = useState<TabKey>("all");
   const { data: items = [] } = useNotifications(tab);
-  const emailAlerts = useEmailAlertsToAdmin();
-
-  function handleEmail() {
-    if (items.length === 0) {
-      toast.error("No alerts to email.");
-      return;
-    }
-    emailAlerts.mutate(items, {
-      onSuccess: ({ to, method }) => {
-        if (method === "email") {
-          toast.success(`Alerts digest emailed to ${to}.`);
-        } else {
-          toast.success(`Alerts digest copied to clipboard. Send to: ${to}`);
-        }
-      },
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Could not send alerts."),
-    });
-  }
 
   return (
     <>
@@ -56,19 +35,6 @@ function Page() {
         eyebrow="Notifications › Alerts"
         title="Alerts Dashboard"
         description="Alerts overview and controls."
-        actions={
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-2"
-            disabled={emailAlerts.isPending}
-            onClick={handleEmail}
-            title="Email alerts digest to admin (or copy to clipboard if email not configured)"
-          >
-            <Mail className="h-4 w-4" />
-            {emailAlerts.isPending ? "Sending…" : "Email to Admin"}
-          </Button>
-        }
       />
 
       <div className="mb-6 border-b border-border">
