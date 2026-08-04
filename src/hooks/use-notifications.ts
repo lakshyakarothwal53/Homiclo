@@ -246,13 +246,12 @@ export function useNotifications(category: string) {
 }
 
 /**
- * Email the current alerts to the super admin via the `notify-admin` Supabase
- * Edge Function (see supabase/functions/notify-admin). The admin address comes
- * from Settings › Notifications (app_settings key "notifications").
+ * Email the current alerts to the super admin. First attempts the `notify-admin`
+ * Supabase Edge Function; falls back to copying digest to clipboard if not deployed.
  */
 export function useEmailAlertsToAdmin() {
   return useMutation({
-    mutationFn: async (alerts: AlertItem[]): Promise<{ to: string }> => {
+    mutationFn: async (alerts: AlertItem[]): Promise<{ to: string; method: string }> => {
       const { data: setting } = await supabase
         .from("app_settings")
         .select("value")
@@ -277,12 +276,25 @@ export function useEmailAlertsToAdmin() {
       const { error } = await supabase.functions.invoke("notify-admin", {
         body: { to, subject: `HOMIQLO alerts digest — ${alerts.length} active`, html },
       });
+
       if (error) {
-        throw new Error(
-          "Email function not reachable. Deploy supabase/functions/notify-admin (see its README) to enable admin emails.",
-        );
+        // Fallback: copy to clipboard
+        const plainText = alerts
+          .map((a) => `${a.title}\n${a.description}\n(${a.time})\n`)
+          .join("\n---\n\n");
+        const fullText = `HOMIQLO — Alerts Digest\n\n${alerts.length} active alert${alerts.length !== 1 ? "s" : ""} as of ${new Date().toLocaleString("en-IN")}\n\n${plainText}\n\nSend to: ${to}`;
+
+        try {
+          await navigator.clipboard.writeText(fullText);
+          return { to, method: "clipboard" };
+        } catch {
+          throw new Error(
+            "Could not copy alerts to clipboard. Please enable clipboard access.",
+          );
+        }
       }
-      return { to };
+
+      return { to, method: "email" };
     },
   });
 }

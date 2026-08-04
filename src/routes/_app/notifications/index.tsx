@@ -39,8 +39,14 @@ function Page() {
       return;
     }
     emailAlerts.mutate(items, {
-      onSuccess: ({ to }) => toast.success(`Alerts digest emailed to ${to}.`),
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Could not send email."),
+      onSuccess: ({ to, method }) => {
+        if (method === "email") {
+          toast.success(`Alerts digest emailed to ${to}.`);
+        } else {
+          toast.success(`Alerts digest copied to clipboard. Send to: ${to}`);
+        }
+      },
+      onError: (e) => toast.error(e instanceof Error ? e.message : "Could not send alerts."),
     });
   }
 
@@ -57,6 +63,7 @@ function Page() {
             className="gap-2"
             disabled={emailAlerts.isPending}
             onClick={handleEmail}
+            title="Email alerts digest to admin (or copy to clipboard if email not configured)"
           >
             <Mail className="h-4 w-4" />
             {emailAlerts.isPending ? "Sending…" : "Email to Admin"}
