@@ -54,7 +54,7 @@ type FormValues = z.infer<typeof schema>;
 
 function Page() {
   const { homeBranch } = useBranchScope();
-  const { data: products = [] } = useProducts();
+  const { data: products = [] } = useProducts(undefined, homeBranch);
   const submit = useSubmitStockAdjustment();
 
   const form = useForm<FormValues>({

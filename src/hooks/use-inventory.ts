@@ -764,20 +764,33 @@ export function useSubmitStockAdjustment() {
     mutationFn: async (
       input: StockAdjustmentInput & { branch?: string },
     ): Promise<StockAdjustmentInput> => {
+      const branch = realBranch(input.branch);
+
       const { error: adjError } = await supabase.from("stock_adjustments").insert({
         sku: input.sku,
         adjusted_stock: input.adjustedStock,
         reason: input.reason,
         date: input.date,
         notes: input.notes,
+        branch: branch || null,
       });
       if (adjError) throw adjError;
 
-      const { error: prodError } = await supabase
-        .from("products")
-        .update({ stock: input.adjustedStock })
-        .eq("sku", input.sku);
-      if (prodError) throw prodError;
+      // For branch-scoped adjustments, update branch_inventory; for super admin, update products.
+      if (branch) {
+        const { error: branchStockError } = await supabase
+          .from("branch_inventory")
+          .update({ stock: input.adjustedStock })
+          .eq("sku", input.sku)
+          .eq("branch", branch);
+        if (branchStockError) throw branchStockError;
+      } else {
+        const { error: prodError } = await supabase
+          .from("products")
+          .update({ stock: input.adjustedStock })
+          .eq("sku", input.sku);
+        if (prodError) throw prodError;
+      }
 
       const historyRow = {
         datetime: input.date,
@@ -790,7 +803,6 @@ export function useSubmitStockAdjustment() {
       const { error: historyError } = await supabase.from("stock_history").insert(historyRow);
       if (historyError) throw historyError;
 
-      const branch = realBranch(input.branch);
       if (branch) {
         const { error: branchError } = await supabase
           .from("stock_history_branches")
