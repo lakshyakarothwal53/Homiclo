@@ -38,12 +38,10 @@ export const Route = createFileRoute("/_app/inventory/stock-adjustment")({
   component: Page,
 });
 
-const TYPES = ["Loss", "Correction", "Return", "Transfer"] as const;
+const TYPES = ["Loss", "Return"] as const;
 const REASONS_BY_TYPE: Record<string, readonly string[]> = {
   Loss: ["Damage", "Theft", "Expiry", "Spoilage"],
-  Correction: ["Audit Correction", "Data Error", "System Error"],
   Return: ["Customer Return", "Vendor Return"],
-  Transfer: ["Inter-Branch Transfer"],
 } as const;
 
 const schema = z.object({
@@ -75,20 +73,24 @@ function Page() {
   const reasonOptions = REASONS_BY_TYPE[selectedType] || [];
 
   function onSubmit(values: FormValues) {
-    const newStock = (currentStock ?? 0) + values.changeAmount;
+    // Automatically convert to negative for Loss, positive for Return
+    const signedChange = values.type === "Loss" ? -Math.abs(values.changeAmount) : Math.abs(values.changeAmount);
+    const newStock = (currentStock ?? 0) + signedChange;
+
     if (newStock < 0) {
-      toast.error("Adjustment would result in negative stock");
+      toast.error("Cannot remove more than available stock");
       return;
     }
+
     submit.mutate(
       { ...values, adjustedStock: newStock, branch: homeBranch },
       {
         onSuccess: () => {
           const product = products.find((p) => p.sku === values.sku);
-          const amount = Math.abs(values.changeAmount);
-          const operation = values.changeAmount > 0 ? "added" : "removed";
+          const amount = Math.abs(signedChange);
+          const action = values.type === "Loss" ? "removed" : "added";
           toast.success(
-            `${amount} unit${amount !== 1 ? "s" : ""} ${operation} (${values.reason}) for ${product?.name ?? values.sku}`,
+            `${amount} unit${amount !== 1 ? "s" : ""} ${action} (${values.reason}) for ${product?.name ?? values.sku}`,
           );
           form.reset();
         },
@@ -177,20 +179,19 @@ function Page() {
                   control={form.control}
                   name="changeAmount"
                   render={({ field }) => {
-                    const hint =
-                      selectedType === "Loss"
-                        ? "Enter negative value to decrease (e.g., -5 for 5 damaged units)"
-                        : selectedType === "Correction"
-                          ? "Positive or negative to correct count"
-                          : "Enter value (positive to add, negative to remove)";
+                    const amount = field.value ? Math.abs(parseInt(field.value)) : 0;
+                    const signedAmount = selectedType === "Loss" ? -amount : amount;
+                    const newStock = (currentStock ?? 0) + signedAmount;
+                    const hint = selectedType === "Loss" ? "Enter quantity to remove (e.g., 5)" : "Enter quantity to add (e.g., 3)";
+
                     return (
                       <FormItem>
-                        <FormLabel>Stock Change</FormLabel>
+                        <FormLabel>Quantity</FormLabel>
                         <FormControl>
-                          <Input type="number" placeholder={hint} {...field} />
+                          <Input type="number" min="0" placeholder={hint} {...field} />
                         </FormControl>
                         <p className="text-xs text-muted-foreground mt-1">
-                          New stock: {currentStock ?? 0} + {field.value || 0} = {(currentStock ?? 0) + (field.value ? parseInt(field.value) : 0)}
+                          {selectedType === "Loss" ? "Will remove: " : "Will add: "} {amount} unit{amount !== 1 ? "s" : ""} → New stock: {newStock}
                         </p>
                         <FormMessage />
                       </FormItem>
