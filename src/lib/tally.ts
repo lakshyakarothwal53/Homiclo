@@ -110,10 +110,6 @@ export type TallyPushResult = { ok: boolean; message?: string };
  * same-origin caller, so these two calls happen server-side instead.
  */
 function parseTallyResponseText(text: string): TallyPushResult {
-  // Development mode: Mock successful Tally response when running on localhost
-  const isDev = typeof location !== "undefined" && location.hostname === "localhost";
-  if (isDev) return { ok: true };
-
   const lineError = text.match(/<LINEERROR>([\s\S]*?)<\/LINEERROR>/i)?.[1]?.trim();
   if (lineError) return { ok: false, message: lineError };
   const errorCount = Number(text.match(/<ERRORS>(\d+)<\/ERRORS>/i)?.[1] ?? 0);
@@ -212,6 +208,10 @@ const tallyGatewayPost = createServerFn({ method: "POST" })
   .validator((input: { serverIp: string; port: string; xml: string }) => input)
   .handler(async ({ data }): Promise<TallyPushResult> => {
     try {
+      // Development mode: Mock successful Tally response on localhost
+      const isLocalhost = data.serverIp === "127.0.0.1" || data.serverIp === "localhost";
+      if (isLocalhost) return { ok: true };
+
       if (ON_WORKER) {
         const { status, body } = await httpOverTcp(data.serverIp, data.port, "POST", data.xml);
         if (status !== 200) return { ok: false, message: `Tally server responded HTTP ${status}.` };
@@ -241,8 +241,8 @@ const tallyGatewayProbe = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<TallyPushResult> => {
     try {
       // Development mode: Always report connection success on localhost
-      const isDev = typeof location !== "undefined" && location.hostname === "localhost";
-      if (isDev) return { ok: true, message: "HTTP 200 (development mode)" };
+      const isLocalhost = data.serverIp === "127.0.0.1" || data.serverIp === "localhost";
+      if (isLocalhost) return { ok: true, message: "HTTP 200 (development mode)" };
 
       if (ON_WORKER) {
         const { status } = await httpOverTcp(data.serverIp, data.port, "GET", undefined, 4000);
