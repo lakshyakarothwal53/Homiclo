@@ -281,7 +281,7 @@ export function ProductFormDialog({
 
             {/* Price */}
             <div className="grid gap-1.5">
-              <Label htmlFor="product-price">Selling Price (₹, excl. GST)</Label>
+              <Label htmlFor="product-price">Selling Price (₹, incl. GST)</Label>
               <Input
                 id="product-price"
                 type="number"
@@ -290,7 +290,7 @@ export function ProductFormDialog({
                 onChange={(e) => setValues((s) => ({ ...s, price: Number(e.target.value) || 0 }))}
               />
               <p className="text-xs text-muted-foreground">
-                GST is added on top of this at checkout.
+                GST is already included in this price — the bill splits it out as CGST + SGST.
               </p>
             </div>
 
@@ -353,8 +353,8 @@ export function ProductFormDialog({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Charged per product at checkout. "Default" falls back to the flat rate in POS
-                Settings.
+                Used to split the GST already included in the selling price into CGST + SGST.
+                "Default" falls back to the flat rate in POS Settings.
               </p>
             </div>
 

@@ -196,6 +196,12 @@ function Page() {
           </div>
 
           <div className="mt-6 space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Selling prices are GST-inclusive across the app — the bill extracts the tax from the
+              price and shows it as CGST + SGST (a ₹118 price at 18% is ₹100 taxable + ₹9 CGST + ₹9
+              SGST).
+            </p>
+
             <label
               htmlFor="auto-print"
               className="flex cursor-pointer items-center gap-2 text-sm text-foreground"

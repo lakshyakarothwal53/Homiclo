@@ -302,6 +302,7 @@ function Page() {
                 discount: snapshot.discount,
                 gst: snapshot.gst,
                 total: snapshot.total,
+                taxableTotal: snapshot.taxableTotal,
                 gstBreakdown: snapshot.gstBreakdown,
                 mrpTotal: snapshot.mrpTotal,
                 mrpSavings: snapshot.mrpSavings,
@@ -485,22 +486,29 @@ function Page() {
                     -{formatINR(totals.discount)}
                   </dd>
                 </div>
-                {/* One row per slab so the cashier can see a mixed-rate cart
-                    itemised, matching what the printed bill will show. */}
-                {totals.gstBreakdown.length > 0 ? (
-                  totals.gstBreakdown.map((b) => (
-                    <div key={b.rate} className="flex justify-between text-muted-foreground">
+                {/* Prices are GST-inclusive, so the taxable value plus the
+                    CGST/SGST split add back up to the total. */}
+                <div className="flex justify-between text-muted-foreground">
+                  <dt>Taxable Value</dt>
+                  <dd className="font-medium text-foreground">{formatINR(totals.taxableTotal)}</dd>
+                </div>
+                {/* GST split into equal CGST + SGST halves, one pair per slab,
+                    matching the printed bill. */}
+                {(totals.gstBreakdown.length > 0
+                  ? totals.gstBreakdown
+                  : [{ rate: settings.gstRate, taxable: totals.subtotal, tax: totals.gst }]
+                ).flatMap((b) =>
+                  (["CGST", "SGST"] as const).map((label) => (
+                    <div
+                      key={`${label}-${b.rate}`}
+                      className="flex justify-between text-muted-foreground"
+                    >
                       <dt>
-                        GST {b.rate}% <span className="text-xs">on {formatINR(b.taxable)}</span>
+                        {label} {b.rate / 2}%
                       </dt>
-                      <dd className="font-medium text-foreground">{formatINR(b.tax)}</dd>
+                      <dd className="font-medium text-foreground">{formatINR(b.tax / 2)}</dd>
                     </div>
-                  ))
-                ) : (
-                  <div className="flex justify-between text-muted-foreground">
-                    <dt>GST {settings.gstRate}%</dt>
-                    <dd className="font-medium text-foreground">{formatINR(totals.gst)}</dd>
-                  </div>
+                  )),
                 )}
                 {totals.mrpSavings > 0 && (
                   <div className="flex justify-between text-[color:var(--success)]">

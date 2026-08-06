@@ -17,6 +17,8 @@ export type CartTotals = {
   total: number;
   /** One entry per distinct GST rate in the cart, ascending. */
   gstBreakdown: GstBucket[];
+  /** Sum of taxable values across all slabs — prices are GST-inclusive, so this is net of GST. */
+  taxableTotal: number;
   /** Total MRP of the cart, and what the customer saved against it. */
   mrpTotal: number;
   mrpSavings: number;
@@ -141,7 +143,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
     // value, so tax is charged on what the customer actually pays for that
     // line, not on its pre-discount value. The last line absorbs any rounding
     // remainder so the apportioned parts always sum back to `discount` exactly.
-    const buckets = new Map<number, { taxable: number; tax: number }>();
+    // Selling prices are GST-inclusive across the app, so the post-discount
+    // value already contains the tax and it is extracted (net = taxable + tax)
+    // rather than added on top. Accumulate the post-discount value per rate,
+    // then derive the taxable value and tax.
+    const nets = new Map<number, number>();
     let allocatedDiscount = 0;
     lines.forEach((l, i) => {
       const lineValue = l.product.price * l.qty;
@@ -153,19 +159,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
             : 0;
       allocatedDiscount += share;
 
-      const taxable = Math.max(0, lineValue - share);
+      const net = Math.max(0, lineValue - share);
       const rate = l.product.gstRate ?? settings.gstRate;
-      const cur = buckets.get(rate) ?? { taxable: 0, tax: 0 };
-      cur.taxable += taxable;
-      cur.tax += taxable * (rate / 100);
-      buckets.set(rate, cur);
+      nets.set(rate, (nets.get(rate) ?? 0) + net);
     });
 
-    const gstBreakdown: GstBucket[] = [...buckets.entries()]
-      .map(([rate, b]) => ({ rate, taxable: b.taxable, tax: Math.round(b.tax) }))
+    const gstBreakdown: GstBucket[] = [...nets.entries()]
+      .map(([rate, net]) => {
+        const tax = Math.round(net - net / (1 + rate / 100));
+        return { rate, taxable: net - tax, tax };
+      })
       .sort((a, b) => a.rate - b.rate);
     const gst = gstBreakdown.reduce((s, b) => s + b.tax, 0);
-    const total = subtotal - discount + gst;
+    const taxableTotal = gstBreakdown.reduce((s, b) => s + b.taxable, 0);
+    // The tax is already inside the price, so the total is just the discounted gross.
+    const total = subtotal - discount;
 
     // MRP is display-only: it never feeds the total, it just shows the saving.
     // Products with no MRP fall back to their selling price so the comparison
@@ -173,7 +181,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const mrpTotal = lines.reduce((s, l) => s + (l.product.mrp ?? l.product.price) * l.qty, 0);
     const mrpSavings = Math.max(0, mrpTotal - (subtotal - discount));
 
-    return { itemCount, subtotal, discount, gst, total, gstBreakdown, mrpTotal, mrpSavings };
+    return {
+      itemCount,
+      subtotal,
+      discount,
+      gst,
+      total,
+      gstBreakdown,
+      taxableTotal,
+      mrpTotal,
+      mrpSavings,
+    };
   }, [lines, coupon, settings.gstRate]);
 
   // The rate and tax are snapshotted onto each line so a reprinted bill shows
@@ -191,6 +209,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
             : 0;
       allocated += share;
       const rate = l.product.gstRate ?? settings.gstRate;
+      const net = Math.max(0, lineTotal - share);
+      // Prices are GST-inclusive, so the tax is extracted from the line value.
+      const gstAmount = Math.round(net - net / (1 + rate / 100));
       return {
         barcode: l.product.barcode,
         sku: l.product.sku,
@@ -199,7 +220,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         unitPrice: l.product.price,
         lineTotal,
         gstRate: rate,
-        gstAmount: Math.round(Math.max(0, lineTotal - share) * (rate / 100)),
+        gstAmount,
         mrp: l.product.mrp,
       };
     });

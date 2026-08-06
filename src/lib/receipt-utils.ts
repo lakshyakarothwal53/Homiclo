@@ -12,6 +12,8 @@ export type ReceiptData = {
   discount: number;
   gst: number;
   total: number;
+  /** Sum of taxable values (net of GST when prices are inclusive). */
+  taxableTotal?: number;
   /** Per-rate tax breakdown; when absent the bill falls back to one flat line. */
   gstBreakdown?: { rate: number; taxable: number; tax: number }[];
   mrpTotal?: number;
@@ -25,6 +27,9 @@ export type ReceiptData = {
 
 // Browser rasterises the print job, so the ₹ glyph renders fine on the thermal roll.
 const rupee = (n: number) => `₹${n.toLocaleString("en-IN")}`;
+// GST halves can be fractional (e.g. ₹4.50), so show paise only when needed.
+const rupeeExact = (n: number) =>
+  `₹${Number.isInteger(n) ? n.toLocaleString("en-IN") : n.toFixed(2)}`;
 const esc = (s: string) =>
   s.replace(/[&<>]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"));
 
@@ -66,18 +71,29 @@ export function printReceipt(data: ReceiptData, settings: PosSettings) {
     })
     .join("");
 
-  // One row per GST slab present in the cart, so a mixed-rate bill itemises
-  // its tax. Falls back to the single flat-rate line for older receipts that
-  // carry no breakdown.
-  const gstRows =
+  // GST is split into equal CGST + SGST halves, one pair per slab present in
+  // the cart. Falls back to the flat POS rate for older receipts with no
+  // breakdown.
+  const slabs =
     data.gstBreakdown && data.gstBreakdown.length > 0
       ? data.gstBreakdown
-          .map(
-            (b) =>
-              `<tr><td>GST ${b.rate}% (on ${rupee(b.taxable)})</td><td class="amt">${rupee(b.tax)}</td></tr>`,
-          )
-          .join("")
-      : `<tr><td>GST (${settings.gstRate}%)</td><td class="amt">${rupee(data.gst)}</td></tr>`;
+      : [{ rate: settings.gstRate, taxable: data.subtotal - data.discount, tax: data.gst }];
+  const gstRows = slabs
+    .flatMap((b) => {
+      const half = b.tax / 2;
+      const halfRate = b.rate / 2;
+      return [
+        `<tr><td>CGST ${halfRate}%</td><td class="amt">${rupeeExact(half)}</td></tr>`,
+        `<tr><td>SGST ${halfRate}%</td><td class="amt">${rupeeExact(half)}</td></tr>`,
+      ];
+    })
+    .join("");
+
+  // Prices are GST-inclusive, so the tax is already inside the total; the bill
+  // shows the extracted taxable value that the CGST/SGST split adds back onto.
+  const taxableValue =
+    data.taxableTotal ?? (data.gstBreakdown ?? []).reduce((s, b) => s + b.taxable, 0);
+  const taxableRow = `<tr><td>Taxable Value</td><td class="amt">${rupee(taxableValue)}</td></tr>`;
 
   const savingsRow =
     data.mrpSavings && data.mrpSavings > 0
@@ -159,6 +175,7 @@ export function printReceipt(data: ReceiptData, settings: PosSettings) {
   <table class="totals">
     <tr><td>Subtotal</td><td class="amt">${rupee(data.subtotal)}</td></tr>
     <tr><td>Discount</td><td class="amt">-${rupee(data.discount)}</td></tr>
+    ${taxableRow}
     ${gstRows}
     <tr class="grand"><td>TOTAL</td><td class="amt">${rupee(data.total)}</td></tr>
     ${savingsRow}

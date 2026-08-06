@@ -29,6 +29,8 @@ export type BillingSalesBill = {
   status: string;
   bill_date?: string;
   amount_num?: number;
+  /** GST amount already contained in the total — used to split CGST/SGST when syncing to Tally. */
+  gst?: number;
   customerMobile?: string;
   customerDob?: string;
   customerGstin?: string;

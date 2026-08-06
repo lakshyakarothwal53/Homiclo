@@ -13,6 +13,10 @@ export type TallyConfig = {
   salesLedgerName: string;
   /** Fixed party ledger every POS sale is booked against (instead of the raw customer name) — Tally rejects any PARTYLEDGERNAME that isn't an existing ledger, and POS customer names are free text, not pre-registered ledgers. */
   defaultCustomerLedger: string;
+  /** Output-CGST ledger (Duties & Taxes). When set with sgstLedgerName, a bill's GST is split half/half onto these instead of folding into the sales ledger. Empty → no split. */
+  cgstLedgerName: string;
+  /** Output-SGST ledger (Duties & Taxes). Pairs with cgstLedgerName. */
+  sgstLedgerName: string;
 };
 
 export const DEFAULT_TALLY_CONFIG: TallyConfig = {
@@ -23,6 +27,8 @@ export const DEFAULT_TALLY_CONFIG: TallyConfig = {
   vouchers: { sales: true, receipt: true, purchase: true, stockJournal: false },
   salesLedgerName: "Sales",
   defaultCustomerLedger: "Cash Sales",
+  cgstLedgerName: "",
+  sgstLedgerName: "",
 };
 
 /** Load the saved Tally config from app_settings; defaults when missing. */
@@ -36,14 +42,44 @@ export async function loadTallyConfig(): Promise<TallyConfig> {
   return { ...DEFAULT_TALLY_CONFIG, ...(data.value as Partial<TallyConfig>) };
 }
 
+/** One credited <ALLLEDGERENTRIES.LIST> line (sales/CGST/SGST). */
+function creditEntry(ledger: string, amount: number): string {
+  return `      <ALLLEDGERENTRIES.LIST>
+       <LEDGERNAME>${ledger}</LEDGERNAME>
+       <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+       <AMOUNT>${amount}</AMOUNT>
+      </ALLLEDGERENTRIES.LIST>`;
+}
+
 /** One <TALLYMESSAGE> voucher fragment for a single sales bill. */
 function voucherMessageXml(
   bill: BillingSalesBill,
   salesLedgerName: string,
   customerLedgerName: string,
+  cgstLedgerName: string,
+  sgstLedgerName: string,
 ): string {
   const amount = bill.amount_num ?? (parseFloat(bill.amount.replace(/[₹,\s]/g, "")) || 0);
   const date = (bill.bill_date ?? new Date().toISOString().slice(0, 10)).replace(/-/g, "");
+
+  // When the bill carries GST and both tax ledgers are configured, credit the
+  // taxable value to sales and split the tax equally onto CGST + SGST (halves
+  // sum back to the exact GST). Otherwise the whole amount credits sales.
+  const gst = bill.gst ?? 0;
+  const splitTax = gst > 0 && cgstLedgerName !== "" && sgstLedgerName !== "";
+  let credits: string;
+  if (splitTax) {
+    const cgst = Math.round(gst / 2);
+    const sgst = gst - cgst;
+    credits = [
+      creditEntry(salesLedgerName, amount - gst),
+      creditEntry(cgstLedgerName, cgst),
+      creditEntry(sgstLedgerName, sgst),
+    ].join("\n");
+  } else {
+    credits = creditEntry(salesLedgerName, amount);
+  }
+
   return `    <TALLYMESSAGE xmlns:UDF="TallyUDF">
      <VOUCHER VCHTYPE="Sales" ACTION="Create">
       <DATE>${date}</DATE>
@@ -55,11 +91,7 @@ function voucherMessageXml(
        <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
        <AMOUNT>-${amount}</AMOUNT>
       </ALLLEDGERENTRIES.LIST>
-      <ALLLEDGERENTRIES.LIST>
-       <LEDGERNAME>${salesLedgerName}</LEDGERNAME>
-       <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-       <AMOUNT>${amount}</AMOUNT>
-      </ALLLEDGERENTRIES.LIST>
+${credits}
      </VOUCHER>
     </TALLYMESSAGE>`;
 }
@@ -70,9 +102,13 @@ export function salesVoucherXmlBatch(
   company: string,
   salesLedgerName: string,
   customerLedgerName: string,
+  cgstLedgerName = "",
+  sgstLedgerName = "",
 ): string {
   const messages = bills
-    .map((bill) => voucherMessageXml(bill, salesLedgerName, customerLedgerName))
+    .map((bill) =>
+      voucherMessageXml(bill, salesLedgerName, customerLedgerName, cgstLedgerName, sgstLedgerName),
+    )
     .join("\n");
   return `<ENVELOPE>
  <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
@@ -96,8 +132,17 @@ export function salesVoucherXml(
   company: string,
   salesLedgerName: string,
   customerLedgerName: string,
+  cgstLedgerName = "",
+  sgstLedgerName = "",
 ): string {
-  return salesVoucherXmlBatch([bill], company, salesLedgerName, customerLedgerName);
+  return salesVoucherXmlBatch(
+    [bill],
+    company,
+    salesLedgerName,
+    customerLedgerName,
+    cgstLedgerName,
+    sgstLedgerName,
+  );
 }
 
 export type TallyPushResult = { ok: boolean; message?: string };
@@ -109,9 +154,20 @@ export type TallyPushResult = { ok: boolean; message?: string };
  * real response (and Tally's own <LINEERROR>/<ERRORS> markers) requires a
  * same-origin caller, so these two calls happen server-side instead.
  */
+// Tally's error text is itself XML-escaped (e.g. "Could not set &apos;SVCurrentCompany&apos;
+// to &apos;X&apos;"), so it needs unescaping before it's fit to show in a toast.
+function decodeXmlEntities(s: string): string {
+  return s
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 function parseTallyResponseText(text: string): TallyPushResult {
   const lineError = text.match(/<LINEERROR>([\s\S]*?)<\/LINEERROR>/i)?.[1]?.trim();
-  if (lineError) return { ok: false, message: lineError };
+  if (lineError) return { ok: false, message: decodeXmlEntities(lineError) };
   const errorCount = Number(text.match(/<ERRORS>(\d+)<\/ERRORS>/i)?.[1] ?? 0);
   if (errorCount > 0) return { ok: false, message: `Tally reported ${errorCount} error(s).` };
   return { ok: true };

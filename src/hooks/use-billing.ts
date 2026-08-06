@@ -250,6 +250,7 @@ type PosTxnBillRow = {
   status: string;
   time?: string;
   total?: number;
+  gst?: number;
   created_at?: string;
   customer_name?: string;
   customer_mobile?: string;
@@ -295,6 +296,7 @@ function posTxnToBill(r: PosTxnBillRow): BillingSalesBill {
     status: r.status,
     bill_date: billDate || undefined,
     amount_num: typeof r.total === "number" ? r.total : parseAmountNum(r.amount),
+    gst: typeof r.gst === "number" ? r.gst : undefined,
     customerMobile: r.customer_mobile || undefined,
     customerDob: r.customer_dob || undefined,
     customerGstin: r.customer_gstin || undefined,
@@ -648,7 +650,7 @@ export function useTallySync(branch?: string) {
       let posQuery = supabase
         .from("pos_transactions")
         .select(
-          "invoice, amount, payment, status, total, created_at, customer_name, invoice_date",
+          "invoice, amount, payment, status, total, gst, created_at, customer_name, invoice_date",
         );
       if (!allBranches) posQuery = posQuery.eq("branch", branch);
       const { data: posRows, error: posError } = await posQuery;
@@ -691,6 +693,8 @@ export function useTallySync(branch?: string) {
             config.company,
             config.salesLedgerName,
             config.defaultCustomerLedger,
+            config.cgstLedgerName,
+            config.sgstLedgerName,
           ),
         );
         const status = result.ok ? "Synced" : "Failed";

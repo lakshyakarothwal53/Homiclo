@@ -101,10 +101,11 @@ function Page() {
             id: "tally",
           });
         } else {
-          toast.warning(
-            `${pushed} pushed, ${failed} failed — ${sampleError ?? "check the Tally server in Settings › Tally."}`,
-            { id: "tally" },
-          );
+          const base = sampleError ?? "check the Tally server in Settings › Tally.";
+          const hint = /SVCurrentCompany/i.test(sampleError ?? "")
+            ? " Open that exact company in Tally Prime on the server, then Sync Now again."
+            : "";
+          toast.warning(`${pushed} pushed, ${failed} failed — ${base}${hint}`, { id: "tally" });
         }
       },
       onError: (e) =>

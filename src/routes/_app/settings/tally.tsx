@@ -162,6 +162,30 @@ function Page() {
                 Customer").
               </p>
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="cgst-ledger">CGST Ledger</Label>
+              <Input
+                id="cgst-ledger"
+                value={form.cgstLedgerName}
+                placeholder="e.g. CGST 9%"
+                onChange={(e) => set({ cgstLedgerName: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sgst-ledger">SGST Ledger</Label>
+              <Input
+                id="sgst-ledger"
+                value={form.sgstLedgerName}
+                placeholder="e.g. SGST 9%"
+                onChange={(e) => set({ sgstLedgerName: e.target.value })}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground md:col-span-2">
+              When both are set, each sale's GST is split equally onto these two Duties &amp; Taxes
+              ledgers (taxable value goes to the sales ledger). Leave blank to book the full amount
+              to the sales ledger with no tax split. Names must match Tally exactly.
+            </p>
           </div>
 
           <div className="mt-6 space-y-3">

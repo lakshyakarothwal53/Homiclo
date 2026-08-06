@@ -46,8 +46,10 @@ async function reprint(r: PosTransaction, settings: PosSettings) {
     // Rebuild the per-slab tax breakdown from the snapshot stored on each line,
     // so a reprint itemises tax exactly as the original bill did. Taxable value
     // re-apportions the transaction discount by line value — the same rule
-    // checkout used (see CartProvider). Bills predating the snapshot have no
-    // gstRate, so the receipt falls back to a single flat GST line.
+    // checkout used (see CartProvider) — then nets out the line's own embedded
+    // GST, since prices are GST-inclusive (taxable = net − tax, not the full
+    // line value). Bills predating the snapshot have no gstRate, so the
+    // receipt falls back to a single flat GST line.
     const rated = lines.filter((l) => l.gstRate !== undefined && l.gstRate !== null);
     let gstBreakdown: { rate: number; taxable: number; tax: number }[] | undefined;
     if (rated.length === lines.length && lines.length > 0) {
@@ -62,15 +64,18 @@ async function reprint(r: PosTransaction, settings: PosSettings) {
               : 0;
         allocated += share;
         const rate = l.gstRate as number;
+        const tax = l.gstAmount ?? 0;
+        const net = Math.max(0, l.lineTotal - share);
         const cur = buckets.get(rate) ?? { taxable: 0, tax: 0 };
-        cur.taxable += Math.max(0, l.lineTotal - share);
-        cur.tax += l.gstAmount ?? 0;
+        cur.taxable += Math.max(0, net - tax);
+        cur.tax += tax;
         buckets.set(rate, cur);
       });
       gstBreakdown = [...buckets.entries()]
         .map(([rate, b]) => ({ rate, taxable: b.taxable, tax: Math.round(b.tax) }))
         .sort((a, b) => a.rate - b.rate);
     }
+    const taxableTotal = gstBreakdown?.reduce((s, b) => s + b.taxable, 0);
 
     const mrpTotal = lines.reduce((s, l) => s + (l.mrp ?? l.unitPrice) * l.qty, 0);
 
@@ -87,6 +92,7 @@ async function reprint(r: PosTransaction, settings: PosSettings) {
         gst,
         total,
         gstBreakdown,
+        taxableTotal,
         mrpTotal,
         mrpSavings: Math.max(0, mrpTotal - (subtotal - discount)),
         customerName: r.customerName,

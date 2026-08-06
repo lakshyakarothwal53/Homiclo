@@ -3,7 +3,7 @@ export type PosProduct = {
   barcode: string;
   name: string;
   category: string;
-  /** Selling price, GST-EXCLUSIVE. */
+  /** Selling price, GST-INCLUSIVE — the tax (CGST + SGST) is already inside this figure. */
   price: number;
   stock: number;
   /** GST percent for this product. Undefined → the flat POS-settings rate applies. */

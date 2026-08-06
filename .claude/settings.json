@@ -97,7 +97,11 @@
       "Bash(awk 'BEGIN{RS=\"<VOUCHER \"} /TRONICA STORE SALES/ { *)",
       "Bash(curl -m 20 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/daybook2.xml http://103.197.122.199:9234)",
       "Bash(curl -m 20 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/vchcol.xml http://103.197.122.199:9234)",
-      "Bash(curl -m 15 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/del2.xml http://103.197.122.199:9234)"
+      "Bash(curl -m 15 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/del2.xml http://103.197.122.199:9234)",
+      "Bash(git stash *)",
+      "Bash(curl -m 15 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/ledchk.xml http://103.197.122.199:9234)",
+      "Bash(curl -m 15 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/gsttest.xml http://103.197.122.199:9234)",
+      "Bash(curl -m 15 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/alter1.xml http://103.197.122.199:9234)"
     ],
     "deny": [
       "Bash(git push --force*)",
