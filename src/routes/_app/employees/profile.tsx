@@ -41,6 +41,8 @@ function editFields(
     { key: "name", label: "Name", required: true },
     { key: "email", label: "Email", required: true },
     { key: "phone", label: "Phone", required: true },
+    { key: "address", label: "Address" },
+    { key: "emergencyContact", label: "Emergency Contact" },
     { key: "role", label: "Role", type: "select", options: roles, required: true },
     { key: "branch", label: "Branch", type: "select", options: branches, required: true },
     // Stored value is the shift's id; the label shows its name and hours.
@@ -146,6 +148,8 @@ function EmployeeProfilePage() {
         status: values.status as EmployeeStatus,
         salary: String(values.salary),
         shiftId: values.shiftId ? String(values.shiftId) : undefined,
+        address: values.address ? String(values.address) : "",
+        emergencyContact: values.emergencyContact ? String(values.emergencyContact) : "",
       },
       {
         onSuccess: () => toast.success("Employee updated successfully"),
@@ -256,11 +260,11 @@ function EmployeeProfilePage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Address</p>
-                <p className="font-medium">{profile.address}</p>
+                <p className="font-medium">{profile.address || "Not set"}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Emergency Contact</p>
-                <p className="font-medium">{profile.emergencyContact}</p>
+                <p className="font-medium">{profile.emergencyContact || "Not set"}</p>
               </div>
             </div>
           </CardContent>

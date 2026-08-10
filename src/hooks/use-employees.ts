@@ -3,7 +3,6 @@ import { supabase } from "@/lib/supabase";
 import type {
   Employee,
   EmployeeLogin,
-  EmployeeActivity,
   EmployeeLocation,
   EmployeeReport,
   EmployeeProfile,
@@ -91,7 +90,7 @@ export function useEmployeeProfile(employeeId?: string) {
       const { data, error } = await supabase
         .from("employees")
         .select(
-          "id, name, email, phone, role, branch, joinDate:join_date, salary, status, shiftId:shift_id",
+          "id, name, email, phone, role, branch, joinDate:join_date, salary, status, shiftId:shift_id, address, emergencyContact:emergency_contact",
         )
         .eq("id", employeeId)
         .single();
@@ -137,8 +136,10 @@ export function useEmployeeProfile(employeeId?: string) {
       return {
         ...data,
         shiftName,
-        address: "Not set",
-        emergencyContact: "Not set",
+        // Kept as the raw stored value ("" when unset) — the profile page shows
+        // "Not set" for empty, and the edit form prefills cleanly.
+        address: data.address ?? "",
+        emergencyContact: data.emergencyContact ?? "",
         daysPresent,
         daysAbsent,
         daysLate,
@@ -164,26 +165,6 @@ export function useEmployeeLogins(search?: string, branch?: string) {
       const { data, error } = await query.order("login_time", { ascending: false });
       if (error) throw error;
       return data as unknown as EmployeeLogin[];
-    },
-  });
-}
-
-export function useEmployeeActivity(search?: string, branch?: string) {
-  const allBranches = !branch || branch === "all";
-  return useQuery({
-    queryKey: ["employees", "activity", search ?? "", branch ?? "all"],
-    queryFn: async (): Promise<EmployeeActivity[]> => {
-      let query = supabase
-        .from("employee_activity")
-        .select(
-          "id, employeeId:employee_id, employeeName:employee_name, branch, activity, timestamp, details",
-        );
-      if (!allBranches) query = query.eq("branch", branch);
-      if (search)
-        query = query.or(`employee_name.ilike.${like(search)},activity.ilike.${like(search)}`);
-      const { data, error } = await query.order("timestamp", { ascending: false });
-      if (error) throw error;
-      return data as unknown as EmployeeActivity[];
     },
   });
 }
@@ -234,6 +215,8 @@ export function useCreateEmployee() {
         status: employee.status,
         salary: employee.salary,
         shift_id: employee.shiftId || null,
+        address: employee.address || null,
+        emergency_contact: employee.emergencyContact || null,
       };
 
       if (employee.password) {
@@ -273,6 +256,8 @@ export function useUpdateEmployee() {
           status: employee.status,
           salary: employee.salary,
           shift_id: employee.shiftId || null,
+          address: employee.address || null,
+          emergency_contact: employee.emergencyContact || null,
         })
         .eq("id", employee.id);
       if (error) throw error;

@@ -101,7 +101,8 @@
       "Bash(git stash *)",
       "Bash(curl -m 15 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/ledchk.xml http://103.197.122.199:9234)",
       "Bash(curl -m 15 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/gsttest.xml http://103.197.122.199:9234)",
-      "Bash(curl -m 15 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/alter1.xml http://103.197.122.199:9234)"
+      "Bash(curl -m 15 -s -X POST -H \"Content-Type: text/xml\" --data-binary @/tmp/alter1.xml http://103.197.122.199:9234)",
+      "mcp__supabase__get_project_url"
     ],
     "deny": [
       "Bash(git push --force*)",

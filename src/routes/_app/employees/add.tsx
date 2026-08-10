@@ -58,6 +58,8 @@ function AddEmployeePage() {
     password: "",
     confirmPassword: "",
     shiftId: "",
+    address: "",
+    emergencyContact: "",
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -102,6 +104,8 @@ function AddEmployeePage() {
         salary: formData.salary,
         password: formData.password,
         shiftId: formData.shiftId,
+        address: formData.address,
+        emergencyContact: formData.emergencyContact,
       },
       {
         onSuccess: () => {
@@ -172,6 +176,26 @@ function AddEmployeePage() {
                   className={errors.phone ? "border-red-500" : ""}
                 />
                 {errors.phone && <p className="text-xs text-red-500">{errors.phone}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="address">Address</Label>
+                <Input
+                  id="address"
+                  placeholder="Street, city, state"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="emergencyContact">Emergency Contact</Label>
+                <Input
+                  id="emergencyContact"
+                  placeholder="Name & phone number"
+                  value={formData.emergencyContact}
+                  onChange={(e) => setFormData({ ...formData, emergencyContact: e.target.value })}
+                />
               </div>
 
               <div className="space-y-2">

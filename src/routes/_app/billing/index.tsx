@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { IndianRupee, Clock, BarChart3, RotateCcw, Plus, FileText } from "lucide-react";
+import { IndianRupee, BarChart3, RotateCcw, Plus, FileText } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { StatCard } from "@/components/common/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,18 +42,12 @@ function Page() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard
           label="Today's Revenue"
           value={dashboard?.todayRevenue ?? "—"}
           hint={dashboard?.todayRevenueHint}
           icon={IndianRupee}
-        />
-        <StatCard
-          label="Pending Payments"
-          value={dashboard?.pendingPayments ?? "—"}
-          hint={dashboard?.pendingPaymentsHint}
-          icon={Clock}
         />
         <StatCard
           label="This Month"

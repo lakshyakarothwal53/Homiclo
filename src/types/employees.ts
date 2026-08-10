@@ -17,6 +17,8 @@ export interface Employee {
   password?: string;
   shiftId?: string;
   shiftName?: string;
+  address?: string;
+  emergencyContact?: string;
 }
 
 export interface EmployeeLogin {

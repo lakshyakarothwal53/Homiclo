@@ -78,7 +78,7 @@ function Page() {
     clear,
     totals,
     asLineItems,
-    coupon,
+    coupons,
     applyCoupon,
     removeCoupon,
   } = useCart();
@@ -176,6 +176,10 @@ function Page() {
   async function handleApplyCoupon() {
     const code = couponInput.trim();
     if (!code) return;
+    if (coupons.some((c) => c.code === code)) {
+      toast.error(`Coupon ${code} is already applied.`);
+      return;
+    }
     setApplyingCoupon(true);
     try {
       const found = await fetchCouponByCode(code);
@@ -227,6 +231,7 @@ function Page() {
         }
       }
       applyCoupon(found);
+      setCouponInput("");
       toast.success(`Coupon ${found.code} applied.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not apply coupon.");
@@ -235,9 +240,8 @@ function Page() {
     }
   }
 
-  function handleRemoveCoupon() {
-    removeCoupon();
-    setCouponInput("");
+  function handleRemoveCoupon(code: string) {
+    removeCoupon(code);
   }
 
   function handlePaid({ paymentMode, upiRef, customer }: PaymentResult) {
@@ -282,7 +286,7 @@ function Page() {
         customerDob: customer.dob,
         customerGstin: customer.gstin || undefined,
         invoiceDate: customer.invoiceDate,
-        couponCode: coupon?.code,
+        couponCode: coupons.length ? coupons.map((c) => c.code).join(", ") : undefined,
         lines: receiptLines,
         branch,
       },
@@ -427,52 +431,60 @@ function Page() {
               {/* Coupon code — discount is pulled from discount settings. */}
               <div className="mt-4 border-t border-border pt-4">
                 <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                  <Tag className="h-3.5 w-3.5" /> Coupon Code
+                  <Tag className="h-3.5 w-3.5" /> Coupon Codes
                 </label>
-                {coupon ? (
-                  <div className="flex items-center justify-between rounded-md border border-[color:var(--success)]/40 bg-[color:var(--success)]/5 px-3 py-2 text-sm">
-                    <span className="font-medium text-foreground">
-                      {coupon.code}
-                      <span className="ml-1 text-muted-foreground">
-                        (
-                        {coupon.valueType === "percentage"
-                          ? `${coupon.value}% off`
-                          : `${formatINR(coupon.value)} off`}
-                        )
-                      </span>
-                    </span>
-                    <button
-                      onClick={handleRemoveCoupon}
-                      className="text-muted-foreground transition hover:text-brand"
-                      aria-label="Remove coupon"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <Input
-                      value={couponInput}
-                      onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                      placeholder="Enter code"
-                      className="h-9"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          void handleApplyCoupon();
-                        }
-                      }}
-                    />
-                    <Button
-                      variant="outline"
-                      className="h-9 shrink-0"
-                      disabled={applyingCoupon || !couponInput.trim()}
-                      onClick={() => void handleApplyCoupon()}
-                    >
-                      Apply
-                    </Button>
+                {coupons.length > 0 && (
+                  <div className="mb-2 space-y-1.5">
+                    {coupons.map((c) => (
+                      <div
+                        key={c.code}
+                        className="flex items-center justify-between rounded-md border border-[color:var(--success)]/40 bg-[color:var(--success)]/5 px-3 py-2 text-sm"
+                      >
+                        <span className="font-medium text-foreground">
+                          {c.code}
+                          <span className="ml-1 text-muted-foreground">
+                            (
+                            {c.valueType === "percentage"
+                              ? `${c.value}% off`
+                              : c.valueType === "bogo"
+                                ? `buy ${c.buyQty} get ${c.getQty}`
+                                : `${formatINR(c.value)} off`}
+                            )
+                          </span>
+                        </span>
+                        <button
+                          onClick={() => handleRemoveCoupon(c.code)}
+                          className="text-muted-foreground transition hover:text-brand"
+                          aria-label={`Remove coupon ${c.code}`}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                    placeholder="Enter code"
+                    className="h-9"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void handleApplyCoupon();
+                      }
+                    }}
+                  />
+                  <Button
+                    variant="outline"
+                    className="h-9 shrink-0"
+                    disabled={applyingCoupon || !couponInput.trim()}
+                    onClick={() => void handleApplyCoupon()}
+                  >
+                    Apply
+                  </Button>
+                </div>
               </div>
 
               <dl className="mt-4 space-y-2 border-t border-border pt-4 text-sm">
@@ -481,7 +493,7 @@ function Page() {
                   <dd className="font-medium text-foreground">{formatINR(totals.subtotal)}</dd>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
-                  <dt>Discount{coupon ? ` (${coupon.code})` : ""}</dt>
+                  <dt>Discount{coupons.length ? ` (${coupons.length} applied)` : ""}</dt>
                   <dd className="font-medium text-[color:var(--success)]">
                     -{formatINR(totals.discount)}
                   </dd>

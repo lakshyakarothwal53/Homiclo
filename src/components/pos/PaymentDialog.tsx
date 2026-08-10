@@ -50,6 +50,8 @@ export function PaymentDialog({
   const [step, setStep] = useState<"customer" | "payment">("customer");
   const [customer, setCustomer] = useState<PosCustomer>(EMPTY_CUSTOMER);
   const [mode, setMode] = useState("UPI");
+  // Per-method rupee amounts for a "Part Payment" (split tender).
+  const [split, setSplit] = useState({ cash: 0, card: 0, upi: 0 });
   const [qr, setQr] = useState<{ qrId: string; imageUrl: string } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [waiting, setWaiting] = useState(false);
@@ -69,6 +71,7 @@ export function PaymentDialog({
       setQr(null);
       setGenerating(false);
       setMode("UPI");
+      setSplit({ cash: 0, card: 0, upi: 0 });
       setStep("customer");
       setCustomer({ ...EMPTY_CUSTOMER, invoiceDate: localDateIso() });
       setDebouncedMobile("");
@@ -126,10 +129,12 @@ export function PaymentDialog({
     });
   }
 
-  async function generateQr() {
+  // `amount` lets a Part Payment generate a QR for just its UPI slice, and
+  // `paymentModeLabel` is what gets recorded once that QR is paid.
+  async function generateQr(amount: number, paymentModeLabel: string) {
     setGenerating(true);
     try {
-      const created = await createUpiQr(total, invoice);
+      const created = await createUpiQr(amount, invoice);
       setQr(created);
       setWaiting(true);
       pollRef.current = setInterval(async () => {
@@ -137,7 +142,7 @@ export function PaymentDialog({
           const { paid, paymentRef } = await checkUpiStatus(created.qrId);
           if (paid) {
             stopPolling();
-            completePayment({ paymentMode: "UPI", upiRef: paymentRef });
+            completePayment({ paymentMode: paymentModeLabel, upiRef: paymentRef });
           }
         } catch {
           /* transient — keep polling */
@@ -148,6 +153,31 @@ export function PaymentDialog({
     } finally {
       setGenerating(false);
     }
+  }
+
+  // Switching method mid-flow drops any pending QR/poll so it can't complete
+  // against the wrong tender.
+  function handleModeChange(next: string) {
+    stopPolling();
+    setQr(null);
+    setMode(next);
+  }
+
+  const splitTotal = split.cash + split.card + split.upi;
+  const splitRemaining = total - splitTotal;
+
+  function setSplitAmount(key: "cash" | "card" | "upi", value: string) {
+    const n = Math.max(0, Math.floor(Number(value) || 0));
+    setSplit((s) => ({ ...s, [key]: n }));
+  }
+
+  // "Part — Cash ₹300, Card ₹300" — only the methods actually used.
+  function buildPartLabel() {
+    const parts: string[] = [];
+    if (split.cash > 0) parts.push(`Cash ${formatINR(split.cash)}`);
+    if (split.card > 0) parts.push(`Card ${formatINR(split.card)}`);
+    if (split.upi > 0) parts.push(`UPI ${formatINR(split.upi)}`);
+    return `Part — ${parts.join(", ")}`;
   }
 
   return (
@@ -249,7 +279,7 @@ export function PaymentDialog({
               <ArrowLeft className="h-3.5 w-3.5" /> {customer.name || "Customer"}
             </button>
 
-            <Select value={mode} onValueChange={setMode} disabled={waiting}>
+            <Select value={mode} onValueChange={handleModeChange} disabled={waiting}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -257,6 +287,7 @@ export function PaymentDialog({
                 <SelectItem value="UPI">UPI (QR on screen)</SelectItem>
                 <SelectItem value="Cash">Cash</SelectItem>
                 <SelectItem value="Card">Card</SelectItem>
+                <SelectItem value="Part Payment">Part Payment (split)</SelectItem>
               </SelectContent>
             </Select>
 
@@ -276,7 +307,7 @@ export function PaymentDialog({
                 ) : (
                   <Button
                     className="w-full gap-2 bg-brand text-brand-foreground hover:bg-brand/90"
-                    onClick={generateQr}
+                    onClick={() => generateQr(total, "UPI")}
                     disabled={generating}
                   >
                     {generating ? (
@@ -294,6 +325,94 @@ export function PaymentDialog({
                 >
                   <CheckCircle2 className="h-4 w-4" /> Mark as Paid manually
                 </Button>
+              </div>
+            ) : mode === "Part Payment" ? (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  {(["cash", "card", "upi"] as const).map((k) => (
+                    <div key={k} className="flex items-center justify-between gap-3">
+                      <Label htmlFor={`split-${k}`}>{k === "upi" ? "UPI" : k[0].toUpperCase() + k.slice(1)}</Label>
+                      <Input
+                        id={`split-${k}`}
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        value={split[k] || ""}
+                        onChange={(e) => setSplitAmount(k, e.target.value)}
+                        disabled={waiting}
+                        placeholder="0"
+                        className="max-w-[140px]"
+                      />
+                    </div>
+                  ))}
+                  <div className="flex justify-between pt-1 text-sm">
+                    <span className="text-muted-foreground">
+                      Entered {formatINR(splitTotal)} of {formatINR(total)}
+                    </span>
+                    <span
+                      className={
+                        splitRemaining === 0 ? "text-[color:var(--success)]" : "text-brand"
+                      }
+                    >
+                      {splitRemaining === 0
+                        ? "Fully allocated"
+                        : `Remaining ${formatINR(splitRemaining)}`}
+                    </span>
+                  </div>
+                </div>
+
+                {splitRemaining !== 0 ? (
+                  <Button className="w-full" disabled>
+                    Allocate the full {formatINR(total)} to continue
+                  </Button>
+                ) : split.upi > 0 ? (
+                  <div className="flex flex-col items-center gap-3">
+                    {qr ? (
+                      <>
+                        <img
+                          src={qr.imageUrl}
+                          alt="UPI QR"
+                          className="h-72 w-72 max-w-full rounded-lg border border-border bg-white object-contain p-2"
+                        />
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" /> Waiting for UPI payment of{" "}
+                          {formatINR(split.upi)}…
+                        </div>
+                      </>
+                    ) : (
+                      <Button
+                        className="w-full gap-2 bg-brand text-brand-foreground hover:bg-brand/90"
+                        onClick={() => generateQr(split.upi, buildPartLabel())}
+                        disabled={generating}
+                      >
+                        {generating ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <QrCode className="h-4 w-4" />
+                        )}
+                        Generate UPI QR ({formatINR(split.upi)})
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      className="w-full gap-2"
+                      onClick={() =>
+                        completePayment({ paymentMode: buildPartLabel(), upiRef: undefined })
+                      }
+                    >
+                      <CheckCircle2 className="h-4 w-4" /> Mark UPI received manually
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    className="w-full gap-2 bg-brand text-brand-foreground hover:bg-brand/90"
+                    onClick={() =>
+                      completePayment({ paymentMode: buildPartLabel(), upiRef: undefined })
+                    }
+                  >
+                    <CheckCircle2 className="h-4 w-4" /> Confirm Part Payment
+                  </Button>
+                )}
               </div>
             ) : (
               <Button

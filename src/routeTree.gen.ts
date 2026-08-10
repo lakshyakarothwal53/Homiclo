@@ -63,7 +63,6 @@ import { Route as AppEmployeesProfileDetailRouteImport } from './routes/_app/emp
 import { Route as AppEmployeesProfileRouteImport } from './routes/_app/employees/profile'
 import { Route as AppEmployeesLoginMonitoringRouteImport } from './routes/_app/employees/login-monitoring'
 import { Route as AppEmployeesAddRouteImport } from './routes/_app/employees/add'
-import { Route as AppEmployeesActivityRouteImport } from './routes/_app/employees/activity'
 import { Route as AppDiscountsUsageReportsRouteImport } from './routes/_app/discounts/usage-reports'
 import { Route as AppDiscountsSeasonalRouteImport } from './routes/_app/discounts/seasonal'
 import { Route as AppDiscountsProductsRouteImport } from './routes/_app/discounts/products'
@@ -73,7 +72,6 @@ import { Route as AppBillingTaxInvoicesRouteImport } from './routes/_app/billing
 import { Route as AppBillingTallySyncRouteImport } from './routes/_app/billing/tally-sync'
 import { Route as AppBillingSalesBillsRouteImport } from './routes/_app/billing/sales-bills'
 import { Route as AppBillingReportsRouteImport } from './routes/_app/billing/reports'
-import { Route as AppBillingRefundsRouteImport } from './routes/_app/billing/refunds'
 import { Route as AppBillingPaymentsRouteImport } from './routes/_app/billing/payments'
 import { Route as AppBillingCreateInvoiceRouteImport } from './routes/_app/billing/create-invoice'
 import { Route as AppAttendanceSettingsRouteImport } from './routes/_app/attendance/settings'
@@ -362,11 +360,6 @@ const AppEmployeesAddRoute = AppEmployeesAddRouteImport.update({
   path: '/add',
   getParentRoute: () => AppEmployeesRoute,
 } as any)
-const AppEmployeesActivityRoute = AppEmployeesActivityRouteImport.update({
-  id: '/activity',
-  path: '/activity',
-  getParentRoute: () => AppEmployeesRoute,
-} as any)
 const AppDiscountsUsageReportsRoute =
   AppDiscountsUsageReportsRouteImport.update({
     id: '/usage-reports',
@@ -411,11 +404,6 @@ const AppBillingSalesBillsRoute = AppBillingSalesBillsRouteImport.update({
 const AppBillingReportsRoute = AppBillingReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
-  getParentRoute: () => AppBillingRoute,
-} as any)
-const AppBillingRefundsRoute = AppBillingRefundsRouteImport.update({
-  id: '/refunds',
-  path: '/refunds',
   getParentRoute: () => AppBillingRoute,
 } as any)
 const AppBillingPaymentsRoute = AppBillingPaymentsRouteImport.update({
@@ -490,7 +478,6 @@ export interface FileRoutesByFullPath {
   '/attendance/settings': typeof AppAttendanceSettingsRoute
   '/billing/create-invoice': typeof AppBillingCreateInvoiceRoute
   '/billing/payments': typeof AppBillingPaymentsRoute
-  '/billing/refunds': typeof AppBillingRefundsRoute
   '/billing/reports': typeof AppBillingReportsRoute
   '/billing/sales-bills': typeof AppBillingSalesBillsRoute
   '/billing/tally-sync': typeof AppBillingTallySyncRoute
@@ -500,7 +487,6 @@ export interface FileRoutesByFullPath {
   '/discounts/products': typeof AppDiscountsProductsRoute
   '/discounts/seasonal': typeof AppDiscountsSeasonalRoute
   '/discounts/usage-reports': typeof AppDiscountsUsageReportsRoute
-  '/employees/activity': typeof AppEmployeesActivityRoute
   '/employees/add': typeof AppEmployeesAddRoute
   '/employees/login-monitoring': typeof AppEmployeesLoginMonitoringRoute
   '/employees/profile': typeof AppEmployeesProfileRoute
@@ -559,7 +545,6 @@ export interface FileRoutesByTo {
   '/attendance/settings': typeof AppAttendanceSettingsRoute
   '/billing/create-invoice': typeof AppBillingCreateInvoiceRoute
   '/billing/payments': typeof AppBillingPaymentsRoute
-  '/billing/refunds': typeof AppBillingRefundsRoute
   '/billing/reports': typeof AppBillingReportsRoute
   '/billing/sales-bills': typeof AppBillingSalesBillsRoute
   '/billing/tally-sync': typeof AppBillingTallySyncRoute
@@ -569,7 +554,6 @@ export interface FileRoutesByTo {
   '/discounts/products': typeof AppDiscountsProductsRoute
   '/discounts/seasonal': typeof AppDiscountsSeasonalRoute
   '/discounts/usage-reports': typeof AppDiscountsUsageReportsRoute
-  '/employees/activity': typeof AppEmployeesActivityRoute
   '/employees/add': typeof AppEmployeesAddRoute
   '/employees/login-monitoring': typeof AppEmployeesLoginMonitoringRoute
   '/employees/profile': typeof AppEmployeesProfileRoute
@@ -637,7 +621,6 @@ export interface FileRoutesById {
   '/_app/attendance/settings': typeof AppAttendanceSettingsRoute
   '/_app/billing/create-invoice': typeof AppBillingCreateInvoiceRoute
   '/_app/billing/payments': typeof AppBillingPaymentsRoute
-  '/_app/billing/refunds': typeof AppBillingRefundsRoute
   '/_app/billing/reports': typeof AppBillingReportsRoute
   '/_app/billing/sales-bills': typeof AppBillingSalesBillsRoute
   '/_app/billing/tally-sync': typeof AppBillingTallySyncRoute
@@ -647,7 +630,6 @@ export interface FileRoutesById {
   '/_app/discounts/products': typeof AppDiscountsProductsRoute
   '/_app/discounts/seasonal': typeof AppDiscountsSeasonalRoute
   '/_app/discounts/usage-reports': typeof AppDiscountsUsageReportsRoute
-  '/_app/employees/activity': typeof AppEmployeesActivityRoute
   '/_app/employees/add': typeof AppEmployeesAddRoute
   '/_app/employees/login-monitoring': typeof AppEmployeesLoginMonitoringRoute
   '/_app/employees/profile': typeof AppEmployeesProfileRoute
@@ -715,7 +697,6 @@ export interface FileRouteTypes {
     | '/attendance/settings'
     | '/billing/create-invoice'
     | '/billing/payments'
-    | '/billing/refunds'
     | '/billing/reports'
     | '/billing/sales-bills'
     | '/billing/tally-sync'
@@ -725,7 +706,6 @@ export interface FileRouteTypes {
     | '/discounts/products'
     | '/discounts/seasonal'
     | '/discounts/usage-reports'
-    | '/employees/activity'
     | '/employees/add'
     | '/employees/login-monitoring'
     | '/employees/profile'
@@ -784,7 +764,6 @@ export interface FileRouteTypes {
     | '/attendance/settings'
     | '/billing/create-invoice'
     | '/billing/payments'
-    | '/billing/refunds'
     | '/billing/reports'
     | '/billing/sales-bills'
     | '/billing/tally-sync'
@@ -794,7 +773,6 @@ export interface FileRouteTypes {
     | '/discounts/products'
     | '/discounts/seasonal'
     | '/discounts/usage-reports'
-    | '/employees/activity'
     | '/employees/add'
     | '/employees/login-monitoring'
     | '/employees/profile'
@@ -861,7 +839,6 @@ export interface FileRouteTypes {
     | '/_app/attendance/settings'
     | '/_app/billing/create-invoice'
     | '/_app/billing/payments'
-    | '/_app/billing/refunds'
     | '/_app/billing/reports'
     | '/_app/billing/sales-bills'
     | '/_app/billing/tally-sync'
@@ -871,7 +848,6 @@ export interface FileRouteTypes {
     | '/_app/discounts/products'
     | '/_app/discounts/seasonal'
     | '/_app/discounts/usage-reports'
-    | '/_app/employees/activity'
     | '/_app/employees/add'
     | '/_app/employees/login-monitoring'
     | '/_app/employees/profile'
@@ -1303,13 +1279,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppEmployeesAddRouteImport
       parentRoute: typeof AppEmployeesRoute
     }
-    '/_app/employees/activity': {
-      id: '/_app/employees/activity'
-      path: '/activity'
-      fullPath: '/employees/activity'
-      preLoaderRoute: typeof AppEmployeesActivityRouteImport
-      parentRoute: typeof AppEmployeesRoute
-    }
     '/_app/discounts/usage-reports': {
       id: '/_app/discounts/usage-reports'
       path: '/usage-reports'
@@ -1371,13 +1340,6 @@ declare module '@tanstack/react-router' {
       path: '/reports'
       fullPath: '/billing/reports'
       preLoaderRoute: typeof AppBillingReportsRouteImport
-      parentRoute: typeof AppBillingRoute
-    }
-    '/_app/billing/refunds': {
-      id: '/_app/billing/refunds'
-      path: '/refunds'
-      fullPath: '/billing/refunds'
-      preLoaderRoute: typeof AppBillingRefundsRouteImport
       parentRoute: typeof AppBillingRoute
     }
     '/_app/billing/payments': {
@@ -1484,7 +1446,6 @@ const AppAttendanceRouteWithChildren = AppAttendanceRoute._addFileChildren(
 interface AppBillingRouteChildren {
   AppBillingCreateInvoiceRoute: typeof AppBillingCreateInvoiceRoute
   AppBillingPaymentsRoute: typeof AppBillingPaymentsRoute
-  AppBillingRefundsRoute: typeof AppBillingRefundsRoute
   AppBillingReportsRoute: typeof AppBillingReportsRoute
   AppBillingSalesBillsRoute: typeof AppBillingSalesBillsRoute
   AppBillingTallySyncRoute: typeof AppBillingTallySyncRoute
@@ -1495,7 +1456,6 @@ interface AppBillingRouteChildren {
 const AppBillingRouteChildren: AppBillingRouteChildren = {
   AppBillingCreateInvoiceRoute: AppBillingCreateInvoiceRoute,
   AppBillingPaymentsRoute: AppBillingPaymentsRoute,
-  AppBillingRefundsRoute: AppBillingRefundsRoute,
   AppBillingReportsRoute: AppBillingReportsRoute,
   AppBillingSalesBillsRoute: AppBillingSalesBillsRoute,
   AppBillingTallySyncRoute: AppBillingTallySyncRoute,
@@ -1530,7 +1490,6 @@ const AppDiscountsRouteWithChildren = AppDiscountsRoute._addFileChildren(
 )
 
 interface AppEmployeesRouteChildren {
-  AppEmployeesActivityRoute: typeof AppEmployeesActivityRoute
   AppEmployeesAddRoute: typeof AppEmployeesAddRoute
   AppEmployeesLoginMonitoringRoute: typeof AppEmployeesLoginMonitoringRoute
   AppEmployeesProfileRoute: typeof AppEmployeesProfileRoute
@@ -1540,7 +1499,6 @@ interface AppEmployeesRouteChildren {
 }
 
 const AppEmployeesRouteChildren: AppEmployeesRouteChildren = {
-  AppEmployeesActivityRoute: AppEmployeesActivityRoute,
   AppEmployeesAddRoute: AppEmployeesAddRoute,
   AppEmployeesLoginMonitoringRoute: AppEmployeesLoginMonitoringRoute,
   AppEmployeesProfileRoute: AppEmployeesProfileRoute,

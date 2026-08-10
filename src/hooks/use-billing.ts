@@ -425,33 +425,6 @@ export function useBillingPayments(search?: string, branch?: string) {
   });
 }
 
-export function useBillingRefunds(search?: string, branch?: string) {
-  const allBranches = !branch || branch === "all";
-  return useQuery({
-    queryKey: ["billing", "refunds", search ?? "", branch ?? "all"],
-    queryFn: async (): Promise<BillingRefund[]> => {
-      // `*` so the optional refund_date column (supabase/13_completion_pack.sql)
-      // is picked up when present without breaking older schemas.
-      let query = (
-        allBranches ? supabase.from("billing_refunds") : supabase.from("billing_refunds_branches")
-      )
-        .select("*")
-        // Newest first — refund numbers are assigned sequentially (see
-        // useNextRefundNumber), and billing_refunds has no created_at column
-        // to sort by instead.
-        .order("refund", { ascending: false });
-      if (!allBranches) query = query.eq("branch", branch);
-      if (search)
-        query = query.or(
-          `refund.ilike.${like(search)},invoice.ilike.${like(search)},customer.ilike.${like(search)}`,
-        );
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as BillingRefund[];
-    },
-  });
-}
-
 // A tax invoice is any completed sale where the customer supplied a GSTIN at
 // checkout (POS "Collect Payment" step) — derived straight from
 // pos_transactions, the same source useBillingSalesBills/useBillingPayments
@@ -941,28 +914,6 @@ export type RefundLineInput = { sku: string; name: string; qty: number; unitPric
  * already been returned instead of letting the same units be refunded twice.
  * Table is added by supabase/billing/09_refund_items.sql; treat a missing
  * table (PGRST205) as "nothing refunded yet" rather than failing the lookup. */
-export function useRefundedQtyByInvoice(invoice: string) {
-  return useQuery({
-    queryKey: ["billing", "refund-items", invoice],
-    queryFn: async (): Promise<Record<string, number>> => {
-      const { data, error } = await supabase
-        .from("billing_refund_items")
-        .select("sku, qty")
-        .eq("invoice", invoice);
-      if (error) {
-        if (error.code === "PGRST205") return {};
-        throw error;
-      }
-      const totals: Record<string, number> = {};
-      for (const row of data ?? []) {
-        totals[row.sku as string] = (totals[row.sku as string] ?? 0) + (row.qty as number);
-      }
-      return totals;
-    },
-    enabled: invoice.length > 0,
-  });
-}
-
 export function useCreateRefund() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -1007,9 +958,9 @@ export function useCreateRefund() {
       }
 
       // Persist which lines this refund covered so a later refund against the
-      // same invoice can see what's already been returned (see
-      // useRefundedQtyByInvoice). Best-effort like the stock restore below —
-      // table may not exist yet if 09_refund_items.sql hasn't been run.
+      // same invoice can see what's already been returned. Best-effort like the
+      // stock restore below — table may not exist yet if 09_refund_items.sql
+      // hasn't been run.
       if (explicitItems) {
         const { error: itemsError } = await supabase.from("billing_refund_items").insert(
           explicitItems.map((i) => ({
@@ -1082,27 +1033,6 @@ export function useCreateRefund() {
 // 10_refund_status_update.sql adds the missing update policy) — this lets
 // Refund Management change it in place as a refund moves from Processing to
 // Completed/On Hold/Rejected.
-export function useUpdateRefundStatus() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      refund,
-      status,
-    }: {
-      refund: string;
-      status: string;
-    }): Promise<{ refund: string; status: string }> => {
-      const { error } = await supabase
-        .from("billing_refunds")
-        .update({ status })
-        .eq("refund", refund);
-      if (error) throw error;
-      return { refund, status };
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["billing", "refunds"] }),
-  });
-}
-
 // Sales Bills reads from pos_transactions (global) / pos_transactions_branches
 // (per-branch view) — see useBillingSalesBills — so delete targets whichever
 // table the row actually came from.

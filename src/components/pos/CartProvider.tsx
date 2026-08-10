@@ -32,9 +32,9 @@ type CartContextValue = {
   clear: () => void;
   totals: CartTotals;
   asLineItems: () => PosLineItem[];
-  coupon: AppliedCoupon | null;
+  coupons: AppliedCoupon[];
   applyCoupon: (coupon: AppliedCoupon) => void;
-  removeCoupon: () => void;
+  removeCoupon: (code: string) => void;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -51,13 +51,103 @@ function loadCart(): CartLine[] {
   }
 }
 
+// Assign each cart line to at most ONE coupon — most specific wins
+// (product > category > store-wide), ties keep the earliest-applied coupon —
+// then spread each coupon's discount across only the lines it owns. Returns a
+// discount amount per line in the same order as `lines`, so no product is ever
+// discounted by two coupons.
+function computeLineDiscounts(lines: CartLine[], coupons: AppliedCoupon[]): number[] {
+  const perLine = new Array<number>(lines.length).fill(0);
+  if (coupons.length === 0 || lines.length === 0) return perLine;
+
+  const covers = (c: AppliedCoupon, line: CartLine) => {
+    if (c.appliesToType === "product") return c.appliesTo.includes(line.product.sku);
+    if (c.appliesToType === "category") return c.appliesTo.includes(line.product.category);
+    if (!c.appliesToType || c.appliesTo.length === 0) return true; // store-wide
+    return false; // brand / targeted but non-matching type
+  };
+  const specificity = (c: AppliedCoupon) =>
+    c.appliesToType === "product" ? 2 : c.appliesToType === "category" ? 1 : 0;
+
+  // Owning coupon index per line (-1 = uncovered → no discount).
+  const owner = lines.map((line) => {
+    let bestIdx = -1;
+    let bestSpec = -1;
+    coupons.forEach((c, ci) => {
+      if (!covers(c, line)) return;
+      const s = specificity(c);
+      if (s > bestSpec) {
+        bestSpec = s;
+        bestIdx = ci; // strictly greater keeps the earliest coupon on ties
+      }
+    });
+    return bestIdx;
+  });
+
+  const groups = new Map<number, number[]>();
+  owner.forEach((ci, li) => {
+    if (ci < 0) return;
+    const g = groups.get(ci);
+    if (g) g.push(li);
+    else groups.set(ci, [li]);
+  });
+
+  for (const [ci, lineIdxs] of groups) {
+    const c = coupons[ci];
+    const groupSubtotal = lineIdxs.reduce(
+      (s, li) => s + lines[li].product.price * lines[li].qty,
+      0,
+    );
+    let groupDiscount = 0;
+    if (c.valueType === "bogo" && c.buyQty && c.getQty) {
+      const unitPrices = lineIdxs.flatMap((li) =>
+        Array(lines[li].qty).fill(lines[li].product.price),
+      );
+      const bundleSize = c.buyQty + c.getQty;
+      const freeUnits = Math.floor(unitPrices.length / bundleSize) * c.getQty;
+      groupDiscount = unitPrices
+        .sort((a, b) => a - b)
+        .slice(0, freeUnits)
+        .reduce((s, p) => s + p, 0);
+    } else if (c.valueType === "percentage") {
+      groupDiscount = Math.round(groupSubtotal * (c.value / 100));
+    } else {
+      groupDiscount = Math.min(c.value, groupSubtotal);
+    }
+
+    // Spread the group's discount across its lines by value; last absorbs remainder.
+    let allocated = 0;
+    lineIdxs.forEach((li, k) => {
+      const lineValue = lines[li].product.price * lines[li].qty;
+      const share =
+        k === lineIdxs.length - 1
+          ? groupDiscount - allocated
+          : groupSubtotal > 0
+            ? Math.round(groupDiscount * (lineValue / groupSubtotal))
+            : 0;
+      allocated += share;
+      perLine[li] = share;
+    });
+  }
+
+  return perLine;
+}
+
 export function CartProvider({ children }: { children: ReactNode }) {
   const { settings } = usePosSettings();
   const [lines, setLines] = useState<CartLine[]>(loadCart);
-  const [coupon, setCoupon] = useState<AppliedCoupon | null>(null);
+  const [coupons, setCoupons] = useState<AppliedCoupon[]>([]);
 
-  const applyCoupon = useCallback((next: AppliedCoupon) => setCoupon(next), []);
-  const removeCoupon = useCallback(() => setCoupon(null), []);
+  // Many coupons may be applied to one bill; an exact-duplicate code is ignored.
+  const applyCoupon = useCallback(
+    (next: AppliedCoupon) =>
+      setCoupons((prev) => (prev.some((c) => c.code === next.code) ? prev : [...prev, next])),
+    [],
+  );
+  const removeCoupon = useCallback(
+    (code: string) => setCoupons((prev) => prev.filter((c) => c.code !== code)),
+    [],
+  );
 
   useEffect(() => {
     try {
@@ -91,75 +181,29 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const clear = useCallback(() => {
     setLines([]);
-    setCoupon(null);
+    setCoupons([]);
   }, []);
 
-  // Discount is driven entirely by an applied coupon (fetched from discount
-  // settings); with no coupon there is no discount. A coupon restricted to
-  // specific products/categories (appliesToType) only discounts the cart
-  // lines that match — not the whole cart — so e.g. a "Basmati Rice, Bluetooth
-  // Speaker" promo can't knock 10% off a T-shirt just because the code matched.
+  // Discount is driven entirely by the applied coupons (fetched from discount
+  // settings); with none there is no discount. Multiple coupons may be applied,
+  // but each product is discounted by exactly one of them — the most specific
+  // coupon targeting it (product > category > store-wide), so e.g. a product
+  // with its own coupon ignores a broader category/store-wide code. See
+  // computeLineDiscounts.
   const totals = useMemo<CartTotals>(() => {
     const itemCount = lines.reduce((n, l) => n + l.qty, 0);
     const subtotal = lines.reduce((s, l) => s + l.product.price * l.qty, 0);
-    let discount = 0;
-    if (coupon) {
-      const eligibleLines =
-        !coupon.appliesToType || coupon.appliesTo.length === 0
-          ? lines
-          : lines.filter((l) =>
-              coupon.appliesToType === "product"
-                ? coupon.appliesTo.includes(l.product.sku)
-                : coupon.appliesToType === "category"
-                  ? coupon.appliesTo.includes(l.product.category)
-                  : false,
-            );
-      if (coupon.valueType === "bogo" && coupon.buyQty && coupon.getQty) {
-        // "Buy X get Y free": flatten eligible lines into one entry per unit,
-        // sort cheapest-first, and give away the cheapest Y of every complete
-        // (X+Y)-unit bundle — the standard BOGO convention (the discount
-        // always favors the customer, same spirit as the flat-coupon
-        // Math.min below).
-        const unitPrices = eligibleLines.flatMap((l) => Array(l.qty).fill(l.product.price));
-        const bundleSize = coupon.buyQty + coupon.getQty;
-        const freeUnits = Math.floor(unitPrices.length / bundleSize) * coupon.getQty;
-        discount = unitPrices
-          .sort((a, b) => a - b)
-          .slice(0, freeUnits)
-          .reduce((s, p) => s + p, 0);
-      } else {
-        const eligibleSubtotal = eligibleLines.reduce((s, l) => s + l.product.price * l.qty, 0);
-        discount =
-          coupon.valueType === "percentage"
-            ? Math.round(eligibleSubtotal * (coupon.value / 100))
-            : Math.min(coupon.value, eligibleSubtotal);
-      }
-    }
-    // Per-line GST. Each product is taxed at its OWN rate (falling back to the
-    // flat POS rate when it has none), so a cart mixing 5% and 18% goods bills
-    // correctly instead of averaging everything at one rate.
-    //
-    // The cart discount is apportioned across lines in proportion to their
-    // value, so tax is charged on what the customer actually pays for that
-    // line, not on its pre-discount value. The last line absorbs any rounding
-    // remainder so the apportioned parts always sum back to `discount` exactly.
-    // Selling prices are GST-inclusive across the app, so the post-discount
-    // value already contains the tax and it is extracted (net = taxable + tax)
-    // rather than added on top. Accumulate the post-discount value per rate,
-    // then derive the taxable value and tax.
-    const nets = new Map<number, number>();
-    let allocatedDiscount = 0;
-    lines.forEach((l, i) => {
-      const lineValue = l.product.price * l.qty;
-      const share =
-        i === lines.length - 1
-          ? discount - allocatedDiscount
-          : subtotal > 0
-            ? Math.round(discount * (lineValue / subtotal))
-            : 0;
-      allocatedDiscount += share;
+    const lineDiscounts = computeLineDiscounts(lines, coupons);
+    const discount = lineDiscounts.reduce((s, d) => s + d, 0);
 
-      const net = Math.max(0, lineValue - share);
+    // Per-line GST. Each product is taxed at its OWN rate (falling back to the
+    // flat POS rate when it has none). Selling prices are GST-inclusive, so the
+    // post-discount value already contains the tax and it is extracted
+    // (net = taxable + tax) rather than added on top — and each line's own
+    // coupon discount reduces only that line's taxable value.
+    const nets = new Map<number, number>();
+    lines.forEach((l, i) => {
+      const net = Math.max(0, l.product.price * l.qty - lineDiscounts[i]);
       const rate = l.product.gstRate ?? settings.gstRate;
       nets.set(rate, (nets.get(rate) ?? 0) + net);
     });
@@ -192,24 +236,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
       mrpTotal,
       mrpSavings,
     };
-  }, [lines, coupon, settings.gstRate]);
+  }, [lines, coupons, settings.gstRate]);
 
   // The rate and tax are snapshotted onto each line so a reprinted bill shows
   // what was actually charged, even if the product's GST rate changes later.
   const asLineItems = useCallback((): PosLineItem[] => {
-    const subtotal = lines.reduce((s, l) => s + l.product.price * l.qty, 0);
-    let allocated = 0;
+    const lineDiscounts = computeLineDiscounts(lines, coupons);
     return lines.map((l, i) => {
       const lineTotal = l.product.price * l.qty;
-      const share =
-        i === lines.length - 1
-          ? totals.discount - allocated
-          : subtotal > 0
-            ? Math.round(totals.discount * (lineTotal / subtotal))
-            : 0;
-      allocated += share;
       const rate = l.product.gstRate ?? settings.gstRate;
-      const net = Math.max(0, lineTotal - share);
+      const net = Math.max(0, lineTotal - lineDiscounts[i]);
       // Prices are GST-inclusive, so the tax is extracted from the line value.
       const gstAmount = Math.round(net - net / (1 + rate / 100));
       return {
@@ -224,7 +260,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         mrp: l.product.mrp,
       };
     });
-  }, [lines, totals.discount, settings.gstRate]);
+  }, [lines, coupons, settings.gstRate]);
 
   const value = useMemo(
     () => ({
@@ -235,7 +271,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       clear,
       totals,
       asLineItems,
-      coupon,
+      coupons,
       applyCoupon,
       removeCoupon,
     }),
@@ -247,7 +283,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       clear,
       totals,
       asLineItems,
-      coupon,
+      coupons,
       applyCoupon,
       removeCoupon,
     ],
