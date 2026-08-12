@@ -221,7 +221,18 @@ export function ProductFormDialog({
       }}
     >
       {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent
+        className="sm:max-w-lg max-h-[90vh] overflow-y-auto"
+        onOpenAutoFocus={(e) => {
+          // Radix focuses the first focusable element (the "Regenerate" button)
+          // by default. A wedge scanner starts firing the instant the dialog is
+          // open, so the barcode input needs focus, not that button.
+          if (!isAddingToStock) {
+            e.preventDefault();
+            barcodeInputRef.current?.focus();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{isAddingToStock ? "Add to Stock" : title}</DialogTitle>
           {isAddingToStock ? (

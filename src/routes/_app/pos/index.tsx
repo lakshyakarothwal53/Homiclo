@@ -342,6 +342,13 @@ function Page() {
           <FilterBar
             search={search}
             onSearchChange={setSearch}
+            onSearchEnter={(value) => {
+              // Deterministic fallback for the visible search box: works no
+              // matter how fast the scanner types, unlike the global
+              // fast-burst listener below which can miss slower scanners.
+              lookupAndAdd(value);
+              setSearch("");
+            }}
             searchPlaceholder="Scan barcode or search by name / SKU..."
             {...(scoped ? { showBranch: false } : { branches, branch, onBranchChange: setBranch })}
           />

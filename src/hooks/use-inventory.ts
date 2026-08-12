@@ -582,7 +582,13 @@ export function useCreateProduct() {
       if (error) throw error;
       return input;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      // POS caches its own product list under a separate key — a product
+      // added here (e.g. via barcode scan) must be scannable at checkout
+      // right away, not just after the POS cache happens to expire.
+      queryClient.invalidateQueries({ queryKey: ["pos"] });
+    },
   });
 }
 
@@ -608,7 +614,10 @@ export function useUpdateProduct() {
       if (error) throw error;
       return input;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["pos"] });
+    },
   });
 }
 
@@ -620,7 +629,10 @@ export function useDeleteProduct() {
       if (error) throw error;
       return sku;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["inventory"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["pos"] });
+    },
   });
 }
 
@@ -878,6 +890,7 @@ export function useAddToStock() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["pos"] });
     },
   });
 }

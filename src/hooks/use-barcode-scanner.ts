@@ -17,7 +17,11 @@ export function useBarcodeScanner({
   onScan,
   enabled = true,
   minLength = 3,
-  maxIntervalMs = 35,
+  // 35ms was too tight for some wedge scanners (and anything relayed through
+  // a remote/virtual desktop adds its own jitter), causing real scans to be
+  // silently dropped as "human typing". 80ms is still far faster than anyone
+  // can type a barcode by hand, but forgiving enough to catch real scanners.
+  maxIntervalMs = 80,
 }: Options) {
   // Keep the latest onScan without re-binding the listener each render.
   const onScanRef = useRef(onScan);

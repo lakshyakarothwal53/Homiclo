@@ -12,6 +12,7 @@ import {
 export function FilterBar({
   search,
   onSearchChange,
+  onSearchEnter,
   searchPlaceholder = "Search...",
   addLabel = "Add New",
   onAdd,
@@ -27,6 +28,10 @@ export function FilterBar({
   /** When `onSearchChange` is provided the search box becomes controlled and data-driven. */
   search?: string;
   onSearchChange?: (value: string) => void;
+  /** Fires on Enter in the search box, regardless of typing speed — the deterministic
+   *  complement to a global fast-burst scanner listener, for callers that treat the
+   *  search field as a barcode-scan target too. */
+  onSearchEnter?: (value: string) => void;
   searchPlaceholder?: string;
   addLabel?: string;
   onAdd?: () => void;
@@ -51,6 +56,12 @@ export function FilterBar({
             className="pl-9"
             value={search}
             onChange={(e) => onSearchChange?.(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && onSearchEnter) {
+                e.preventDefault();
+                onSearchEnter(e.currentTarget.value);
+              }
+            }}
           />
         </div>
         {showBranch && (
