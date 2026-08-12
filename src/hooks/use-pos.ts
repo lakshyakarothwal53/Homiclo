@@ -50,7 +50,7 @@ export function usePosProducts(search?: string, branch?: string) {
         const stockBySku = new Map(allocations.map((a) => [a.sku as string, a.stock as number]));
         let branchQuery = supabase
           .from("products")
-          .select("sku, name, category, price, gstRate:gst_rate, mrp")
+          .select("sku, barcode, name, category, price, gstRate:gst_rate, mrp")
           .in("sku", [...stockBySku.keys()]);
         if (search)
           branchQuery = branchQuery.or(`name.ilike.${like(search)},sku.ilike.${like(search)}`);
@@ -58,21 +58,19 @@ export function usePosProducts(search?: string, branch?: string) {
         if (error) throw error;
 
         return (rows ?? []).map((p) => ({
-          ...(p as Omit<PosProduct, "barcode" | "stock">),
+          ...(p as Omit<PosProduct, "stock">),
           stock: stockBySku.get(p.sku as string) ?? 0,
-          barcode: p.sku as string,
+          barcode: (p as { barcode?: string | null }).barcode || (p.sku as string),
         }));
       }
 
       let query = supabase
         .from("products")
-        .select("sku, name, category, price, stock, gstRate:gst_rate, mrp");
+        .select("sku, barcode, name, category, price, stock, gstRate:gst_rate, mrp");
       if (search) query = query.or(`name.ilike.${like(search)},sku.ilike.${like(search)}`);
       const { data, error } = await query;
       if (error) throw error;
-      // The SKU IS the barcode (one identifier, no separate column/migration
-      // needed) — see generateSku() in @/lib/inventory-utils.
-      return (data as Omit<PosProduct, "barcode">[]).map((p) => ({ ...p, barcode: p.sku }));
+      return (data as any[]).map((p) => ({ ...p, barcode: p.barcode || p.sku }));
     },
   });
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Barcode, Printer, Search } from "lucide-react";
+import { Barcode, Printer, Search, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,11 @@ import { useCart } from "@/components/pos/CartProvider";
 import { printBarcodes } from "@/lib/barcode-utils";
 import { SCAN_FORMATS, startBarcodeScan } from "@/lib/barcode-detector";
 import { formatINR } from "@/components/pos/products";
+import { ProductFormDialog } from "@/components/inventory/ProductFormDialog";
+import { useCreateProduct } from "@/hooks/use-inventory";
+import { useCategories } from "@/hooks/use-inventory";
 import type { PosProduct } from "@/types/pos";
+import type { ProductFormValues } from "@/components/inventory/ProductFormDialog";
 
 export function ScannerView({
   icon: Icon,
@@ -29,6 +33,8 @@ export function ScannerView({
   const [manualCode, setManualCode] = useState("");
   const [scanned, setScanned] = useState<PosProduct | null>(null);
   const [lastCode, setLastCode] = useState("");
+  const [showAddProduct, setShowAddProduct] = useState(false);
+  const [pendingBarcode, setPendingBarcode] = useState("");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanRef = useRef<{ stop: () => void } | null>(null);
@@ -37,26 +43,40 @@ export function ScannerView({
   // stock this branch was never sent.
   const { scoped, homeBranch } = useBranchScope();
   const { data: products = [] } = usePosProducts(undefined, scoped ? homeBranch : undefined);
+  const { data: categories = [] } = useCategories(undefined, scoped ? homeBranch : undefined);
   const { addToCart } = useCart();
+  const createProduct = useCreateProduct();
 
   function lookup(code: string) {
     const clean = code.trim();
     if (!clean) return;
     setLastCode(clean);
+    // Search order: exact barcode match (primary), SKU (fallback), product name
     const product =
-      products.find((p) => p.barcode === clean) ??
-      products.find(
-        (p) =>
-          p.sku.toLowerCase() === clean.toLowerCase() ||
-          p.name.toLowerCase() === clean.toLowerCase(),
-      );
+      products.find((p) => p.barcode && p.barcode === clean) ??
+      products.find((p) => p.barcode && p.barcode.toLowerCase() === clean.toLowerCase()) ??
+      products.find((p) => p.sku.toLowerCase() === clean.toLowerCase()) ??
+      products.find((p) => p.name.toLowerCase() === clean.toLowerCase());
     if (product) {
       setScanned(product);
       addToCart(product);
       toast.success(`${product.name} added to cart · ${formatINR(product.price)}`);
     } else {
       setScanned(null);
-      toast.error(`No product found for "${clean}".`);
+      setPendingBarcode(clean);
+      toast.error(`No product found for "${clean}". Click "Add Product" to create it.`);
+    }
+  }
+
+  async function handleAddProduct(values: ProductFormValues) {
+    try {
+      await createProduct.mutateAsync(values);
+      toast.success(`Product "${values.name}" created successfully!`);
+      setShowAddProduct(false);
+      setPendingBarcode("");
+    } catch (error) {
+      toast.error("Failed to create product. Please try again.");
+      console.error(error);
     }
   }
 
@@ -173,18 +193,45 @@ export function ScannerView({
         )}
 
         {!scanned && lastCode && (
-          <div className="mt-6 flex w-full items-center justify-between gap-3 rounded-lg border border-dashed border-border p-4 text-left text-sm text-muted-foreground">
-            <span>“{lastCode}” isn't in the catalog — you can still print a label for it.</span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2 shrink-0"
-              onClick={() => printBarcodes([{ sku: lastCode, name: lastCode }])}
-            >
-              <Barcode className="h-4 w-4" /> Print
-            </Button>
+          <div className=”mt-6 flex w-full flex-col gap-3 rounded-lg border border-dashed border-border p-4 text-left”>
+            <p className=”text-sm text-muted-foreground”>
+              “{lastCode}” isn't in the catalog yet.
+            </p>
+            <div className=”flex gap-2”>
+              <Button
+                variant=”outline”
+                size=”sm”
+                className=”gap-2 flex-1”
+                onClick={() => setShowAddProduct(true)}
+              >
+                <Plus className=”h-4 w-4” /> Add Product
+              </Button>
+              <Button
+                variant=”outline”
+                size=”sm”
+                className=”gap-2 flex-1”
+                onClick={() => printBarcodes([{ sku: lastCode, name: lastCode }])}
+              >
+                <Barcode className=”h-4 w-4” /> Print Label
+              </Button>
+            </div>
           </div>
         )}
+
+        <ProductFormDialog
+          mode=”add”
+          title=”Add Product to Catalog”
+          description={
+            pendingBarcode
+              ? `Create a new product for barcode “${pendingBarcode}”`
+              : “Add a new product to the catalog”
+          }
+          categories={categories.map((c) => c.name)}
+          allProducts={products}
+          open={showAddProduct}
+          onOpenChange={setShowAddProduct}
+          onSave={handleAddProduct}
+        />
       </div>
     </Card>
   );

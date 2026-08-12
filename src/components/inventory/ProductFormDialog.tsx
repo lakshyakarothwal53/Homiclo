@@ -1,5 +1,6 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Scan } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { generateSku } from "@/lib/inventory-utils";
+import { useFetchProductByBarcode } from "@/hooks/use-inventory";
 import type { Product } from "@/types/inventory";
 
 // The statutory Indian GST slabs.
@@ -28,6 +30,7 @@ const GST_SLABS = [0, 5, 12, 18, 28] as const;
 
 export type ProductFormValues = {
   sku: string;
+  barcode?: string;
   name: string;
   category: string;
   price: number;
@@ -77,10 +80,15 @@ export function ProductFormDialog({
   const actualOpen = isControlled ? open : internalOpen;
   const [isAddingToStock, setIsAddingToStock] = useState(false);
   const [existingProduct, setExistingProduct] = useState<Product | null>(null);
+  const [barcodeInput, setBarcodeInput] = useState("");
+  const [isScanning, setIsScanning] = useState(false);
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const { refetch: fetchByBarcode } = useFetchProductByBarcode(barcodeInput);
 
   function buildInitialValues(): ProductFormValues {
     return {
       sku: initial?.sku ?? (mode === "add" ? generateSku() : ""),
+      barcode: initial?.barcode ?? "",
       name: initial?.name ?? "",
       category: initial?.category ?? "",
       price: initial?.price ?? 0,
@@ -104,6 +112,39 @@ export function ProductFormDialog({
   function setOpen(next: boolean) {
     if (isControlled) onOpenChange?.(next);
     else setInternalOpen(next);
+  }
+
+  async function handleBarcodeInput(barcode: string) {
+    if (!barcode.trim()) return;
+    setIsScanning(true);
+    try {
+      const { data } = await fetchByBarcode();
+      if (data) {
+        setValues((s) => ({
+          ...s,
+          barcode: data.barcode || barcode,
+          name: data.name,
+          category: data.category,
+          price: data.price,
+          stock: data.stock,
+          minStock: data.minStock,
+          status: data.status,
+          gstRate: data.gstRate,
+          mrp: data.mrp,
+          purchaseRate: data.purchaseRate,
+        }));
+        toast.success(`Product "${data.name}" loaded from barcode.`);
+      } else {
+        toast.error(`No product found for barcode "${barcode}".`);
+      }
+    } catch (error) {
+      toast.error("Failed to fetch product details.");
+      console.error(error);
+    } finally {
+      setBarcodeInput("");
+      setIsScanning(false);
+      barcodeInputRef.current?.focus();
+    }
   }
 
   function submit() {
@@ -138,6 +179,7 @@ export function ProductFormDialog({
 
     const out: ProductFormValues = {
       sku: values.sku.trim(),
+      barcode: values.barcode?.trim(),
       name: values.name.trim(),
       category: values.category,
       price: values.price,
@@ -223,11 +265,11 @@ export function ProductFormDialog({
           </div>
         ) : (
           <div className="grid gap-4 py-2 sm:grid-cols-2">
-            {/* SKU — auto-generated; this same value is the product's scannable barcode. */}
+            {/* SKU — auto-generated internal identifier */}
             <div className="grid gap-1.5 sm:col-span-2">
               <div className="flex items-end gap-2">
                 <div className="flex-1 grid gap-1.5">
-                  <Label htmlFor="product-sku">SKU / Barcode</Label>
+                  <Label htmlFor="product-sku">SKU (Internal ID)</Label>
                   <Input id="product-sku" type="text" value={values.sku} disabled readOnly />
                 </div>
                 {mode === "add" && (
@@ -243,8 +285,55 @@ export function ProductFormDialog({
                 )}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Auto-generated — this is the exact code printed and scanned at checkout.
+                Auto-generated internal product identifier.
               </p>
+            </div>
+
+            {/* Barcode — scannable product code */}
+            <div className="grid gap-1.5 sm:col-span-2">
+              <Label htmlFor="product-barcode">Barcode (Scannable)</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="product-barcode"
+                  ref={barcodeInputRef}
+                  type="text"
+                  value={barcodeInput}
+                  placeholder="Scan or enter barcode…"
+                  onChange={(e) => setBarcodeInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleBarcodeInput(barcodeInput);
+                    }
+                  }}
+                  disabled={isScanning}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleBarcodeInput(barcodeInput)}
+                  disabled={isScanning || !barcodeInput.trim()}
+                  className="mb-0 gap-2"
+                >
+                  <Scan className="h-4 w-4" />
+                  <span className="hidden sm:inline">Load</span>
+                </Button>
+              </div>
+              <div className="grid gap-2">
+                <div className="rounded bg-secondary/50 p-3">
+                  <p className="text-xs font-medium text-foreground">Product Barcode</p>
+                  <Input
+                    type="text"
+                    value={values.barcode ?? ""}
+                    placeholder="Barcode from scanned product"
+                    onChange={(e) => setValues((s) => ({ ...s, barcode: e.target.value }))}
+                    className="mt-1 text-sm bg-background"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    The actual barcode printed on the product — this is what the POS scanner looks for.
+                  </p>
+                </div>
+              </div>
             </div>
 
             {/* Product Name */}

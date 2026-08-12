@@ -37,6 +37,29 @@ export function useInventoryDashboard() {
   });
 }
 
+/** Fetch a single product by its barcode for quick lookup in forms. */
+export function useFetchProductByBarcode(barcode: string) {
+  return useQuery({
+    queryKey: ["inventory", "product-by-barcode", barcode],
+    enabled: false,
+    queryFn: async (): Promise<Product | null> => {
+      if (!barcode.trim()) return null;
+      const { data, error } = await supabase
+        .from("products")
+        .select(
+          "sku, barcode, name, category, price, stock, minStock:min_stock, status, gstRate:gst_rate, mrp, purchaseRate:purchase_rate",
+        )
+        .eq("barcode", barcode.trim())
+        .single();
+      if (error) {
+        if (error.code === "PGRST116") return null;
+        throw error;
+      }
+      return data as Product;
+    },
+  });
+}
+
 /**
  * The product list.
  *
@@ -68,7 +91,7 @@ export function useProducts(search?: string, branch?: string) {
         let branchQuery = supabase
           .from("products")
           .select(
-            "sku, name, category, price, minStock:min_stock, status, gstRate:gst_rate, mrp, purchaseRate:purchase_rate",
+            "sku, barcode, name, category, price, minStock:min_stock, status, gstRate:gst_rate, mrp, purchaseRate:purchase_rate",
           )
           .in("sku", [...stockBySku.keys()]);
         if (search)
@@ -79,11 +102,10 @@ export function useProducts(search?: string, branch?: string) {
         return (rows ?? []).map((p) => {
           const stock = stockBySku.get(p.sku) ?? 0;
           return {
-            ...(p as Omit<Product, "barcode" | "stock">),
+            ...(p as Omit<Product, "stock">),
             stock,
             // Status reflects the BRANCH's own holding, not the central one.
             status: calculateProductStatus(stock, (p as { minStock?: number }).minStock ?? 0),
-            barcode: p.sku,
           } as Product;
         });
       }
@@ -91,7 +113,7 @@ export function useProducts(search?: string, branch?: string) {
       let query = supabase
         .from("products")
         .select(
-          "sku, name, category, price, stock, minStock:min_stock, status, gstRate:gst_rate, mrp, purchaseRate:purchase_rate",
+          "sku, barcode, name, category, price, stock, minStock:min_stock, status, gstRate:gst_rate, mrp, purchaseRate:purchase_rate",
         );
       if (search) query = query.or(`name.ilike.${like(search)},sku.ilike.${like(search)}`);
       const { data, error } = await query;
@@ -99,9 +121,7 @@ export function useProducts(search?: string, branch?: string) {
         console.error("Error fetching products from Supabase:", error);
         throw error;
       }
-      // The SKU IS the barcode (one identifier) — see generateSku() in
-      // @/lib/inventory-utils, called when a product is created.
-      return (data as Omit<Product, "barcode">[]).map((p) => ({ ...p, barcode: p.sku }));
+      return data as Product[];
     },
   });
 }
@@ -545,6 +565,7 @@ export function useCreateProduct() {
     mutationFn: async (input: ProductInput) => {
       const row = {
         sku: input.sku,
+        barcode: input.barcode ?? null,
         name: input.name,
         category: input.category,
         price: input.price,
@@ -572,6 +593,7 @@ export function useUpdateProduct() {
       const { originalSku, ...product } = input;
       const row = {
         sku: product.sku,
+        barcode: product.barcode ?? null,
         name: product.name,
         category: product.category,
         price: product.price,
