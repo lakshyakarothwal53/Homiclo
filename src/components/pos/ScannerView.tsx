@@ -193,38 +193,38 @@ export function ScannerView({
         )}
 
         {!scanned && lastCode && (
-          <div className=”mt-6 flex w-full flex-col gap-3 rounded-lg border border-dashed border-border p-4 text-left”>
-            <p className=”text-sm text-muted-foreground”>
-              “{lastCode}” isn't in the catalog yet.
+          <div className='mt-6 flex w-full flex-col gap-3 rounded-lg border border-dashed border-border p-4 text-left'>
+            <p className='text-sm text-muted-foreground'>
+              Product code not found. Create it now?
             </p>
-            <div className=”flex gap-2”>
+            <div className='flex gap-2'>
               <Button
-                variant=”outline”
-                size=”sm”
-                className=”gap-2 flex-1”
+                variant='outline'
+                size='sm'
+                className='gap-2 flex-1'
                 onClick={() => setShowAddProduct(true)}
               >
-                <Plus className=”h-4 w-4” /> Add Product
+                <Plus className='h-4 w-4' /> Add Product
               </Button>
               <Button
-                variant=”outline”
-                size=”sm”
-                className=”gap-2 flex-1”
+                variant='outline'
+                size='sm'
+                className='gap-2 flex-1'
                 onClick={() => printBarcodes([{ sku: lastCode, name: lastCode }])}
               >
-                <Barcode className=”h-4 w-4” /> Print Label
+                <Barcode className='h-4 w-4' /> Print Label
               </Button>
             </div>
           </div>
         )}
 
         <ProductFormDialog
-          mode=”add”
-          title=”Add Product to Catalog”
+          mode='add'
+          title='Add Product to Catalog'
           description={
             pendingBarcode
-              ? `Create a new product for barcode “${pendingBarcode}”`
-              : “Add a new product to the catalog”
+              ? `Create a new product for barcode: ${pendingBarcode}`
+              : 'Add a new product to the catalog'
           }
           categories={categories.map((c) => c.name)}
           allProducts={products}
