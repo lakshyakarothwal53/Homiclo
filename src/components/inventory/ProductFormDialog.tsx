@@ -26,7 +26,7 @@ import { useFetchProductByBarcode } from "@/hooks/use-inventory";
 import type { Product } from "@/types/inventory";
 
 // The statutory Indian GST slabs.
-const GST_SLABS = [0, 5, 12, 18, 28] as const;
+const GST_SLABS = [0, 3, 5, 12, 18, 28] as const;
 
 export type ProductFormValues = {
   sku: string;
