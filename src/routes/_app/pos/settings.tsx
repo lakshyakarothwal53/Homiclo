@@ -170,6 +170,16 @@ function Page() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="phone">Store Mobile No. (on receipt)</Label>
+              <Input
+                id="phone"
+                value={form.storePhone}
+                placeholder="98213 59003"
+                onChange={(e) => set("storePhone", e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="footer">Receipt Footer Text</Label>
               <Input
                 id="footer"

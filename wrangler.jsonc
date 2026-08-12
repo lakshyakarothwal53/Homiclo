@@ -1,0 +1,5 @@
+{
+  // Pins the Cloudflare Worker name so builds always target the existing
+  // "homiqlo" worker instead of the git-remote-derived auto-generated name.
+  "name": "homiqlo"
+}

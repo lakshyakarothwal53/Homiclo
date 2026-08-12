@@ -104,6 +104,7 @@ export type PosSettings = {
   autoPrint: boolean;
   storeName: string;
   storeAddress: string;
+  storePhone: string;
   gstin: string;
   /**
    * Logo printed at the top of every receipt, stored as a base64 data URI.
@@ -121,5 +122,6 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   autoPrint: true,
   storeName: "HOMIQLO",
   storeAddress: "",
+  storePhone: "",
   gstin: "",
 };

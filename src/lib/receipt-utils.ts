@@ -112,6 +112,9 @@ export function printReceipt(data: ReceiptData, settings: PosSettings) {
   const address = settings.storeAddress
     ? `<div class="muted">${esc(settings.storeAddress)}</div>`
     : "";
+  const phone = settings.storePhone
+    ? `<div class="muted">Mobile No: ${esc(settings.storePhone)}</div>`
+    : "";
   const upi = data.upiRef ? `<div class="muted">UPI Ref: ${esc(data.upiRef)}</div>` : "";
 
   // Customer block — only rendered when at least a name is present.
@@ -133,13 +136,13 @@ export function printReceipt(data: ReceiptData, settings: PosSettings) {
 <style>
   @page { size: ${widthMm}mm auto; margin: 0; }
   * { box-sizing: border-box; }
-  body { width: ${widthMm}mm; margin: 0; padding: 4mm 3mm; font-family: "Courier New", monospace; color: #000; font-size: 12px; line-height: 1.4; }
+  body { width: ${widthMm}mm; margin: 0; padding: 4mm 3mm; font-family: "Courier New", monospace; color: #000; font-size: 12px; line-height: 1.4; font-weight: 700; }
   .center { text-align: center; }
-  .store { font-size: 16px; font-weight: 800; }
+  .store { font-size: 22px; font-weight: 900; letter-spacing: 0.5px; }
   /* Capped so a large upload can't push the whole bill down the roll.
      print-color-adjust keeps the artwork from being dropped by the browser's
      "background graphics off" default. */
-  .logo { display: block; margin: 0 auto 4px; max-width: 100%; max-height: 22mm; object-fit: contain; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .logo { display: block; margin: 0 auto 4px; width: 100%; max-width: 100%; max-height: 34mm; object-fit: contain; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .muted { font-size: 11px; }
   .sm { font-size: 10px; }
   hr { border: none; border-top: 1px dashed #000; margin: 6px 0; }
@@ -162,6 +165,7 @@ export function printReceipt(data: ReceiptData, settings: PosSettings) {
     <div class="store">${esc(settings.storeName || "HOMIQLO")}</div>
     ${address}
     ${gstin}
+    ${phone}
   </div>
   <hr />
   <div class="muted">Invoice: ${esc(data.invoice)}</div>
