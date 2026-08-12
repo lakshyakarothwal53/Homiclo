@@ -114,8 +114,9 @@ export function ProductFormDialog({
     else setInternalOpen(next);
   }
 
-  async function handleBarcodeInput(barcode: string) {
-    if (!barcode.trim()) return;
+  async function handleBarcodeInput(rawBarcode: string) {
+    const barcode = rawBarcode.trim();
+    if (!barcode) return;
     setIsScanning(true);
     try {
       const { data } = await fetchByBarcode();
@@ -135,7 +136,8 @@ export function ProductFormDialog({
         }));
         toast.success(`Product "${data.name}" loaded from barcode.`);
       } else {
-        toast.error(`No product found for barcode "${barcode}".`);
+        setValues((s) => ({ ...s, barcode }));
+        toast.error(`No product found for barcode "${barcode}". You can add it as a new product.`);
       }
     } catch (error) {
       toast.error("Failed to fetch product details.");
