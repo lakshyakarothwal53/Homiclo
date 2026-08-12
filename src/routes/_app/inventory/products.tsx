@@ -67,6 +67,7 @@ function toProduct(v: ProductFormValues): Product {
   const status = calculateProductStatus(v.stock, v.minStock);
   return {
     sku: v.sku,
+    barcode: v.barcode,
     name: v.name,
     category: v.category,
     price: v.price,
