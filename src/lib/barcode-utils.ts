@@ -37,23 +37,28 @@ export function barcodeSvg(sku: string, opts: BarcodeSvgOptions = {}): string {
 const esc = (s: string) =>
   s.replace(/[&<>]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"));
 
-/** One 50mm×50mm label cell — name, barcode, price. */
+/** One 50mm×50mm label cell — brand, name, barcode, MRP + selling price. */
 function labelCell(p: BarcodeProduct): string {
   let svg: string;
   try {
     // Compact settings so a full CODE128 fits inside ~46mm.
-    svg = barcodeSvg(p.barcode || p.sku, { width: 1.4, height: 34, margin: 2, fontSize: 9 });
+    svg = barcodeSvg(p.barcode || p.sku, { width: 1.4, height: 28, margin: 2, fontSize: 8 });
   } catch {
     return `<div class="label"></div>`;
   }
+  const mrp =
+    typeof p.mrp === "number" && p.mrp > 0
+      ? `<span class="mrp">MRP ₹${p.mrp.toLocaleString("en-IN")}</span>`
+      : "";
   const price =
     typeof p.price === "number"
-      ? `<div class="price">₹${p.price.toLocaleString("en-IN")}</div>`
+      ? `<span class="price">₹${p.price.toLocaleString("en-IN")}</span>`
       : "";
   return `<div class="label">
+    <div class="label-brand">HOMIQLO</div>
     <div class="name">${esc(p.name)}</div>
     ${svg}
-    ${price}
+    <div class="pricing">${mrp}${price}</div>
   </div>`;
 }
 
@@ -91,9 +96,12 @@ export function printBarcodes(products: BarcodeProduct[]) {
   .row { width: 100mm; height: 50mm; display: flex; }
   .label { width: 50mm; height: 50mm; padding: 1.5mm; overflow: hidden;
            display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .label-brand { font-size: 6.5pt; font-weight: 800; color: #FE0000; letter-spacing: 0.4px; text-transform: uppercase; }
   .name { font-size: 8pt; font-weight: 600; line-height: 1.1; max-width: 100%;
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 1mm; }
-  .price { font-size: 9pt; font-weight: 700; margin-top: 0.5mm; }
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0.5mm 0 1mm; }
+  .pricing { display: flex; align-items: baseline; gap: 2.5mm; margin-top: 0.5mm; }
+  .mrp { font-size: 7pt; font-weight: 500; color: #666; text-decoration: line-through; }
+  .price { font-size: 10pt; font-weight: 800; }
   svg { max-width: 100%; height: auto; }
   @media print {
     .toolbar { display: none; }
