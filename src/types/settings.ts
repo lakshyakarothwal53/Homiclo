@@ -1,8 +1,12 @@
+import type { Role as AccessRole } from "@/lib/roles";
+
 export type Role = {
   role: string;
   users: number;
   description: string;
   permissions: string;
+  /** Login portal this job role signs in through — see src/lib/login-as.ts. */
+  loginAs: AccessRole;
 };
 
 export type BranchInfo = {

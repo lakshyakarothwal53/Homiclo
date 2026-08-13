@@ -51,6 +51,10 @@ export const ROLE_ACCESS: Record<Role, string[]> = {
   hr: ["Dashboard", "Employees", "Attendance", "Reports", "Settings"],
 };
 
+export function isRole(value: string | null | undefined): value is Role {
+  return !!value && value in ROLE_ACCESS;
+}
+
 /**
  * Roles whose data is confined to a single branch. Super Admin is the only
  * role with cross-branch visibility; everyone else reads only their own branch.

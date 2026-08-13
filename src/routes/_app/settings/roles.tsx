@@ -14,7 +14,9 @@ import { TableCell, TableRow } from "@/components/ui/table";
 import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import { useCreateRole, useRoles, useSettingsBranches, useUpdateRole } from "@/hooks/use-settings";
+import { defaultLoginAs, isGrantableLoginAs, LOGIN_AS_OPTIONS } from "@/lib/login-as";
 import { downloadCsv } from "@/lib/pdf-utils";
+import { ROLE_LABEL, type Role as AccessRole } from "@/lib/roles";
 import type { Role } from "@/types/settings";
 
 export const Route = createFileRoute("/_app/settings/roles")({
@@ -30,6 +32,7 @@ export const Route = createFileRoute("/_app/settings/roles")({
 const COLUMNS: Column[] = [
   { key: "role", label: "Role" },
   { key: "users", label: "Users" },
+  { key: "loginAs", label: "Login As" },
   { key: "description", label: "Description" },
   { key: "permissions", label: "Permissions" },
   { key: "action", label: "", align: "right" },
@@ -38,6 +41,13 @@ const COLUMNS: Column[] = [
 const ROLE_FIELDS: EntityField[] = [
   { key: "role", label: "Role Name", required: true, placeholder: "Store Manager" },
   { key: "users", label: "Users", type: "number" },
+  {
+    key: "loginAs",
+    label: "Login As",
+    type: "select",
+    required: true,
+    options: LOGIN_AS_OPTIONS,
+  },
   { key: "description", label: "Description", required: true, placeholder: "Manages one store" },
   {
     key: "permissions",
@@ -67,10 +77,15 @@ function Page() {
     }
     downloadCsv(
       "roles.csv",
-      ["Role", "Users", "Description", "Permissions"],
-      rows.map((r) => [r.role, r.users, r.description, r.permissions]),
+      ["Role", "Users", "Login As", "Description", "Permissions"],
+      rows.map((r) => [r.role, r.users, ROLE_LABEL[r.loginAs], r.description, r.permissions]),
     );
     toast.success(`Exported ${rows.length} roles.`);
+  }
+
+  function toLoginAs(value: EntityValues["loginAs"], roleName: string): AccessRole {
+    const picked = String(value);
+    return isGrantableLoginAs(picked) ? picked : defaultLoginAs(roleName);
   }
 
   function handleAdd(v: EntityValues) {
@@ -80,6 +95,7 @@ function Page() {
         users: Number(v.users) || 0,
         description: String(v.description),
         permissions: String(v.permissions),
+        loginAs: toLoginAs(v.loginAs, String(v.role)),
       },
       {
         onSuccess: () => toast.success(`Role "${v.role}" added.`),
@@ -96,6 +112,7 @@ function Page() {
         users: Number(v.users) || 0,
         description: String(v.description),
         permissions: String(v.permissions),
+        loginAs: toLoginAs(v.loginAs, String(v.role)),
         originalRole: original.role,
       },
       {
@@ -145,6 +162,11 @@ function Page() {
           <TableRow key={r.role} className="border-t border-border">
             <TableCell className="px-5 py-3 font-medium">{r.role}</TableCell>
             <TableCell className="px-5 py-3">{r.users}</TableCell>
+            <TableCell className="px-5 py-3">
+              <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium">
+                {ROLE_LABEL[r.loginAs]}
+              </span>
+            </TableCell>
             <TableCell className="px-5 py-3 text-muted-foreground">{r.description}</TableCell>
             <TableCell className="px-5 py-3 text-muted-foreground">{r.permissions}</TableCell>
             <TableCell className="px-5 py-3 text-right">

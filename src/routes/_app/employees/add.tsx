@@ -18,6 +18,7 @@ import { useCreateEmployee } from "@/hooks/use-employees";
 import { useBranches } from "@/hooks/use-inventory";
 import { useShiftConfigs } from "@/hooks/use-attendance";
 import { useRoles } from "@/hooks/use-settings";
+import { ROLE_LABEL } from "@/lib/roles";
 import type { EmployeeRole, EmployeeStatus } from "@/types/employees";
 import { toast } from "sonner";
 
@@ -61,6 +62,8 @@ function AddEmployeePage() {
     address: "",
     emergencyContact: "",
   });
+
+  const selectedRole = assignableRoles.find((r) => r.role === formData.role);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showPassword, setShowPassword] = useState(false);
@@ -228,6 +231,11 @@ function AddEmployeePage() {
                   </SelectContent>
                 </Select>
                 {errors.role && <p className="text-xs text-red-500">{errors.role}</p>}
+                {selectedRole && (
+                  <p className="text-xs text-muted-foreground">
+                    Signs in on the {ROLE_LABEL[selectedRole.loginAs]} login only.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">

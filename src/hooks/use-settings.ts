@@ -1,11 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { hashPassword } from "@/hooks/use-employees";
+import { defaultLoginAs, isGrantableLoginAs } from "@/lib/login-as";
 import { supabase } from "@/lib/supabase";
 import type { BranchInfo, BranchInput, Role } from "@/types/settings";
 
 function like(value: string) {
   return `%${value}%`;
+}
+
+// 42703 = column does not exist: roles.login_as ships in
+// supabase/settings/04_role_login_as.sql, which is run by hand. Until it has
+// been, reads fall back to the name-derived default and writes drop the column
+// so the page keeps working instead of erroring on every query.
+const UNDEFINED_COLUMN = "42703";
+
+const MISSING_LOGIN_AS_HINT =
+  "Login portal column missing — run supabase/settings/04_role_login_as.sql in the Supabase SQL editor.";
+
+function asLoginAsError(error: { code?: string; message: string }): Error {
+  return new Error(error.code === UNDEFINED_COLUMN ? MISSING_LOGIN_AS_HINT : error.message);
 }
 
 const MISSING_TABLE_HINT =
@@ -56,13 +70,14 @@ export function useCreateRole() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: Role): Promise<Role> => {
-      const { error } = await supabase.from("roles").insert({
+      const row = {
         role: input.role,
         users: input.users,
         description: input.description,
         permissions: input.permissions,
-      });
-      if (error) throw error;
+      };
+      const { error } = await supabase.from("roles").insert({ ...row, login_as: input.loginAs });
+      if (error) throw asLoginAsError(error);
       return input;
     },
     onSuccess: () => {
@@ -82,9 +97,10 @@ export function useUpdateRole() {
           users: input.users,
           description: input.description,
           permissions: input.permissions,
+          login_as: input.loginAs,
         })
         .eq("role", input.originalRole);
-      if (error) throw error;
+      if (error) throw asLoginAsError(error);
       return input;
     },
     onSuccess: () => {
@@ -108,11 +124,19 @@ export function useRoles(search?: string, branch?: string) {
   return useQuery({
     queryKey: ["settings", "roles", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<Role[]> => {
-      let query = supabase.from("roles").select("role, users, description, permissions");
-      if (search) query = query.or(`role.ilike.${like(search)},description.ilike.${like(search)}`);
-      const { data, error } = await query;
+      const select = (columns: string) => {
+        const q = supabase.from("roles").select(columns);
+        return search ? q.or(`role.ilike.${like(search)},description.ilike.${like(search)}`) : q;
+      };
+      let { data, error } = await select("role, users, description, permissions, loginAs:login_as");
+      if (error?.code === UNDEFINED_COLUMN) {
+        ({ data, error } = await select("role, users, description, permissions"));
+      }
       if (error) throw error;
-      const roles = data as Role[];
+      const roles = (data as unknown as Role[]).map((r) => ({
+        ...r,
+        loginAs: isGrantableLoginAs(r.loginAs) ? r.loginAs : defaultLoginAs(r.role),
+      }));
 
       let empQuery = supabase.from("employees").select("role");
       if (!allBranches) empQuery = empQuery.eq("branch", branch);

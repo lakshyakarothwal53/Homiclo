@@ -1,5 +1,6 @@
 import { createIsomorphicFn, createServerFn } from "@tanstack/react-start";
 import { getCookie } from "@tanstack/react-start/server";
+import { defaultLoginAs, isGrantableLoginAs } from "@/lib/login-as";
 import { ROLE_LABEL, type Role } from "@/lib/roles";
 
 const COOKIE_NAME = "homiqlo_session";
@@ -56,20 +57,33 @@ const readSessionCookie = createIsomorphicFn()
  * then disappear along with the rest of this file's custom checks.
  * ──────────────────────────────────────────────────────────────────────── */
 
-// employees.role stores the display strings offered on the Add Employee form,
-// not the Role union — map them so DB-created accounts get the right access.
-const EMPLOYEE_ROLE_MAP: Record<string, Role> = {
-  admin: "branch_admin",
-  "floor manager": "store_manager",
-  supervisor: "store_manager",
-  cashier: "cashier",
-  inventory: "inventory",
-  hr: "hr",
-  salesman: "employee",
-};
-
-function toSessionRole(dbRole: string | null | undefined): Role {
-  return EMPLOYEE_ROLE_MAP[(dbRole ?? "").trim().toLowerCase()] ?? "employee";
+/**
+ * employees.role stores a job title from Settings › Roles ("Cashier",
+ * "Housekeeping", …), not the Role union. That row's `login_as` column says
+ * which login portal the title belongs to, so an admin can point a new job
+ * title at Cashier / Inventory / Store Manager / Employee without a code
+ * change. Names are compared case-insensitively (the table is a handful of
+ * rows, so one fetch is cheaper than a query per casing variant), and any
+ * title with no row — or a database that predates the column — falls back to
+ * the name-derived default in login-as.ts.
+ */
+async function toSessionRole(dbRole: string | null | undefined): Promise<Role> {
+  const name = (dbRole ?? "").trim();
+  try {
+    const { supabase } = await import("@/lib/supabase");
+    const { data } = await supabase.from("roles").select("role, login_as");
+    const wanted = name.toLowerCase();
+    const match = (data ?? []).find(
+      (r) => (r.role as string | null)?.trim().toLowerCase() === wanted,
+    );
+    const stored = String(match?.login_as ?? "").trim();
+    // super_admin is deliberately not grantable here: it is the break-glass
+    // account in `super_admins`, so a job title pointed at it must not escalate.
+    if (isGrantableLoginAs(stored)) return stored;
+  } catch {
+    // roles.login_as not migrated yet — fall through to the default.
+  }
+  return defaultLoginAs(name);
 }
 
 // Runs server-side only — createServerFn splits this handler (and everything
@@ -119,7 +133,7 @@ export async function signIn(
  *   Admin account. The table has no RLS policies at all; the RPC is
  *   SECURITY DEFINER so it can read it, and returns only sanitized fields —
  *   the password hash never leaves the database. `employees` has no role
- *   that maps to super_admin (see EMPLOYEE_ROLE_MAP — "Admin" is a BRANCH
+ *   that maps to super_admin (see toSessionRole — "Admin" is a BRANCH
  *   admin), so without this nobody could manage the catalogue or allocate
  *   stock to branches.
  * - `employees` — real accounts, created through Employees → Add Employee.
@@ -144,7 +158,7 @@ async function resolveUser(normalizedEmail: string, hash: string): Promise<Sessi
           .map((n: string) => n[0])
           .join("")
           .toUpperCase(),
-        role: toSessionRole(employeeMatch.role),
+        role: await toSessionRole(employeeMatch.role),
         branch: employeeMatch.branch,
       };
     }
