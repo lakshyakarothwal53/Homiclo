@@ -560,7 +560,12 @@ export function useCreateProduct() {
         purchase_rate: input.purchaseRate ?? null,
       };
       const { error } = await supabase.from("products").insert(row);
-      if (error) throw error;
+      // Supabase's PostgrestError is a plain object, not an `instanceof Error`
+      // — throwing it as-is means every `e instanceof Error ? e.message : …`
+      // fallback in the UI (see products.tsx handleCreate) silently swallows
+      // the real reason and shows a generic "Could not create product."
+      // Wrapping it here surfaces the actual Postgres error text instead.
+      if (error) throw new Error(error.message);
       return input;
     },
     onSuccess: () => {
@@ -592,7 +597,7 @@ export function useUpdateProduct() {
         purchase_rate: product.purchaseRate ?? null,
       };
       const { error } = await supabase.from("products").update(row).eq("sku", originalSku);
-      if (error) throw error;
+      if (error) throw new Error(error.message);
       return input;
     },
     onSuccess: () => {

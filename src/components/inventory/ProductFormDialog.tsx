@@ -167,14 +167,34 @@ export function ProductFormDialog({
       return;
     }
 
-    // Extremely unlikely (same-millisecond auto SKU), but guard anyway: if it
-    // somehow collides with an existing product, offer "add to stock" instead
-    // of a failed insert on the sku primary key.
+    // A duplicate SKU is extremely unlikely (same-millisecond auto SKU), but a
+    // duplicate barcode is common — the same physical item scanned twice, or
+    // typed straight into "Product Barcode" rather than through the
+    // Scan/Load flow above (the only path that already checks). Either way,
+    // catch it here and offer "Add to Stock" instead of letting it fail on
+    // the database's unique constraint (products_barcode_key) with an opaque
+    // "duplicate key value violates unique constraint" error.
     if (mode === "add") {
-      const existing = allProducts.find((p) => p.sku === values.sku.trim());
+      const barcode = values.barcode?.trim();
+      const existing =
+        allProducts.find((p) => p.sku === values.sku.trim()) ??
+        (barcode ? allProducts.find((p) => p.barcode === barcode) : undefined);
       if (existing) {
         setIsAddingToStock(true);
         setExistingProduct(existing);
+        return;
+      }
+    }
+
+    // Editing a product's barcode to one another product already owns would
+    // hit the same unique constraint — block it here with a clear reason.
+    if (mode === "edit") {
+      const barcode = values.barcode?.trim();
+      const clash = barcode
+        ? allProducts.find((p) => p.barcode === barcode && p.sku !== values.sku.trim())
+        : undefined;
+      if (clash) {
+        toast.error(`Barcode "${barcode}" is already used by "${clash.name}" (${clash.sku}).`);
         return;
       }
     }
