@@ -18,6 +18,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { useBranchScope } from "@/hooks/use-branch-scope";
 import { usePagination } from "@/hooks/use-pagination";
 import {
@@ -28,6 +29,7 @@ import {
   useUpdateCategory,
   type CategoryInput,
 } from "@/hooks/use-inventory";
+import { canManageCatalogue } from "@/lib/roles";
 
 export const Route = createFileRoute("/_app/inventory/categories")({
   head: () => ({
@@ -49,6 +51,12 @@ const COLUMNS: Column[] = [
 
 function Page() {
   const { scoped, homeBranch } = useBranchScope();
+  const { role } = useAuth();
+  // The category catalog is global (see useCategories) — Add/Edit follow the
+  // same Super Admin + Branch Admin gate as Products. Delete is Super Admin
+  // only: removing a category affects every branch at once.
+  const canManage = role ? canManageCatalogue(role) : false;
+  const canDelete = role === "super_admin";
   const [search, setSearch] = useState("");
   const [branch, setBranch] = useState(homeBranch);
   const [addOpen, setAddOpen] = useState(false);
@@ -61,13 +69,10 @@ function Page() {
   const deleteCategory = useDeleteCategory();
 
   function handleCreate(values: CategoryInput) {
-    createCategory.mutate(
-      { ...values, branch },
-      {
-        onSuccess: () => toast.success(`${values.name} created.`),
-        onError: (e) => toast.error(e instanceof Error ? e.message : "Could not create category."),
-      },
-    );
+    createCategory.mutate(values, {
+      onSuccess: () => toast.success(`${values.name} created.`),
+      onError: (e) => toast.error(e instanceof Error ? e.message : "Could not create category."),
+    });
   }
 
   function handleUpdate(originalName: string, values: CategoryInput) {
@@ -81,13 +86,10 @@ function Page() {
   }
 
   function handleDelete(name: string) {
-    deleteCategory.mutate(
-      { name, branch },
-      {
-        onSuccess: () => toast.success(`${name} deleted.`),
-        onError: (e) => toast.error(e instanceof Error ? e.message : "Could not delete category."),
-      },
-    );
+    deleteCategory.mutate(name, {
+      onSuccess: () => toast.success(`${name} deleted.`),
+      onError: (e) => toast.error(e instanceof Error ? e.message : "Could not delete category."),
+    });
   }
 
   return (
@@ -101,12 +103,13 @@ function Page() {
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search categories…"
-        primaryLabel="Add New"
-        onPrimary={() => setAddOpen(true)}
+        {...(canManage ? { primaryLabel: "Add New", onPrimary: () => setAddOpen(true) } : {})}
         {...(scoped ? {} : { branches, branch, onBranchChange: setBranch })}
       />
 
-      <CategoryDialog mode="add" open={addOpen} onOpenChange={setAddOpen} onSave={handleCreate} />
+      {canManage && (
+        <CategoryDialog mode="add" open={addOpen} onOpenChange={setAddOpen} onSave={handleCreate} />
+      )}
 
       <DataTableCard
         columns={COLUMNS}
@@ -124,38 +127,45 @@ function Page() {
             <TableCell className="px-5 py-3 text-muted-foreground">{c.lastUpdated}</TableCell>
             <TableCell className="px-5 py-3 text-right">
               <div className="flex items-center justify-end gap-4">
-                <CategoryDialog
-                  mode="edit"
-                  initial={c}
-                  trigger={
-                    <button className="text-sm font-medium text-brand hover:underline">Edit</button>
-                  }
-                  onSave={(values) => handleUpdate(c.name, values)}
-                />
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <button className="text-sm font-medium text-muted-foreground hover:text-destructive hover:underline">
-                      Delete
-                    </button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Delete “{c.name}”?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        This permanently removes the category. This action cannot be undone.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        className="bg-destructive text-white hover:bg-destructive/90"
-                        onClick={() => handleDelete(c.name)}
-                      >
+                {canManage && (
+                  <CategoryDialog
+                    mode="edit"
+                    initial={c}
+                    trigger={
+                      <button className="text-sm font-medium text-brand hover:underline">
+                        Edit
+                      </button>
+                    }
+                    onSave={(values) => handleUpdate(c.name, values)}
+                  />
+                )}
+                {canDelete && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <button className="text-sm font-medium text-muted-foreground hover:text-destructive hover:underline">
                         Delete
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                      </button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete "{c.name}"?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This permanently removes the category for every branch. This action cannot
+                          be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-destructive text-white hover:bg-destructive/90"
+                          onClick={() => handleDelete(c.name)}
+                        >
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
               </div>
             </TableCell>
           </TableRow>

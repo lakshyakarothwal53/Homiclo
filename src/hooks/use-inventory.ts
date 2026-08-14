@@ -227,82 +227,79 @@ function formatStockValue(value: number): string {
   return `₹${value}`;
 }
 
+/**
+ * The category catalog itself (the `name` list) is always global — a category
+ * created by Super Admin or by any Branch Admin shows up for everyone, the
+ * same way `products` is one shared catalogue (see canManageCatalogue in
+ * roles.ts). `branch` only changes how `productCount`/`stockValue` are
+ * measured: company-wide totals for "All Branches", or just that branch's own
+ * allocated stock (`branch_inventory` joined to `products`). A category with
+ * no stock at a given branch still appears there — just with a zero count —
+ * instead of disappearing, which is what happened when the branch path used
+ * to derive the category list from allocated stock instead of reading
+ * `categories`.
+ */
 export function useCategories(search?: string, branch?: string) {
   const allBranches = !branch || branch === "all";
   return useQuery({
     queryKey: ["inventory", "categories", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<Category[]> => {
-      if (allBranches) {
-        // categories.product_count/stock_value are seed-time snapshots that
-        // drift the moment products are added/edited/deleted — compute both
-        // live from the products table instead of trusting the stored columns.
-        let query = supabase.from("categories").select("name, last_updated:last_updated");
-        if (search) query = query.ilike("name", like(search));
-        const { data: cats, error } = await query;
-        if (error) throw error;
+      // categories.product_count/stock_value are seed-time snapshots that
+      // drift the moment products are added/edited/deleted — compute both
+      // live from the products table instead of trusting the stored columns.
+      let query = supabase.from("categories").select("name, last_updated:last_updated");
+      if (search) query = query.ilike("name", like(search));
+      const { data: cats, error } = await query;
+      if (error) throw error;
 
+      const live: Record<string, { count: number; value: number }> = {};
+
+      if (allBranches) {
         const { data: products, error: prodError } = await supabase
           .from("products")
           .select("category, price, stock");
         if (prodError) throw prodError;
 
-        const live: Record<string, { count: number; value: number }> = {};
         (products ?? []).forEach((p) => {
           const cat = (p.category && p.category.trim()) || "Uncategorized";
           if (!live[cat]) live[cat] = { count: 0, value: 0 };
           live[cat].count += 1;
           live[cat].value += (p.price ?? 0) * (p.stock ?? 0);
         });
+      } else {
+        const { data: allocations, error: allocError } = await supabase
+          .from("branch_inventory")
+          .select("sku, stock")
+          .eq("branch", branch)
+          .gt("stock", 0);
+        if (allocError) throw allocError;
 
-        return (cats ?? []).map((c) => {
-          const agg = live[c.name] ?? { count: 0, value: 0 };
-          return {
-            name: c.name,
-            productCount: agg.count,
-            stockValue: formatStockValue(agg.value),
-            lastUpdated: c.last_updated,
-          };
-        });
+        if (allocations && allocations.length > 0) {
+          const stockBySku = new Map(allocations.map((a) => [a.sku as string, a.stock as number]));
+          const { data: products, error: prodError } = await supabase
+            .from("products")
+            .select("sku, category, price")
+            .in("sku", [...stockBySku.keys()]);
+          if (prodError) throw prodError;
+
+          (products ?? []).forEach((p) => {
+            const cat = (p.category && p.category.trim()) || "Uncategorized";
+            if (!live[cat]) live[cat] = { count: 0, value: 0 };
+            live[cat].count += 1;
+            live[cat].value += (p.price ?? 0) * (stockBySku.get(p.sku as string) ?? 0);
+          });
+        }
       }
 
-      // Branch view: aggregate live from what the branch actually holds
-      // (branch_inventory joined to products). The old category_branches
-      // junction is a hand-maintained snapshot that was never populated, so
-      // reading it showed every branch zero categories.
-      const { data: allocations, error: allocError } = await supabase
-        .from("branch_inventory")
-        .select("sku, stock")
-        .eq("branch", branch)
-        .gt("stock", 0);
-      if (allocError) throw allocError;
-      if (!allocations || allocations.length === 0) return [];
-
-      const stockBySku = new Map(allocations.map((a) => [a.sku as string, a.stock as number]));
-      const { data: products, error: prodError } = await supabase
-        .from("products")
-        .select("sku, category, price")
-        .in("sku", [...stockBySku.keys()]);
-      if (prodError) throw prodError;
-
-      const agg = new Map<string, { count: number; value: number }>();
-      (products ?? []).forEach((p) => {
-        const cat = (p.category && p.category.trim()) || "Uncategorized";
-        const cur = agg.get(cat) ?? { count: 0, value: 0 };
-        cur.count += 1;
-        cur.value += (p.price ?? 0) * (stockBySku.get(p.sku as string) ?? 0);
-        agg.set(cat, cur);
+      return (cats ?? []).map((c) => {
+        const agg = live[c.name] ?? { count: 0, value: 0 };
+        return {
+          name: c.name,
+          productCount: agg.count,
+          stockValue: formatStockValue(agg.value),
+          lastUpdated: c.last_updated,
+        };
       });
-
-      const q = search?.trim().toLowerCase();
-      return [...agg.entries()]
-        .filter(([name]) => !q || name.toLowerCase().includes(q))
-        .map(([name, a]) => ({
-          name,
-          productCount: a.count,
-          stockValue: formatStockValue(a.value),
-          lastUpdated: "—",
-        }))
-        .sort((a, b) => b.productCount - a.productCount);
     },
   });
 }
@@ -472,14 +469,19 @@ export type CategoryInput = {
 // Branch-scoped sessions pin every page to one branch. Their writes go to BOTH
 // the global table (the super admin "All Branches" view) and the `_branches`
 // junction row (their own branch view) — pass the pinned branch to opt in.
+// (Categories are the exception: see useCreateCategory below, which is
+// deliberately global-only.)
 function realBranch(branch?: string): string | null {
   return branch && branch !== "all" ? branch : null;
 }
 
+// The category catalog is a single global list (see useCategories above) — a
+// category created from any branch's session writes to the same `categories`
+// table Super Admin reads, so there is nothing branch-specific to insert.
 export function useCreateCategory() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: CategoryInput & { branch?: string }): Promise<CategoryInput> => {
+    mutationFn: async (input: CategoryInput): Promise<CategoryInput> => {
       // product_count/stock_value are no longer read (useCategories computes
       // them live from products) but the columns are still not-null, so seed
       // zero values for a freshly created, still-empty category.
@@ -490,17 +492,6 @@ export function useCreateCategory() {
         last_updated: "Just now",
       });
       if (error) throw error;
-      const branch = realBranch(input.branch);
-      if (branch) {
-        const { error: branchError } = await supabase.from("category_branches").insert({
-          category: input.name,
-          branch,
-          product_count: 0,
-          stock_value: "₹0",
-          last_updated: "Just now",
-        });
-        if (branchError) throw branchError;
-      }
       return input;
     },
     onSuccess: () => {
@@ -526,26 +517,16 @@ export function useUpdateCategory() {
   });
 }
 
+// Deleting a category removes it from the shared global list for everyone —
+// gated to Super Admin only in the UI (src/routes/_app/inventory/categories.tsx)
+// since it is companywide, not per-branch.
 export function useDeleteCategory() {
   const queryClient = useQueryClient();
   return useMutation({
-    // From a pinned branch view, delete removes the category from that branch
-    // only (its junction row); the global entity delete stays the "All
-    // Branches" behavior and cascades every branch row away.
-    mutationFn: async (input: { name: string; branch?: string }): Promise<string> => {
-      const branch = realBranch(input.branch);
-      if (branch) {
-        const { error } = await supabase
-          .from("category_branches")
-          .delete()
-          .eq("category", input.name)
-          .eq("branch", branch);
-        if (error) throw error;
-        return input.name;
-      }
-      const { error } = await supabase.from("categories").delete().eq("name", input.name);
+    mutationFn: async (name: string): Promise<string> => {
+      const { error } = await supabase.from("categories").delete().eq("name", name);
       if (error) throw error;
-      return input.name;
+      return name;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
