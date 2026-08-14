@@ -74,13 +74,16 @@ export function canApproveLeave(role: Role): boolean {
 }
 
 /**
- * Only Super Admin owns the product catalogue: creating, editing, deleting and
- * importing products, and allocating stock out to branches. Every other role
- * consumes what has been sent to their branch (see `branch_inventory`), so
- * they get a read-only product list.
+ * Super Admin and Branch Admin own the product catalogue: creating, editing,
+ * deleting and importing products, and allocating stock out to branches.
+ * Branch Admin's view is still branch-scoped (see `isBranchScoped`), but their
+ * writes go to the same global `products` table Super Admin writes to — there
+ * is no per-branch product catalogue. Every other role consumes what has been
+ * sent to their branch (see `branch_inventory`), so they get a read-only
+ * product list.
  */
 export function canManageCatalogue(role: Role): boolean {
-  return role === "super_admin";
+  return role === "super_admin" || role === "branch_admin";
 }
 
 export function canSeeSection(role: Role, sectionLabel: string): boolean {

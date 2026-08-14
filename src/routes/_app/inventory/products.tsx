@@ -24,6 +24,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { canManageCatalogue } from "@/lib/roles";
 import { SendToBranchDialog } from "@/components/inventory/SendToBranchDialog";
 import {
+  useAllocateProduct,
   useBranches,
   useCategories,
   useCreateProduct,
@@ -85,8 +86,8 @@ const ITEMS_PER_PAGE = 10;
 function Page() {
   const { scoped, homeBranch } = useBranchScope();
   const { role } = useAuth();
-  // Only Super Admin owns the catalogue; branch roles get a read-only list of
-  // what has been sent to them.
+  // Super Admin and Branch Admin own the catalogue; every other role gets a
+  // read-only list of what has been sent to them.
   const canManage = role ? canManageCatalogue(role) : false;
   const [search, setSearch] = useState("");
   const [branch, setBranch] = useState(homeBranch);
@@ -114,15 +115,40 @@ function Page() {
   const updateProduct = useUpdateProduct();
   const deleteProduct = useDeleteProduct();
   const addToStock = useAddToStock();
+  const allocateProduct = useAllocateProduct();
 
   useEffect(() => {
     setCurrentPage(1);
   }, [search, branch, minPrice, maxPrice]);
 
+  // Branch Admin's product list is branch-scoped — it reads `branch_inventory`,
+  // not central `products.stock` (see useProducts). Without this, a product a
+  // Branch Admin just created would land as unallocated central stock and
+  // vanish from their own list, since they have no central-stock view to find
+  // it in. Auto-allocate the entered stock to their branch via the same
+  // atomic RPC the "Send" button uses, so it shows up immediately.
+  function allocateToOwnBranch(sku: string, name: string, qty: number) {
+    if (!scoped || !homeBranch || qty <= 0) return;
+    allocateProduct.mutate(
+      { sku, branch: homeBranch, qty },
+      {
+        onError: (e) =>
+          toast.error(
+            `${name} was created, but couldn't be allocated to your branch: ${
+              e instanceof Error ? e.message : "unknown error"
+            }`,
+          ),
+      },
+    );
+  }
+
   function handleCreate(v: ProductFormValues) {
     const row = toProduct(v);
     createProduct.mutate(row, {
-      onSuccess: () => toast.success(`${row.name} created.`),
+      onSuccess: () => {
+        toast.success(`${row.name} created.`);
+        allocateToOwnBranch(row.sku, row.name, row.stock);
+      },
       onError: (e) => toast.error(e instanceof Error ? e.message : "Could not create product."),
     });
   }
@@ -164,6 +190,7 @@ function Page() {
       createProduct.mutate(product, {
         onSuccess: () => {
           // Silent success - final toast shown after all imports
+          allocateToOwnBranch(product.sku, product.name, product.stock);
         },
         onError: (e) => {
           toast.error(
@@ -200,8 +227,9 @@ function Page() {
           </Button>
         }
       />
-      {/* Catalogue mutations (Add New / Import) are Super-Admin-only: branches
-          receive stock from the centre rather than creating their own. */}
+      {/* Catalogue mutations (Add New / Import) are Super Admin / Branch Admin
+          only: other branch roles receive stock from the centre or their
+          branch admin rather than creating their own. */}
       <FilterBar
         search={search}
         onSearchChange={setSearch}

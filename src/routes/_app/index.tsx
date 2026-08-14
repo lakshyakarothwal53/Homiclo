@@ -85,8 +85,9 @@ function DashboardPage() {
     const all = [
       { icon: Clock, label: "Mark Attendance", route: "/attendance/employee-checkin" },
       { icon: UserPlus, label: "Add Employee", route: "/employees/add" },
-      // Only Super Admin can create products; a branch receives stock from the
-      // centre, so its tile links to the read-only list instead.
+      // Super Admin and Branch Admin can create products; every other role
+      // receives stock from the centre, so its tile links to the read-only
+      // list instead.
       user && canManageCatalogue(user.role)
         ? { icon: Box, label: "Add Product", route: "/inventory/products" }
         : { icon: Box, label: "View Inventory", route: "/inventory/products" },
