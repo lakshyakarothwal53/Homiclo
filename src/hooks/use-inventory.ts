@@ -546,7 +546,7 @@ export function useCreateProduct() {
     mutationFn: async (input: ProductInput) => {
       const row = {
         sku: input.sku,
-        barcode: input.barcode ?? null,
+        barcode: input.barcode?.trim() || null,
         name: input.name,
         category: input.category,
         price: input.price,
@@ -585,7 +585,7 @@ export function useUpdateProduct() {
       const { originalSku, ...product } = input;
       const row = {
         sku: product.sku,
-        barcode: product.barcode ?? null,
+        barcode: product.barcode?.trim() || null,
         name: product.name,
         category: product.category,
         price: product.price,
