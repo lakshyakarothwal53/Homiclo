@@ -69,20 +69,30 @@ function parseTimeToMinutes(raw: string | undefined): number | null {
   return h * 60 + min;
 }
 
-// Whether `nowMinutes` falls inside the shift's [start - grace, end] window,
-// wrapping past midnight for overnight shifts (e.g. 09:00 PM - 06:00 AM).
+// A late-leaving employee still has to record their departure, so check-out is
+// allowed for this many minutes past the shift end (overtime). Check-in stays
+// gated to the shift's own [start - grace, end] window.
+const CHECKOUT_OVERTIME_MINUTES = 6 * 60;
+
+// Whether `nowMinutes` falls inside the window an employee may mark attendance:
+//   check-in : [start - grace, end]
+//   check-out: [start - grace, end + CHECKOUT_OVERTIME_MINUTES]
+// wrapping past midnight for overnight shifts (e.g. 09:00 PM - 06:00 AM) and for
+// overtime that spills past midnight (e.g. a 06:00 PM end + 6h overtime).
 function isWithinShiftWindow(
   shift: { startTime: string; endTime: string; gracePeriodMinutes: number },
   nowMinutes: number,
+  checkType: "check-in" | "check-out" = "check-in",
 ): boolean {
   const start = parseTimeToMinutes(shift.startTime);
   const end = parseTimeToMinutes(shift.endTime);
   if (start === null || end === null) return true;
   const windowStart = (start - shift.gracePeriodMinutes + 1440) % 1440;
-  if (end <= windowStart) {
-    return nowMinutes >= windowStart || nowMinutes <= end;
+  const windowEnd = checkType === "check-out" ? (end + CHECKOUT_OVERTIME_MINUTES) % 1440 : end;
+  if (windowEnd <= windowStart) {
+    return nowMinutes >= windowStart || nowMinutes <= windowEnd;
   }
-  return nowMinutes >= windowStart && nowMinutes <= end;
+  return nowMinutes >= windowStart && nowMinutes <= windowEnd;
 }
 
 export const Route = createFileRoute("/_app/attendance/employee-checkin")({
@@ -127,7 +137,12 @@ function Page() {
     return () => clearInterval(interval);
   }, []);
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const withinShiftWindow = assignedShift ? isWithinShiftWindow(assignedShift, nowMinutes) : false;
+  const withinShiftWindow = assignedShift
+    ? isWithinShiftWindow(assignedShift, nowMinutes, "check-in")
+    : false;
+  const withinCheckoutWindow = assignedShift
+    ? isWithinShiftWindow(assignedShift, nowMinutes, "check-out")
+    : false;
 
   const applyLeave = useApplyLeaveRequest();
   const [leaveOpen, setLeaveOpen] = useState(false);
@@ -222,9 +237,12 @@ function Page() {
       return;
     }
 
-    if (!isWithinShiftWindow(assignedShift, new Date().getHours() * 60 + new Date().getMinutes())) {
+    const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+    if (!isWithinShiftWindow(assignedShift, nowMins, checkType)) {
       toast.error(
-        `You can only mark attendance during your ${assignedShift.shiftName} window (${assignedShift.startTime} - ${assignedShift.endTime}).`,
+        checkType === "check-out"
+          ? `Check-out for your ${assignedShift.shiftName} shift closed ${CHECKOUT_OVERTIME_MINUTES / 60}h after ${assignedShift.endTime}.`
+          : `You can only check in during your ${assignedShift.shiftName} window (${assignedShift.startTime} - ${assignedShift.endTime}).`,
       );
       return;
     }
@@ -386,6 +404,10 @@ function Page() {
                   {withinShiftWindow ? (
                     <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
                       Active now — you can mark attendance
+                    </span>
+                  ) : withinCheckoutWindow ? (
+                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">
+                      Shift over — check-out still open (overtime)
                     </span>
                   ) : (
                     <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-700">
@@ -556,7 +578,7 @@ function Page() {
                     !hasCheckedIn ||
                     hasCheckedOut ||
                     !assignedShift ||
-                    !withinShiftWindow
+                    !withinCheckoutWindow
                   }
                   className="bg-orange-600 hover:bg-orange-700 text-white"
                 >
