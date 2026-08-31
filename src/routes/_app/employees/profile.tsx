@@ -49,6 +49,12 @@ function editFields(
     { key: "shiftId", label: "Shift", type: "select", options: shifts, required: true },
     { key: "status", label: "Status", type: "select", options: STATUSES, required: true },
     { key: "salary", label: "Salary", required: true },
+    {
+      key: "password",
+      label: "New Password",
+      type: "password",
+      placeholder: "Leave blank to keep current password",
+    },
   ];
 }
 
@@ -136,6 +142,7 @@ function EmployeeProfilePage() {
   };
 
   const handleEditSave = (values: EntityValues) => {
+    const newPassword = values.password ? String(values.password) : "";
     updateEmployee(
       {
         id: profile.id,
@@ -150,9 +157,13 @@ function EmployeeProfilePage() {
         shiftId: values.shiftId ? String(values.shiftId) : undefined,
         address: values.address ? String(values.address) : "",
         emergencyContact: values.emergencyContact ? String(values.emergencyContact) : "",
+        password: newPassword || undefined,
       },
       {
-        onSuccess: () => toast.success("Employee updated successfully"),
+        onSuccess: () =>
+          toast.success(
+            newPassword ? "Employee updated — new password saved" : "Employee updated successfully",
+          ),
         onError: (error) => toast.error(`Failed to update employee: ${error.message}`),
       },
     );

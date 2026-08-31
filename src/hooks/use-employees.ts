@@ -244,22 +244,26 @@ export function useUpdateEmployee() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (employee: Employee) => {
-      const { error } = await supabase
-        .from("employees")
-        .update({
-          name: employee.name,
-          email: employee.email,
-          phone: employee.phone,
-          role: employee.role,
-          branch: employee.branch,
-          join_date: employee.joinDate,
-          status: employee.status,
-          salary: employee.salary,
-          shift_id: employee.shiftId || null,
-          address: employee.address || null,
-          emergency_contact: employee.emergencyContact || null,
-        })
-        .eq("id", employee.id);
+      const updateData: Record<string, unknown> = {
+        name: employee.name,
+        email: employee.email,
+        phone: employee.phone,
+        role: employee.role,
+        branch: employee.branch,
+        join_date: employee.joinDate,
+        status: employee.status,
+        salary: employee.salary,
+        shift_id: employee.shiftId || null,
+        address: employee.address || null,
+        emergency_contact: employee.emergencyContact || null,
+      };
+
+      // Only overwrite the login password when a new one was entered.
+      if (employee.password) {
+        updateData.password_hash = await hashPassword(employee.password);
+      }
+
+      const { error } = await supabase.from("employees").update(updateData).eq("id", employee.id);
       if (error) throw error;
       return employee;
     },

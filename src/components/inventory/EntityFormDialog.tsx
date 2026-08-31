@@ -31,7 +31,7 @@ export type EntityOption = string | { value: string; label: string };
 export type EntityField = {
   key: string;
   label: string;
-  type?: "text" | "number" | "select";
+  type?: "text" | "number" | "select" | "password";
   options?: readonly EntityOption[];
   required?: boolean;
   placeholder?: string;
@@ -104,7 +104,8 @@ export function EntityFormDialog({
     }
     const out: EntityValues = {};
     for (const f of fields) {
-      const raw = (values[f.key] ?? "").trim();
+      // Passwords are taken verbatim — trimming would silently alter the secret.
+      const raw = f.type === "password" ? (values[f.key] ?? "") : (values[f.key] ?? "").trim();
       out[f.key] = f.type === "number" ? Number(raw) || 0 : raw;
     }
     onSave(out);
@@ -149,7 +150,8 @@ export function EntityFormDialog({
               ) : (
                 <Input
                   id={`ef-${f.key}`}
-                  type={f.type === "number" ? "number" : "text"}
+                  type={f.type === "number" ? "number" : f.type === "password" ? "password" : "text"}
+                  autoComplete={f.type === "password" ? "new-password" : undefined}
                   value={values[f.key] ?? ""}
                   placeholder={f.placeholder}
                   onChange={(e) => setValues((s) => ({ ...s, [f.key]: e.target.value }))}
