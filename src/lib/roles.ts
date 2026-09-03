@@ -36,6 +36,7 @@ export const ROLE_ACCESS: Record<Role, string[]> = {
     "Attendance",
     "Inventory",
     "Billing",
+    "Discounts",
     "Reports",
     "Notifications",
   ],
