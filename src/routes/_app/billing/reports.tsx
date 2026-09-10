@@ -36,6 +36,9 @@ export const Route = createFileRoute("/_app/billing/reports")({
 // unrecognized report that falls back to the generic sales/financial dump.
 const REPORT_NAMES = [
   "Daily Sales Summary",
+  "Daily Sales Trend",
+  "Weekly Sales Summary",
+  "Monthly Sales Summary",
   "Tax Summary (GST)",
   "Outstanding Payments",
   "Refund Summary",
@@ -44,15 +47,22 @@ const REPORT_NAMES = [
 const displayDate = (d: Date) =>
   `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })} ${d.getFullYear()}`;
 
-// These reports run either daily ("12 Nov 2024") or monthly ("Nov 2024") —
-// EntityFormDialog's fields are static, so Period can't dynamically follow
-// whichever Report Name is picked. Offer both cadences: the last 7 days and
-// the last 6 months.
+// These reports run daily ("12 Nov 2024"), weekly ("Week of 8 Sep 2024") or
+// monthly ("Nov 2024") — EntityFormDialog's fields are static, so Period
+// can't dynamically follow whichever Report Name is picked. Offer all three
+// cadences: the last 7 days, the last 6 weeks and the last 6 months. (The
+// actual data range on Download/View comes from the PeriodFilter, not this
+// stored label.)
 function buildPeriodOptions(): string[] {
   const now = new Date();
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
     return displayDate(d);
+  });
+  const dayOfWeek = (now.getDay() + 6) % 7; // 0=Mon .. 6=Sun
+  const weeks = Array.from({ length: 6 }, (_, i) => {
+    const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek - i * 7);
+    return `Week of ${displayDate(monday)}`;
   });
   const months = Array.from({ length: 6 }, (_, i) =>
     new Date(now.getFullYear(), now.getMonth() - i, 1).toLocaleString("en-US", {
@@ -60,7 +70,7 @@ function buildPeriodOptions(): string[] {
       year: "numeric",
     }),
   );
-  return [...days, ...months];
+  return [...days, ...weeks, ...months];
 }
 
 const REPORT_FIELDS: EntityField[] = [
@@ -87,6 +97,44 @@ const REPORT_FIELDS: EntityField[] = [
   },
 ];
 
+// The catalog is a fixed set of known calculators (REPORT_NAMES /
+// fetchNamedBillingReport). Render every one of them even when the
+// billing_reports table is empty or read-only — the anon key can't insert
+// into it until supabase/13_completion_pack.sql runs, so "Add New" would
+// otherwise be the only way to get a Weekly/Monthly row and it fails. These
+// defaults always give a working View/Download; the table just records which
+// reports have actually been generated (real "Generated" date, branch, etc.).
+const DEFAULT_PERIOD: Record<string, string> = {
+  "Daily Sales Summary": "Today",
+  "Daily Sales Trend": "Last 30 days",
+  "Weekly Sales Summary": "Last 6 weeks",
+  "Monthly Sales Summary": "Last 6 months",
+  "Tax Summary (GST)": "This month",
+  "Outstanding Payments": "All time",
+  "Refund Summary": "All time",
+};
+
+const DEFAULT_REPORTS: BillingReport[] = REPORT_NAMES.map((report) => ({
+  report,
+  period: DEFAULT_PERIOD[report] ?? "All time",
+  generated: displayDate(new Date()),
+  format: "PDF",
+}));
+
+/** DB rows first (real generated dates), then session-added, then the static
+ * catalog — deduped by report name so each appears once. */
+function mergeReports(...lists: BillingReport[][]): BillingReport[] {
+  const seen = new Set<string>();
+  const out: BillingReport[] = [];
+  for (const r of lists.flat()) {
+    const key = r.report.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
+}
+
 export function Page() {
   const { scoped, homeBranch } = useBranchScope();
   const [search, setSearch] = useState("");
@@ -94,13 +142,18 @@ export function Page() {
   const [branch, setBranch] = useState(homeBranch);
   const [period, setPeriod] = useState<PeriodOption>({ key: "all", label: "All time" });
   const [addOpen, setAddOpen] = useState(false);
-  const { data: allReports = [] } = useBillingReports(search);
+  // Reports added this session — kept locally so a new Weekly/Monthly row is
+  // usable immediately even when the billing_reports table rejects the insert.
+  const [sessionReports, setSessionReports] = useState<BillingReport[]>([]);
+  const { data: dbReports = [] } = useBillingReports(search);
   const { data: branches = [] } = useBillingBranches();
   const createReport = useCreateBillingReport();
-  const reports = useMemo(
-    () => allReports.filter((r) => matchesDate(date, r.generated)),
-    [allReports, date],
-  );
+  const reports = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return mergeReports(dbReports, sessionReports, DEFAULT_REPORTS)
+      .filter((r) => !term || r.report.toLowerCase().includes(term))
+      .filter((r) => matchesDate(date, r.generated));
+  }, [dbReports, sessionReports, search, date]);
   const { page, setPage, totalPages, pageItems } = usePagination(reports);
 
   const opts = () => ({
@@ -159,23 +212,26 @@ export function Page() {
   }
 
   function handleAdd(v: EntityValues) {
-    createReport.mutate(
-      {
-        report: String(v.report),
-        period: String(v.period),
-        generated: displayDate(new Date()),
-        format: String(v.format),
-      },
-      {
-        onSuccess: () => toast.success(`Report "${v.report}" added.`),
-        onError: (e) =>
-          toast.error(
-            e instanceof Error
-              ? `${e.message} — run supabase/13_completion_pack.sql to enable report writes.`
-              : "Could not add report.",
-          ),
-      },
-    );
+    const row: BillingReport = {
+      report: String(v.report),
+      period: String(v.period),
+      generated: displayDate(new Date()),
+      format: String(v.format),
+    };
+    // Show and enable View/Download right away, whether or not the catalog
+    // table accepts the write.
+    setSessionReports((prev) => [row, ...prev.filter((r) => r.report !== row.report)]);
+    createReport.mutate(row, {
+      onSuccess: () => toast.success(`Report "${row.report}" added.`),
+      // billing_reports is read-only to the anon key until
+      // supabase/13_completion_pack.sql runs — the row still works this
+      // session, it just won't survive a refresh yet.
+      onError: () =>
+        toast.message(`"${row.report}" is ready to view and download.`, {
+          description:
+            "Run supabase/13_completion_pack.sql to make added reports persist after refresh.",
+        }),
+    });
   }
 
   const columns: Column<BillingReport>[] = [

@@ -651,6 +651,140 @@ export async function fetchRefundSummary(opts: ReportOpts = {}): Promise<ReportD
   };
 }
 
+// ─── Billing: sales rolled up by day / week / month ──────────────────────
+// "Daily Sales Summary" above is invoice-level (one row per bill). These
+// three answer "how did sales trend per day / per week / per month" — one
+// aggregated row per bucket, over whatever period the PeriodFilter selects
+// (all buckets when "All time" is picked). They share fetchSalesBillTotals.
+
+type SalesBillTotal = { date: Date | null; amount: number };
+
+type PosRow = {
+  amount?: string | number | null;
+  total?: number | null;
+  created_at?: string | null;
+  invoice_date?: string | null;
+};
+
+/**
+ * Every sale reduced to (date, ₹ amount) pairs inside the selected period.
+ * Reads pos_transactions — the live sales channel the billing dashboard and
+ * useBillingSalesBills use — or its per-branch snapshot pos_transactions_branches
+ * for a Branch Admin. NOT billing_sales_bills(_branches): those are the dead
+ * legacy manual-invoice tables (empty here), which is why the rollups came
+ * back with zero rows.
+ *
+ * Date comes from invoice_date / created_at only — `time` on these tables is
+ * a clock string ("07:26 pm"), not a date.
+ */
+async function fetchSalesBillTotals(opts: ReportOpts = {}): Promise<SalesBillTotal[]> {
+  const table = opts.branch ? "pos_transactions_branches" : "pos_transactions";
+  // pos_transactions_branches has neither `total` nor `invoice_date`; request
+  // them only for the global table and let the branch query fall through to
+  // amount + created_at.
+  const columns = opts.branch ? "amount, created_at" : "amount, total, created_at, invoice_date";
+
+  let query = supabase.from(table).select(columns);
+  if (opts.branch) query = query.eq("branch", opts.branch);
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return ((data as unknown as PosRow[]) ?? [])
+    .map((r) => ({
+      date: parseRowDate(r.invoice_date ?? r.created_at),
+      amount: typeof r.total === "number" ? r.total : parseAmount(r.amount),
+    }))
+    .filter((r) => inRange(r.date, opts.from, opts.to));
+}
+
+/** Monday (local) of the week containing `d`. */
+function mondayOf(d: Date): Date {
+  const daysFromMonday = (d.getDay() + 6) % 7; // 0=Mon .. 6=Sun
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - daysFromMonday);
+}
+
+type Bucket = { count: number; amount: number };
+
+/** Shared reducer: bucket totals + a trailing grand-total row. */
+function summariseBuckets(
+  header: string,
+  buckets: Map<string, Bucket>,
+  label: (key: string) => string,
+): ReportData {
+  const ordered = [...buckets.entries()].sort(([a], [b]) => b.localeCompare(a));
+  const totalCount = ordered.reduce((s, [, b]) => s + b.count, 0);
+  const totalAmount = ordered.reduce((s, [, b]) => s + b.amount, 0);
+  return {
+    columns: [header, "Invoices", "Total Sales"],
+    rows: [
+      ...ordered.map(([key, b]) => [label(key), b.count, inrCurrency(b.amount)]),
+      ["Total", totalCount, inrCurrency(totalAmount)],
+    ],
+  };
+}
+
+/** One row per calendar day: invoice count + total billed. */
+export async function fetchDailySalesTrend(opts: ReportOpts = {}): Promise<ReportData> {
+  const buckets = new Map<string, Bucket>();
+  for (const b of await fetchSalesBillTotals(opts)) {
+    if (!b.date) continue;
+    const key = isoDate(b.date);
+    const cur = buckets.get(key) ?? { count: 0, amount: 0 };
+    cur.count += 1;
+    cur.amount += b.amount;
+    buckets.set(key, cur);
+  }
+  return summariseBuckets("Date", buckets, (key) =>
+    new Date(`${key}T00:00:00`).toLocaleDateString("en-US", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }),
+  );
+}
+
+/** One row per Mon–Sun week: invoice count + total billed. */
+export async function fetchWeeklySalesSummary(opts: ReportOpts = {}): Promise<ReportData> {
+  const buckets = new Map<string, Bucket>();
+  for (const b of await fetchSalesBillTotals(opts)) {
+    if (!b.date) continue;
+    const key = isoDate(mondayOf(b.date));
+    const cur = buckets.get(key) ?? { count: 0, amount: 0 };
+    cur.count += 1;
+    cur.amount += b.amount;
+    buckets.set(key, cur);
+  }
+  return summariseBuckets("Week", buckets, (key) => {
+    const monday = new Date(`${key}T00:00:00`);
+    const sunday = new Date(monday);
+    sunday.setDate(sunday.getDate() + 6);
+    const from = monday.toLocaleDateString("en-US", { day: "numeric", month: "short" });
+    const to = sunday.toLocaleDateString("en-US", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    return `${from} – ${to}`;
+  });
+}
+
+/** One row per calendar month: invoice count + total billed. */
+export async function fetchMonthlySalesSummary(opts: ReportOpts = {}): Promise<ReportData> {
+  const buckets = new Map<string, Bucket>();
+  for (const b of await fetchSalesBillTotals(opts)) {
+    if (!b.date) continue;
+    const key = `${b.date.getFullYear()}-${pad2(b.date.getMonth() + 1)}`;
+    const cur = buckets.get(key) ?? { count: 0, amount: 0 };
+    cur.count += 1;
+    cur.amount += b.amount;
+    buckets.set(key, cur);
+  }
+  return summariseBuckets("Month", buckets, (key) => {
+    const [y, m] = key.split("-").map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  });
+}
+
 /** Dispatches a Billing Reports row name to its real calculator, falling
  * back to the existing sales/financial category split for custom names. */
 export async function fetchNamedBillingReport(
@@ -658,6 +792,9 @@ export async function fetchNamedBillingReport(
   opts: ReportOpts = {},
 ): Promise<ReportData> {
   const name = reportName.toLowerCase();
+  if (/weekly.?sales/.test(name)) return fetchWeeklySalesSummary(opts);
+  if (/monthly.?sales/.test(name)) return fetchMonthlySalesSummary(opts);
+  if (/daily.?sales.?(trend|by day)/.test(name)) return fetchDailySalesTrend(opts);
   if (/daily.?sales/.test(name)) return fetchDailySalesSummary(opts);
   if (/tax.?summary|gst/.test(name)) return fetchTaxSummary(opts);
   if (/outstanding/.test(name)) return fetchOutstandingPayments(opts);
