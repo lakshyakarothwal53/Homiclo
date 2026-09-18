@@ -94,6 +94,13 @@ function Page() {
     [allBills, date, dateTo],
   );
   const { page, setPage, totalPages, pageItems } = usePagination(bills);
+  // Sum over the full filtered set (search/branch/date range), not just the
+  // current page — "total bill for this filter" means everything matching,
+  // same scope as Export/Download All below.
+  const totalAmount = useMemo(
+    () => bills.reduce((sum, b) => sum + (b.amount_num ?? parseAmount(b.amount)), 0),
+    [bills],
+  );
   const { data: nextRefund } = useNextRefundNumber();
   const createRefund = useCreateRefund();
   const deleteSalesBill = useDeleteSalesBill();
@@ -256,6 +263,11 @@ function Page() {
           currentPage={page}
           totalPages={totalPages}
           onPageChange={setPage}
+          extra={
+            bills.length > 0 && (
+              <span className="font-medium text-foreground">Total: {inr(totalAmount)}</span>
+            )
+          }
         />
       </Card>
     </>

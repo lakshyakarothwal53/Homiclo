@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DEFAULT_PAGE_SIZE } from "@/hooks/use-pagination";
@@ -23,20 +24,30 @@ export function EntriesFooter({
   totalPages = 1,
   pageSize = DEFAULT_PAGE_SIZE,
   onPageChange,
+  extra,
 }: {
   total: number;
   currentPage?: number;
   totalPages?: number;
   pageSize?: number;
   onPageChange?: (page: number) => void;
+  /** Optional caller-supplied summary (e.g. a filtered total amount) shown
+   * next to the "Showing X–Y of Z entries" text. Renders nothing when
+   * omitted, so existing callers are unaffected. */
+  extra?: ReactNode;
 }) {
   const startItem = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const endItem = Math.min(currentPage * pageSize, total);
 
   return (
     <div className="flex flex-col items-center justify-between gap-3 border-t border-border px-5 py-3 text-sm text-muted-foreground sm:flex-row">
-      <span>
-        {total === 0 ? "Showing 0 entries" : `Showing ${startItem}–${endItem} of ${total} entries`}
+      <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span>
+          {total === 0
+            ? "Showing 0 entries"
+            : `Showing ${startItem}–${endItem} of ${total} entries`}
+        </span>
+        {extra}
       </span>
       <div className="flex items-center gap-1">
         <button
