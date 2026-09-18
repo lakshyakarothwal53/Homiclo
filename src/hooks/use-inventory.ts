@@ -149,6 +149,65 @@ export function useAllBranchAllocations(enabled = true) {
   });
 }
 
+export type BranchStockSummary = {
+  branch: string;
+  productCount: number;
+  totalUnits: number;
+  stockValue: number;
+};
+
+/**
+ * Per-branch rollup for the Super Admin Inventory Dashboard's "All Branches"
+ * card: how many distinct products are allocated to each branch, how many
+ * units that adds up to, and what it's worth. Every branch in `branches`
+ * appears even with zero allocation, so a store that hasn't received stock
+ * yet still shows up (with zeros) instead of silently disappearing from the
+ * list. Pass `enabled: false` when viewing a single branch.
+ */
+export function useBranchStockSummary(enabled = true) {
+  return useQuery({
+    queryKey: ["inventory", "branch-stock-summary"],
+    enabled,
+    queryFn: async (): Promise<BranchStockSummary[]> => {
+      const { data: branches, error: branchError } = await supabase
+        .from("branches")
+        .select("name")
+        .order("name");
+      if (branchError) throw branchError;
+
+      const { data: allocations, error: allocError } = await supabase
+        .from("branch_inventory")
+        .select("branch, sku, stock");
+      if (allocError) throw allocError;
+
+      const { data: products, error: prodError } = await supabase
+        .from("products")
+        .select("sku, price");
+      if (prodError) throw prodError;
+      const priceBySku = new Map((products ?? []).map((p) => [p.sku, p.price ?? 0]));
+
+      const bySummary = new Map<string, BranchStockSummary>(
+        (branches ?? []).map((b) => [
+          b.name as string,
+          { branch: b.name as string, productCount: 0, totalUnits: 0, stockValue: 0 },
+        ]),
+      );
+
+      (allocations ?? []).forEach((a) => {
+        const branchName = a.branch as string;
+        const entry = bySummary.get(branchName);
+        if (!entry) return; // allocation for a branch no longer in `branches`
+        const stock = (a.stock as number) ?? 0;
+        entry.productCount += 1;
+        entry.totalUnits += stock;
+        entry.stockValue += (priceBySku.get(a.sku as string) ?? 0) * stock;
+      });
+
+      return [...bySummary.values()].sort((a, b) => b.totalUnits - a.totalUnits);
+    },
+  });
+}
+
 /** Per-branch holdings of one sku — powers the Super Admin allocation dialog. */
 export function useProductAllocations(sku?: string) {
   return useQuery({

@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { Download } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { FilterBar } from "@/components/billing/FilterBar";
 import { DataTable, type Column } from "@/components/billing/DataTable";
@@ -22,10 +24,30 @@ import {
   useDeleteSalesBill,
   useNextRefundNumber,
 } from "@/hooks/use-billing";
+import { fetchPosTransactionItems } from "@/hooks/use-pos";
 import { viewSalesBillInvoice } from "@/lib/export-utils";
-import { downloadCsv } from "@/lib/pdf-utils";
-import { matchesDate } from "@/lib/report-data";
+import { buildSalesBillPdf, downloadCsv, downloadPdf } from "@/lib/pdf-utils";
+import { inRange, parseRowDate } from "@/lib/report-data";
 import type { BillingSalesBill } from "@/types/billing";
+
+// Line items are only ever linked for a bill sourced live from
+// pos_transactions ("All Branches") — a branch-filtered row reads the seeded
+// billing_sales_bills_branches snapshot instead, which has no matching
+// pos_transaction_items to look up. Either way the PDF still renders, just
+// without the itemized table (see buildTaxInvoicePdf, same pattern).
+async function handleDownload(bill: BillingSalesBill) {
+  try {
+    let lines: Awaited<ReturnType<typeof fetchPosTransactionItems>> = [];
+    try {
+      lines = await fetchPosTransactionItems(bill.invoice);
+    } catch {
+      lines = [];
+    }
+    downloadPdf(buildSalesBillPdf(bill, lines), `${bill.invoice}.pdf`);
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : "Could not download bill.");
+  }
+}
 
 const REFUND_FIELDS: EntityField[] = [
   { key: "reason", label: "Reason", required: true, placeholder: "Damaged item" },
@@ -53,12 +75,23 @@ function Page() {
   const { scoped, homeBranch } = useBranchScope();
   const [search, setSearch] = useState("");
   const [date, setDate] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [branch, setBranch] = useState(homeBranch);
   const { data: allBills = [] } = useBillingSalesBills(search, branch);
   const { data: branches = [] } = useBillingBranches();
+  // A single `date` with no `dateTo` still behaves as an exact-day filter
+  // (inRange with from === to), so this stays a superset of the old
+  // matchesDate behavior rather than a separate mode.
   const bills = useMemo(
-    () => allBills.filter((b) => matchesDate(date, b.bill_date, b.date)),
-    [allBills, date],
+    () =>
+      allBills.filter((b) =>
+        inRange(
+          parseRowDate(b.bill_date ?? b.date),
+          date || undefined,
+          dateTo || date || undefined,
+        ),
+      ),
+    [allBills, date, dateTo],
   );
   const { page, setPage, totalPages, pageItems } = usePagination(bills);
   const { data: nextRefund } = useNextRefundNumber();
@@ -86,6 +119,21 @@ function Page() {
       bills.map((b) => [b.invoice, b.date, b.customer, b.amount, b.payment, b.status]),
     );
     toast.success(`Exported ${bills.length} sales bills.`);
+  }
+
+  // Downloads every bill currently in view (respects search/branch/date-range)
+  // as its own PDF — one file per invoice, same as the per-row Download
+  // button, just looped. The browser may ask to allow multiple downloads the
+  // first time; that's a browser permission, not something this can skip.
+  async function handleDownloadAll() {
+    if (bills.length === 0) {
+      toast.error("No bills in the selected range.");
+      return;
+    }
+    toast.message(`Downloading ${bills.length} bills…`);
+    for (const bill of bills) {
+      await handleDownload(bill);
+    }
   }
 
   function handleRefund(bill: BillingSalesBill, v: EntityValues) {
@@ -147,6 +195,12 @@ function Page() {
           >
             View
           </button>
+          <button
+            className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-brand hover:underline"
+            onClick={() => handleDownload(r)}
+          >
+            <Download className="h-3.5 w-3.5" /> Download
+          </button>
           {r.status === "Paid" && (
             <EntityFormDialog
               mode="add"
@@ -174,6 +228,13 @@ function Page() {
         eyebrow="Billing › Sales Bills"
         title="Sales Bills"
         description="Sales Bills overview and controls."
+        actions={
+          (date || dateTo) && (
+            <Button variant="outline" size="sm" className="gap-2" onClick={handleDownloadAll}>
+              <Download className="h-4 w-4" /> Download All ({bills.length})
+            </Button>
+          )
+        }
       />
       <FilterBar
         search={search}
@@ -181,6 +242,8 @@ function Page() {
         searchPlaceholder="Search invoices..."
         date={date}
         onDateChange={setDate}
+        dateTo={dateTo}
+        onDateToChange={setDateTo}
         addLabel="Add New"
         onAdd={() => router.navigate({ to: "/billing/create-invoice" })}
         onExport={handleExport}

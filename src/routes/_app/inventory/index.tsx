@@ -23,6 +23,7 @@ import {
   useStockOutward,
   useBranchAllocationMovement,
   useAllBranchAllocations,
+  useBranchStockSummary,
 } from "@/hooks/use-inventory";
 import { useBranchScope } from "@/hooks/use-branch-scope";
 import { parseRowDate } from "@/lib/report-data";
@@ -58,6 +59,8 @@ function Page() {
   // Only needed for the All Branches / Super Admin view — a specific branch's
   // Stock Value / Out of Stock stay scoped to just that branch's own holding.
   const { data: allBranchAllocations = [] } = useAllBranchAllocations(!scoped);
+  const { data: branchSummaries = [], isLoading: branchSummaryLoading } =
+    useBranchStockSummary(!scoped);
 
   // Calculate real stats from Supabase data
   const totalProducts = products.length;
@@ -273,6 +276,81 @@ function Page() {
           </CardContent>
         </Card>
       </div>
+
+      {!scoped && (
+        <Card className="mt-6 border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">All Branches</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {branchSummaryLoading
+                ? "Stock allocated per branch"
+                : `${branchSummaries.reduce((sum, b) => sum + b.totalUnits, 0).toLocaleString("en-IN")} units allocated across ${branchSummaries.length} branches`}
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-secondary/60 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium">Branch</th>
+                    <th className="px-4 py-2 text-right font-medium">Products</th>
+                    <th className="px-4 py-2 text-right font-medium">Units</th>
+                    <th className="px-4 py-2 text-right font-medium">Stock Value</th>
+                    <th className="px-4 py-2 text-right font-medium">Share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {branchSummaryLoading ? (
+                    Array.from({ length: 4 }).map((_, i) => (
+                      <tr key={i}>
+                        <td colSpan={5}>
+                          <Skeleton className="h-8 w-full" />
+                        </td>
+                      </tr>
+                    ))
+                  ) : branchSummaries.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                        No branches configured yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    (() => {
+                      const totalUnits = branchSummaries.reduce((sum, b) => sum + b.totalUnits, 0);
+                      return branchSummaries.map((b) => {
+                        const share =
+                          totalUnits > 0 ? Math.round((b.totalUnits / totalUnits) * 100) : 0;
+                        return (
+                          <tr
+                            key={b.branch}
+                            className="border-t border-border hover:bg-secondary/30"
+                          >
+                            <td className="px-4 py-3 font-medium">{b.branch}</td>
+                            <td className="px-4 py-3 text-right text-muted-foreground">
+                              {b.productCount.toLocaleString("en-IN")}
+                            </td>
+                            <td className="px-4 py-3 text-right text-muted-foreground">
+                              {b.totalUnits.toLocaleString("en-IN")}
+                            </td>
+                            <td className="px-4 py-3 text-right text-muted-foreground">
+                              {formatStockValue(b.stockValue)}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-foreground">
+                                {share}%
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </>
   );
 }

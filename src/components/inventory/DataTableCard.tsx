@@ -13,7 +13,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
-export type Column = { key: string; label: string; align?: "left" | "right" | "center" };
+export type Column = { key: string; label: ReactNode; align?: "left" | "right" | "center" };
 
 const ITEMS_PER_PAGE = 10;
 
@@ -70,31 +70,31 @@ export function DataTableCard({
               ))}
             </TableRow>
           </TableHeader>
-        <TableBody>
-          {isLoading ? (
-            Array.from({ length: 5 }).map((_, i) => (
-              <TableRow key={i} className="border-t border-border">
-                {columns.map((col) => (
-                  <TableCell key={col.key} className="px-3 sm:px-5 py-3 text-xs sm:text-sm">
-                    <Skeleton className="h-4 w-24" />
-                  </TableCell>
-                ))}
+          <TableBody>
+            {isLoading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={i} className="border-t border-border">
+                  {columns.map((col) => (
+                    <TableCell key={col.key} className="px-3 sm:px-5 py-3 text-xs sm:text-sm">
+                      <Skeleton className="h-4 w-24" />
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : count === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length}
+                  className="px-5 py-16 text-center text-sm text-muted-foreground"
+                >
+                  No matching records found.
+                </TableCell>
               </TableRow>
-            ))
-          ) : count === 0 ? (
-            <TableRow>
-              <TableCell
-                colSpan={columns.length}
-                className="px-5 py-16 text-center text-sm text-muted-foreground"
-              >
-                No matching records found.
-              </TableCell>
-            </TableRow>
-          ) : (
-            children
-          )}
-        </TableBody>
-      </Table>
+            ) : (
+              children
+            )}
+          </TableBody>
+        </Table>
       </div>
 
       <div className="flex flex-col items-center justify-between gap-3 border-t border-border px-3 sm:px-5 py-3 text-xs sm:text-sm">

@@ -133,19 +133,115 @@ export function buildTaxInvoicePdf(
       ["Taxable Amount", sanitizeForPdf(invoice.taxable)],
       ["CGST", sanitizeForPdf(invoice.cgst)],
       ["SGST", sanitizeForPdf(invoice.sgst)],
-      [{ content: "Total", styles: { fontStyle: "bold" } }, { content: sanitizeForPdf(invoice.total), styles: { fontStyle: "bold" } }],
+      [
+        { content: "Total", styles: { fontStyle: "bold" } },
+        { content: sanitizeForPdf(invoice.total), styles: { fontStyle: "bold" } },
+      ],
     ],
   });
 
   return doc;
 }
 
-export type UsageReportTxn = { invoice: string; date: string; subtotal: number; discount: number; total: number };
+export type SalesBillSummary = {
+  invoice: string;
+  date: string;
+  customer: string;
+  amount: string;
+  payment: string;
+  status: string;
+  customerMobile?: string;
+  customerGstin?: string;
+};
+
+/** A single sales bill as its own document — used by Sales Bills' View/
+ * Download actions. Mirrors buildTaxInvoicePdf's shape (itemized table when
+ * line items are available, falling back to just the summary block), but
+ * without the CGST/SGST split, which is a tax-invoice-only concern. */
+export function buildSalesBillPdf(bill: SalesBillSummary, lines: TaxInvoiceLine[] = []): jsPDF {
+  const doc = new jsPDF();
+
+  doc.setFontSize(20);
+  doc.setTextColor(BRAND);
+  doc.setFont("helvetica", "bold");
+  doc.text("HOMIQLO", 14, 18);
+
+  doc.setFontSize(13);
+  doc.setTextColor("#111111");
+  doc.text("Sales Invoice", 14, 27);
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor("#666666");
+  doc.text(`Invoice ${sanitizeForPdf(bill.invoice)} · ${sanitizeForPdf(bill.date)}`, 14, 33);
+  doc.text(
+    `Customer: ${sanitizeForPdf(bill.customer)}${bill.customerMobile ? ` · ${sanitizeForPdf(bill.customerMobile)}` : ""}`,
+    14,
+    38,
+  );
+
+  let startY = 44;
+  if (lines.length > 0) {
+    autoTable(doc, {
+      startY,
+      head: [["Product", "Qty", "Unit Price", "Amount"]],
+      body: lines.map((l) => [
+        sanitizeForPdf(l.name),
+        String(l.qty),
+        rupee(l.unitPrice),
+        rupee(l.lineTotal),
+      ]),
+      styles: { fontSize: 8.5, cellPadding: 2.5 },
+      headStyles: { fillColor: [254, 0, 0], textColor: 255, fontStyle: "bold" },
+      alternateRowStyles: { fillColor: [246, 246, 246] },
+      columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" } },
+      didParseCell: (data) => {
+        if (data.column.index > 0) data.cell.styles.halign = "right";
+      },
+    });
+    const { lastAutoTable } = doc as unknown as { lastAutoTable: { finalY: number } };
+    startY = lastAutoTable.finalY + 10;
+  }
+
+  autoTable(doc, {
+    startY,
+    margin: { left: 116 },
+    tableWidth: 80,
+    theme: "plain",
+    styles: { fontSize: 10, cellPadding: 1.5 },
+    columnStyles: { 1: { halign: "right" } },
+    body: [
+      ["Payment Mode", sanitizeForPdf(bill.payment)],
+      ["Status", sanitizeForPdf(bill.status)],
+      ...(bill.customerGstin ? [["Customer GSTIN", sanitizeForPdf(bill.customerGstin)]] : []),
+      [
+        { content: "Total", styles: { fontStyle: "bold" } },
+        { content: sanitizeForPdf(bill.amount), styles: { fontStyle: "bold" } },
+      ],
+    ],
+  });
+
+  return doc;
+}
+
+export type UsageReportTxn = {
+  invoice: string;
+  date: string;
+  subtotal: number;
+  discount: number;
+  total: number;
+};
 
 /** A single discount code's usage report — its summary stats plus every real
  * redemption behind them, used by Usage Reports' View/Download actions. */
 export function buildUsageReportPdf(
-  summary: { discount: string; code: string; timesUsed: number; discountGiven: number; avgOrder: number },
+  summary: {
+    discount: string;
+    code: string;
+    timesUsed: number;
+    discountGiven: number;
+    avgOrder: number;
+  },
   transactions: UsageReportTxn[],
 ): jsPDF {
   const doc = new jsPDF();

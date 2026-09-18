@@ -21,6 +21,8 @@ export function FilterBar({
   showDate = true,
   date,
   onDateChange,
+  dateTo,
+  onDateToChange,
   branches,
   branch,
   onBranchChange,
@@ -41,11 +43,17 @@ export function FilterBar({
   /** When `onDateChange` is provided the date input becomes controlled and data-driven. */
   date?: string;
   onDateChange?: (value: string) => void;
+  /** Opt-in second date input (a "to" bound). Only rendered when the caller
+   * also passes `onDateToChange` — every existing caller that doesn't stays
+   * a single exact-date filter, unchanged. */
+  dateTo?: string;
+  onDateToChange?: (value: string) => void;
   /** When `onBranchChange` is provided the branch select becomes controlled and data-driven. */
   branches?: string[];
   branch?: string;
   onBranchChange?: (value: string) => void;
 }) {
+  const isRange = !!onDateToChange;
   return (
     <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-1 flex-wrap items-center gap-2">
@@ -87,13 +95,27 @@ export function FilterBar({
               value={date ?? ""}
               onChange={(e) => onDateChange?.(e.target.value)}
             />
-            {!!date && onDateChange && (
+            {isRange && (
+              <>
+                <span className="text-sm text-muted-foreground">to</span>
+                <Input
+                  type="date"
+                  className="w-[160px]"
+                  value={dateTo ?? ""}
+                  onChange={(e) => onDateToChange?.(e.target.value)}
+                />
+              </>
+            )}
+            {!!(date || dateTo) && onDateChange && (
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
                 aria-label="Clear date filter"
-                onClick={() => onDateChange("")}
+                onClick={() => {
+                  onDateChange("");
+                  onDateToChange?.("");
+                }}
               >
                 <X className="h-4 w-4" />
               </Button>

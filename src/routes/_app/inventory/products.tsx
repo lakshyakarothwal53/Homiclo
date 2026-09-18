@@ -14,7 +14,20 @@ import { FilterBar } from "@/components/inventory/FilterBar";
 import { InventoryStatusBadge } from "@/components/inventory/InventoryStatusBadge";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Barcode, Send } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Barcode, Send, Trash2 } from "lucide-react";
 import { calculateProductStatus } from "@/lib/inventory-utils";
 import { exportProductsToCSV } from "@/lib/export-utils";
 import { printBarcodes } from "@/lib/barcode-utils";
@@ -29,11 +42,55 @@ import {
   useCategories,
   useCreateProduct,
   useDeleteProduct,
+  useAllBranchAllocations,
+  useProductAllocations,
   useProducts,
   useUpdateProduct,
   useAddToStock,
   type AddToStockInput,
 } from "@/hooks/use-inventory";
+
+/**
+ * Per-row "which branch has how much" breakdown. Only meaningful from the
+ * Super Admin central view — a branch admin's row IS their own branch's
+ * stock already, so there's nothing further to break down. Lazy: the
+ * per-branch query only fires once the popover is actually opened, so
+ * loading 10 rows of central products doesn't fire 10 extra queries.
+ */
+function BranchBreakdownCell({ sku }: { sku: string }) {
+  const [open, setOpen] = useState(false);
+  const { data: allocations = [], isLoading } = useProductAllocations(open ? sku : undefined);
+  const total = allocations.reduce((sum, a) => sum + a.stock, 0);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="text-sm font-medium text-muted-foreground hover:text-brand hover:underline">
+          Branches
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64" align="end">
+        <p className="mb-2 text-xs font-medium text-muted-foreground">
+          Allocated across branches{!isLoading && ` (${total} total)`}
+        </p>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : allocations.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Not sent to any branch yet.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {allocations.map((a) => (
+              <div key={a.branch} className="flex items-center justify-between text-sm">
+                <span>{a.branch}</span>
+                <span className="font-medium">{a.stock}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export const Route = createFileRoute("/_app/inventory/products")({
   head: () => ({
@@ -53,14 +110,46 @@ const BASE_COLUMNS: Column[] = [
 ];
 
 // Super Admin's "Stock" is central/unallocated; a branch's is its own holding.
-const columnsFor = (canManage: boolean, scoped: boolean): Column[] => [
+const columnsFor = (
+  canManage: boolean,
+  scoped: boolean,
+  selectAll?: { checked: boolean | "indeterminate"; onChange: (v: boolean) => void },
+): Column[] => [
+  ...(canManage && selectAll
+    ? [
+        {
+          key: "select",
+          label: (
+            <Checkbox
+              checked={selectAll.checked}
+              onCheckedChange={(v) => selectAll.onChange(v === true)}
+              aria-label="Select all products on this page"
+            />
+          ),
+        } as Column,
+      ]
+    : []),
   ...BASE_COLUMNS,
   {
     key: "stock",
     label: canManage && !scoped ? "Central Stock" : "Branch Stock",
     align: "right",
   },
+  // Central view only: Central Stock alone is just the unshipped warehouse
+  // buffer (often 0 once most of a product has gone out to branches) — Total
+  // Stock adds every branch's allocation back on top so the company-wide
+  // quantity (3 branches holding 55 + 30 still central = 85) is visible
+  // without opening the Branches popover for every row.
+  ...(canManage && !scoped
+    ? [{ key: "totalStock", label: "Total Stock", align: "right" } as Column]
+    : []),
   { key: "status", label: "Status" },
+  // Which branch holds how much — only meaningful from the central view; a
+  // branch admin's "Branch Stock" column above already IS that answer for
+  // their one branch.
+  ...(canManage && !scoped
+    ? [{ key: "branches", label: "Branches", align: "right" } as Column]
+    : []),
   { key: "action", label: "", align: "right" },
 ];
 
@@ -96,9 +185,18 @@ function Page() {
   const [currentPage, setCurrentPage] = useState(1);
   const [minPrice, setMinPrice] = useState<number>(0);
   const [maxPrice, setMaxPrice] = useState<number>(0);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const { data = [], isLoading } = useProducts(search, branch);
   const { data: branches = [] } = useBranches();
   const { data: categories = [] } = useCategories();
+  // Central view only — powers the Total Stock column (central + every
+  // branch's allocation for that sku).
+  const { data: allBranchAllocations = [] } = useAllBranchAllocations(canManage && !scoped);
+  const allocatedBySku = new Map<string, number>();
+  allBranchAllocations.forEach((a) => {
+    allocatedBySku.set(a.sku, (allocatedBySku.get(a.sku) ?? 0) + (a.stock || 0));
+  });
 
   // Filter by price range
   const filteredByPrice = data.filter((p) => {
@@ -119,6 +217,10 @@ function Page() {
 
   useEffect(() => {
     setCurrentPage(1);
+    // Selection is by SKU and persists across pages, but a filter/branch
+    // change swaps out the result set entirely — clear it so a hidden
+    // checkbox can't silently carry a stale selection into a bulk delete.
+    setSelected(new Set());
   }, [search, branch, minPrice, maxPrice]);
 
   // Branch Admin's product list is branch-scoped — it reads `branch_inventory`,
@@ -171,6 +273,61 @@ function Page() {
     });
   }
 
+  function toggleSelected(sku: string, checked: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(sku);
+      else next.delete(sku);
+      return next;
+    });
+  }
+
+  function toggleSelectPage(checked: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      paginatedData.forEach((p) => (checked ? next.add(p.sku) : next.delete(p.sku)));
+      return next;
+    });
+  }
+
+  // Products with real sale history (pos_transaction_items) refuse to delete
+  // — the DB protects that referential integrity on purpose — so a bulk
+  // delete commonly succeeds for some SKUs and fails for others. Each mutate
+  // call keeps its own onSuccess/onError (see handleBulkImport above for the
+  // same pattern), and a single summary toast fires once every call settles.
+  function handleBulkDelete() {
+    const skus = [...selected];
+    if (skus.length === 0) return;
+    let done = 0;
+    let succeeded = 0;
+    const failures: string[] = [];
+
+    skus.forEach((sku) => {
+      deleteProduct.mutate(sku, {
+        onSuccess: () => {
+          succeeded += 1;
+        },
+        onError: (e) => {
+          failures.push(`${sku} (${e instanceof Error ? e.message : "unknown error"})`);
+        },
+        onSettled: () => {
+          done += 1;
+          if (done === skus.length) {
+            if (succeeded > 0) toast.success(`Deleted ${succeeded} of ${skus.length} products.`);
+            if (failures.length > 0) {
+              toast.error(
+                `Could not delete ${failures.length} product${failures.length === 1 ? "" : "s"}: ${failures.join(", ")}`,
+              );
+            }
+          }
+        },
+      });
+    });
+
+    setSelected(new Set());
+    setBulkDeleteOpen(false);
+  }
+
   function handleAddToStock(input: AddToStockInput) {
     addToStock.mutate(input, {
       onSuccess: () => toast.success(`Added ${input.addStock} units to stock.`),
@@ -204,6 +361,10 @@ function Page() {
     toast.success(`Importing ${products.length} products...`);
   }
 
+  const pageSkus = paginatedData.map((p) => p.sku);
+  const allPageSelected = pageSkus.length > 0 && pageSkus.every((sku) => selected.has(sku));
+  const somePageSelected = pageSkus.some((sku) => selected.has(sku));
+
   return (
     <>
       <PageHeader
@@ -211,20 +372,50 @@ function Page() {
         title="Products"
         description="Products overview and controls."
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2"
-            onClick={() => {
-              if (filteredByPrice.length === 0) {
-                toast.error("No products to print.");
-                return;
-              }
-              printBarcodes(filteredByPrice);
-            }}
-          >
-            <Barcode className="h-4 w-4" /> Print Barcodes
-          </Button>
+          <>
+            {canManage && selected.size > 0 && (
+              <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" className="gap-2">
+                    <Trash2 className="h-4 w-4" /> Delete Selected ({selected.size})
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete {selected.size} products?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This permanently removes all {selected.size} selected records. This action
+                      cannot be undone. Products with existing sales history can't be deleted and
+                      will be skipped.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-white hover:bg-destructive/90"
+                      onClick={handleBulkDelete}
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => {
+                if (filteredByPrice.length === 0) {
+                  toast.error("No products to print.");
+                  return;
+                }
+                printBarcodes(filteredByPrice);
+              }}
+            >
+              <Barcode className="h-4 w-4" /> Print Barcodes
+            </Button>
+          </>
         }
       />
       {/* Catalogue mutations (Add New / Import) are Super Admin / Branch Admin
@@ -272,7 +463,10 @@ function Page() {
       )}
 
       <DataTableCard
-        columns={columnsFor(canManage, scoped)}
+        columns={columnsFor(canManage, scoped, {
+          checked: allPageSelected ? true : somePageSelected ? "indeterminate" : false,
+          onChange: toggleSelectPage,
+        })}
         isLoading={isLoading}
         count={filteredByPrice.length}
         currentPage={currentPage}
@@ -281,6 +475,15 @@ function Page() {
       >
         {paginatedData.map((p) => (
           <TableRow key={p.sku} className="border-t border-border">
+            {canManage && (
+              <TableCell className="px-5 py-3">
+                <Checkbox
+                  checked={selected.has(p.sku)}
+                  onCheckedChange={(v) => toggleSelected(p.sku, v === true)}
+                  aria-label={`Select ${p.sku}`}
+                />
+              </TableCell>
+            )}
             <TableCell className="px-5 py-3 font-mono text-xs">{p.sku}</TableCell>
             <TableCell className="px-5 py-3 font-medium">{p.name}</TableCell>
             <TableCell className="px-5 py-3 text-muted-foreground">{p.category}</TableCell>
@@ -288,9 +491,19 @@ function Page() {
               ₹{p.price.toLocaleString("en-IN")}
             </TableCell>
             <TableCell className="px-5 py-3 text-right">{p.stock}</TableCell>
+            {canManage && !scoped && (
+              <TableCell className="px-5 py-3 text-right font-medium">
+                {p.stock + (allocatedBySku.get(p.sku) ?? 0)}
+              </TableCell>
+            )}
             <TableCell className="px-5 py-3">
               <InventoryStatusBadge status={p.status} />
             </TableCell>
+            {canManage && !scoped && (
+              <TableCell className="px-5 py-3 text-right">
+                <BranchBreakdownCell sku={p.sku} />
+              </TableCell>
+            )}
             <TableCell className="px-5 py-3 text-right">
               <div className="flex items-center justify-end gap-4">
                 <button
