@@ -79,11 +79,15 @@ export function useProducts(search?: string, branch?: string) {
     queryKey: ["inventory", "products", search ?? "", branch ?? "all"],
     queryFn: async (): Promise<Product[]> => {
       if (!allBranches) {
+        // No `.gt("stock", 0)` here: a product that's been allocated to this
+        // branch but has since sold down to zero must still appear (as "Out
+        // of Stock") — excluding it made the branch dashboard's Out of Stock
+        // count permanently read 0 and hid depleted items from every picker
+        // (Products list, Stock Inward, Stock Outward, Stock Adjustment).
         const { data: allocations, error: allocError } = await supabase
           .from("branch_inventory")
           .select("sku, stock")
-          .eq("branch", branch)
-          .gt("stock", 0);
+          .eq("branch", branch);
         if (allocError) throw allocError;
         if (!allocations || allocations.length === 0) return [];
 
@@ -122,6 +126,25 @@ export function useProducts(search?: string, branch?: string) {
         throw error;
       }
       return data as Product[];
+    },
+  });
+}
+
+/**
+ * Every branch's allocated quantity for every sku, unfiltered by branch —
+ * powers the Super Admin Inventory Dashboard's company-wide Stock Value /
+ * Out of Stock cards (central buffer + everything already shipped out).
+ * Pass `enabled: false` when viewing a single branch, where this total isn't
+ * needed.
+ */
+export function useAllBranchAllocations(enabled = true) {
+  return useQuery({
+    queryKey: ["inventory", "allocations", "all"],
+    enabled,
+    queryFn: async (): Promise<{ sku: string; stock: number }[]> => {
+      const { data, error } = await supabase.from("branch_inventory").select("sku, stock");
+      if (error) throw error;
+      return (data ?? []) as { sku: string; stock: number }[];
     },
   });
 }
@@ -267,11 +290,14 @@ export function useCategories(search?: string, branch?: string) {
           live[cat].value += (p.price ?? 0) * (p.stock ?? 0);
         });
       } else {
+        // No `.gt("stock", 0)` here either — see the matching note in
+        // useProducts. A depleted product must still count toward its
+        // category's product total, or the sum of this table's Products
+        // column would fall out of sync with the dashboard's Total Products.
         const { data: allocations, error: allocError } = await supabase
           .from("branch_inventory")
           .select("sku, stock")
-          .eq("branch", branch)
-          .gt("stock", 0);
+          .eq("branch", branch);
         if (allocError) throw allocError;
 
         if (allocations && allocations.length > 0) {
@@ -403,7 +429,9 @@ export function useInventoryReports(search?: string) {
   return useQuery({
     queryKey: ["inventory", "reports", search ?? ""],
     queryFn: async (): Promise<InventoryReport[]> => {
-      let query = supabase.from("inventory_reports").select("id, report, period, generated, format");
+      let query = supabase
+        .from("inventory_reports")
+        .select("id, report, period, generated, format");
       if (search) query = query.ilike("report", like(search));
       const { data, error } = await query;
       if (error) throw error;

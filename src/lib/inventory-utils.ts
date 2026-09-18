@@ -44,6 +44,22 @@ export async function fetchLowStockAlerts(branch?: string): Promise<LowStockAler
     // Only products actually sent to this branch can raise an alert for it.
     rows = rows.filter((p) => bySku.has(p.sku as string));
     stockFor = (p) => bySku.get(p.sku) ?? 0;
+  } else {
+    // All Branches: the central buffer alone understates what the COMPANY
+    // holds — a product can be fully shipped out (buffer 0) while every
+    // branch is well stocked. Add back everything already allocated to
+    // every branch so a company-wide alert reflects the true total on hand,
+    // not just what's still sitting in the warehouse.
+    const { data: allocations, error: allocError } = await supabase
+      .from("branch_inventory")
+      .select("sku, stock");
+    if (allocError) throw allocError;
+    const allocatedBySku = new Map<string, number>();
+    (allocations ?? []).forEach((a) => {
+      const sku = a.sku as string;
+      allocatedBySku.set(sku, (allocatedBySku.get(sku) ?? 0) + ((a.stock as number) ?? 0));
+    });
+    stockFor = (p) => (p.stock ?? 0) + (allocatedBySku.get(p.sku) ?? 0);
   }
 
   return rows

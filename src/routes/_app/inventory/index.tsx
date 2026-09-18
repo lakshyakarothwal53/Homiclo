@@ -22,6 +22,7 @@ import {
   useStockInward,
   useStockOutward,
   useBranchAllocationMovement,
+  useAllBranchAllocations,
 } from "@/hooks/use-inventory";
 import { useBranchScope } from "@/hooks/use-branch-scope";
 import { parseRowDate } from "@/lib/report-data";
@@ -54,17 +55,34 @@ function Page() {
   const { data: stockInward = [], isLoading: inwardLoading } = useStockInward(undefined, branch);
   const { data: stockOutward = [], isLoading: outwardLoading } = useStockOutward(undefined, branch);
   const { data: allocationMovement = [] } = useBranchAllocationMovement(branch);
+  // Only needed for the All Branches / Super Admin view — a specific branch's
+  // Stock Value / Out of Stock stay scoped to just that branch's own holding.
+  const { data: allBranchAllocations = [] } = useAllBranchAllocations(!scoped);
 
   // Calculate real stats from Supabase data
   const totalProducts = products.length;
   const totalCategories = categories.length;
-  const outOfStock = products.filter((p) => p.stock === 0).length;
   const lowStockCount = lowStockAlerts.length;
 
+  // All Branches: a product's central `stock` alone is just the unshipped
+  // warehouse buffer — add back everything already allocated to every branch
+  // so Stock Value / Out of Stock reflect what the COMPANY holds, not just
+  // what's left in the warehouse. A branch view already gets its own
+  // allocation-only figures straight from `products` above, so this map stays
+  // empty (and unused) whenever a single branch is selected.
+  const allocatedBySku = new Map<string, number>();
+  if (!scoped) {
+    allBranchAllocations.forEach((a) => {
+      allocatedBySku.set(a.sku, (allocatedBySku.get(a.sku) ?? 0) + (a.stock || 0));
+    });
+  }
+  const onHand = (p: { sku: string; stock?: number }) =>
+    (p.stock || 0) + (allocatedBySku.get(p.sku) ?? 0);
+
+  const outOfStock = products.filter((p) => onHand(p) === 0).length;
+
   // Calculate total stock value (price × stock for each product)
-  const totalStockValue = products.reduce((sum, p) => {
-    return sum + (p.price || 0) * (p.stock || 0);
-  }, 0);
+  const totalStockValue = products.reduce((sum, p) => sum + (p.price || 0) * onHand(p), 0);
 
   // Stock movement chart, built from whichever dates actually have inward or
   // outward records — not a fixed trailing-30-calendar-days window. A fixed
